@@ -1,0 +1,20 @@
+{
+  "name": "ilp",
+  "version": "0.0.0",
+  "description": "ILP client library for JavaScript",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "ilp",
+    "payment",
+    "interledger",
+    "transfer",
+    "money",
+    "value",
+    "assets"
+  ],
+  "author": "Interledger Team <info@interledger.org>",
+  "license": "ISC"
+}
