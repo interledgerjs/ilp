@@ -227,10 +227,6 @@ class Client extends EventEmitter {
         this.emit('error', new Error('Received incoming transfer with an expired packet (' + packet.data.expiresAt + ')'))
         return
       }
-    } else {
-      // packet had no expiry
-      // noop
-      (function(){})()
     }
 
     // Try to fulfill condition
