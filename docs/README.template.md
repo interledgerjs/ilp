@@ -10,6 +10,15 @@ A JS client library for sending and receiving <a href="https://interledger.org">
 
 <br>
 
+[npm-image]: https://img.shields.io/npm/v/ilp.svg?style=flat
+[npm-url]: https://npmjs.org/package/ilp
+[standard-image]: https://img.shields.io/badge/code%20style-standard-brightgreen.svg
+[standard-url]: http://standardjs.com/
+[circle-image]: https://circleci.com/gh/interledger/js-ilp.svg?style=shield
+[circle-url]: https://circleci.com/gh/interledger/js-ilp
+[codecov-image]: https://codecov.io/gh/interledger/js-ilp/branch/master/graph/badge.svg
+[codecov-url]: https://codecov.io/gh/interledger/js-ilp
+
 This is a low-level interface to ILP, largely intended for building ILP into other [Application layer](https://github.com/interledger/rfcs/tree/master/0001-interledger-architecture) protocols.
 
 For a simple, high-level interface see the [Wallet Client](https://github.com/interledger/five-bells-wallet-client).  
