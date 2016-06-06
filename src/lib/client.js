@@ -4,7 +4,6 @@ const crypto = require('crypto')
 const BigNumber = require('bignumber.js')
 const debug = require('debug')('ilp-client')
 const EventEmitter = require('eventemitter2')
-const moment = require('moment')
 const CoreClient = require('ilp-core').Client
 const PaymentRequest = require('./request')
 
