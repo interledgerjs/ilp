@@ -19,7 +19,7 @@ deployment:
       # - node scripts/publish_web.js
       # Push NPM package if not yet published
       - mv npmrc-env .npmrc
-      - if [ $(npm show ilp version) != $(cat package.json | grep version | sed -n -e 's/^.*version.*\([0-9]*.[0-9]*.[0-9]*\).*/\1/p') ] ; then npm publish ; fi
+      - if [ $(npm show ilp version) != $(npm ls --depth=-1 2>/dev/null | head -1 | cut -f 1 -d " " | cut -f 2 -d @) ] ; then npm publish ; fi
 general:
   artifacts:
     - "coverage/lcov-report"
