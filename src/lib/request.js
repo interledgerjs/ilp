@@ -38,17 +38,22 @@ class PaymentRequest extends EventEmitter {
     if (typeof params !== 'object') {
       throw new Error('PaymentRequest must be instantiated with a client and params')
     }
-    this.id = params.id || uuid.v4()
     if (!params.destinationAmount) {
       throw new Error('destinationAmount is required')
     }
+    if (!params.destinationAccount) {
+      throw new Error('destinationAccount is required')
+    }
+    if (!params.destinationLedger) {
+      throw new Error('destinationLedger is required')
+    }
+
+    this.id = params.id || uuid.v4()
     this.destinationAmount = (typeof params.destinationAmount !== 'string' ? new BigNumber(params.destinationAmount).toString() : params.destinationAmount)
     this.expiresAt = (typeof params.expiresAt !== 'string' ? (new Date(Date.now() + (params.timeout || DEFAULT_TIMEOUT))).toISOString() : params.expiresAt)
     this.data = params.data
-
-    // Fields only used by PaymentRequest.fromPacket
-    this.destinationLedger = params.destinationLedger || this.client._getLedger()
-    this.destinationAccount = params.destinationAccount || this.client.getAccount()
+    this.destinationLedger = params.destinationLedger
+    this.destinationAccount = params.destinationAccount
     this.executionCondition = params.executionCondition // this will be generated if it is not set
     this.unsafeOptimisticTransport = (params.unsafeOptimisticTransport === true)
   }

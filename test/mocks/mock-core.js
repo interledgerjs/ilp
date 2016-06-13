@@ -13,22 +13,29 @@ class MockClient extends EventEmitter {
     this.auth = opts.auth
     this.account = this.auth.account
     this.ledger = /(.+)\/accounts\/.+$/.exec(this.auth.account)[1]
+    this.isConnected = false
   }
 
   getPlugin () {
     return {
       id: this.ledger,
-      getAccount: () => this.account
+      getAccount: () => Promise.resolve(this.account)
     }
   }
 
   connect () {
-    this.emit('connect')
-    return Promise.resolve()
+
   }
 
   disconnect () {
 
+  }
+
+  waitForConnection () {
+    return Promise.resolve()
+      .then(() => {
+        this.isConnected = true
+      })
   }
 
   createPayment (params) {

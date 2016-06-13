@@ -37,18 +37,35 @@ class Client extends EventEmitter {
       type: (opts.ledgerType === 'five-bells' || !opts.ledgerType ? 'bells' : opts.ledgerType),
       auth: opts.auth
     })
-    this.coreClient.connect()
-      .then(() => {
-        debug('client connected')
-      })
-      .catch((err) => {
-        debug('connection error', err)
-        this.emit('error', err)
-      })
+    this.isConnected = false
     // this.coreClient.on('connect', () => this.emit('connect'))
     // this.coreClient.on('disconnect', () => this.emit('disconnect'))
     this.coreClient.on('incoming', (transfer) => this._handleIncoming(transfer))
     // this.coreClient.on('fulfill_execution_condition', (transfer, fulfillment) => this._handleIncoming(transfer, fulfillment))
+  }
+
+  connect () {
+    this.coreClient.connect()
+    return this.coreClient.waitForConnection()
+      .then(() => {
+        if (this._account && this._ledger) {
+          return
+        }
+
+        return Promise.all([
+          this.getAccount().then((account) => this._account = account),
+          this._getLedger().then((ledger) => this._ledger = ledger)
+        ])
+      })
+      .then(() => {
+        this.isConnected = true
+        debug('client connected')
+      })
+      .catch((err) => {
+        this.isConnected = false
+        debug('connection error', err)
+        throw err
+      })
   }
 
   /**
@@ -56,7 +73,8 @@ class Client extends EventEmitter {
    * @return {String}
    */
   getAccount () {
-    return this.coreClient.getPlugin().getAccount()
+    return this.coreClient.waitForConnection()
+      .then(() => this.coreClient.getPlugin().getAccount())
   }
 
   /**
@@ -65,7 +83,8 @@ class Client extends EventEmitter {
   _getLedger () {
     // This is only needed while the ILP packet includes the ledger.
     // It will be removed when the full ILP address scheme is implemented.
-    return this.coreClient.getPlugin().id
+    return this.coreClient.waitForConnection()
+      .then(() => this.coreClient.getPlugin().id)
   }
 
   /**
@@ -94,11 +113,14 @@ class Client extends EventEmitter {
    * @private
    */
   _quote (params) {
-    const payment = this.coreClient.createPayment(params)
-    return payment.quote()
-      .then((quote) => {
-        debug('got quote:', quote)
-        return quote
+    return this.coreClient.waitForConnection()
+      .then(() => {
+        const payment = this.coreClient.createPayment(params)
+        return payment.quote()
+          .then((quote) => {
+            debug('got quote:', quote)
+            return quote
+          })
       })
   }
 
@@ -157,7 +179,14 @@ class Client extends EventEmitter {
    * @return {module:PaymentRequest~PaymentRequest}
    */
   createRequest (params) {
-    return new PaymentRequest(this, params)
+    if (!this.isConnected) {
+      throw new Error('Client must be connected before it can create a PaymentRequest')
+    }
+
+    return new PaymentRequest(this, Object.assign({}, params, {
+      destinationAccount: this._account,
+      destinationLedger: this._ledger
+    }))
   }
 
   /**

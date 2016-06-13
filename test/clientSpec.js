@@ -78,25 +78,27 @@ describe('Client', function () {
         conditionHashlockSeed: 'hello world'
       })).to.throw('conditionHashlockSeed must be a Buffer')
     })
+  })
 
-    it('should automatically connect using the ilp-core client', function () {
+  describe('connect', function () {
+    it('should connect using the ilp-core client', function (done) {
       const connect = sinon.spy(MockCore.Client.prototype, 'connect')
 
-      /* eslint-disable no-unused-vars */
       const client = new Client({
         auth: {
           account: 'https://ledger.example/accounts/alice',
           password: 'alice'
         }
       })
-      /* eslint-enable no-unused-vars */
-
-      expect(connect).to.be.calledOnce
-      connect.restore()
+      client.connect().then(() => {
+        expect(connect).to.be.calledOnce
+        connect.restore()
+        done()
+      })
     })
 
-    it('should emit an error event if there is a connection error with the ilp-core client', function (done) {
-      const connect = sinon.stub(MockCore.Client.prototype, 'connect')
+    it('should reject if there is a connection error with the ilp-core client', function (done) {
+      const waitForConnection = sinon.stub(MockCore.Client.prototype, 'waitForConnection')
         .returns(Promise.reject(new Error('connection error')))
 
       const client = new Client({
@@ -105,14 +107,14 @@ describe('Client', function () {
           password: 'alice'
         }
       })
-
-      client.on('error', (err) => {
-        expect(err.message).to.equal('connection error')
-        done()
-      })
-
-      expect(connect).to.be.calledOnce
-      connect.restore()
+      client.connect()
+        .then(() => done(new Error('should reject')))
+        .catch((err) => {
+          expect(err.message).to.equal('connection error')
+          expect(waitForConnection).to.be.calledOnce
+          waitForConnection.restore()
+          done()
+        })
     })
   })
 
@@ -222,7 +224,7 @@ describe('Client', function () {
   })
 
   describe('createRequest', function () {
-    it('should return a PaymentRequest', function () {
+    it('should throw an error if the client is not connected', function () {
       const client = new Client({
         auth: {
           account: 'https://ledger.example/accounts/alice',
@@ -230,9 +232,30 @@ describe('Client', function () {
         }
       })
 
-      expect(client.createRequest({
+      // (user must call client.connect() first)
+
+      expect(() => client.createRequest({
         destinationAmount: '10'
-      })).to.be.instanceof(PaymentRequest)
+      })).to.throw('Client must be connected before it can create a PaymentRequest')
+    })
+
+    it('should return a PaymentRequest with the account and ledger filled in from the client', function (done) {
+      const client = new Client({
+        auth: {
+          account: 'https://ledger.example/accounts/alice',
+          password: 'alice'
+        }
+      })
+      client.connect()
+        .then(() => {
+          const paymentRequest = client.createRequest({
+            destinationAmount: '10'
+          })
+          expect(paymentRequest).to.be.instanceof(PaymentRequest)
+          expect(paymentRequest.destinationAccount).to.equal('https://ledger.example/accounts/alice')
+          expect(paymentRequest.destinationLedger).to.equal('https://ledger.example')
+          done()
+        })
     })
   })
 

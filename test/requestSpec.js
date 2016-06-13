@@ -49,7 +49,9 @@ describe('PaymentRequest', function () {
 
     it('should generate a uuid if no id is provided', function () {
       const request = new PaymentRequest(this.client, {
-        destinationAmount: 10
+        destinationAmount: '10',
+        destinationAccount: 'https://ledger.example/accounts/alice',
+        destinationLedger: 'https://ledger.example'
       })
 
       expect(request.id).to.match(/^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/)
@@ -57,6 +59,19 @@ describe('PaymentRequest', function () {
 
     it('should throw an error if no destinationAmount is provided', function () {
       expect(() => new PaymentRequest(this.client, {})).to.throw('destinationAmount is required')
+    })
+
+    it('should throw an error if no destinationAccount is provided', function () {
+      expect(() => new PaymentRequest(this.client, {
+        destinationAmount: '10'
+      })).to.throw('destinationAccount is required')
+    })
+
+    it('should throw an error if no destinationLedger is provided', function () {
+      expect(() => new PaymentRequest(this.client, {
+        destinationAmount: '10',
+        destinationAccount: 'https://other-ledger.example/accounts/alice'
+      })).to.throw('destinationLedger is required')
     })
   })
 
@@ -94,6 +109,8 @@ describe('PaymentRequest', function () {
       const request = new PaymentRequest(this.client, {
         id: '3cb34c81-5104-415d-8be8-138a22158a48',
         destinationAmount: '10',
+        destinationAccount: 'https://ledger.example/accounts/alice',
+        destinationLedger: 'https://ledger.example',
         data: {
           foo: 'bar'
         }
@@ -106,6 +123,8 @@ describe('PaymentRequest', function () {
       const request = new PaymentRequest(this.client, {
         id: '3cb34c81-5104-415d-8be8-138a22158a48',
         destinationAmount: '10',
+        destinationAccount: 'https://ledger.example/accounts/alice',
+        destinationLedger: 'https://ledger.example',
         expiresAt: '2016-06-06T03:00:00.000Z' // if this is not provided the condition hash will change
       })
 
@@ -119,6 +138,8 @@ describe('PaymentRequest', function () {
       const request = new PaymentRequest(this.client, {
         id: '3cb34c81-5104-415d-8be8-138a22158a48',
         destinationAmount: '10',
+        destinationAccount: 'https://ledger.example/accounts/alice',
+        destinationLedger: 'https://ledger.example',
         unsafeOptimisticTransport: true
       })
 

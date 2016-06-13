@@ -69,21 +69,24 @@ const client = new Client({
   }
 })
 
-const paymentRequest = client.createRequest({
-  destinationAmount: '10',
-  timeout: 10000,
-  data: {
-    thisIsFor: 'that thing'
-  }
-})
+client.connect()
+  .then(() => {
+    const paymentRequest = client.createRequest({
+      destinationAmount: '10',
+      timeout: 10000,
+      data: {
+        thisIsFor: 'that thing'
+      }
+    })
 
-// XXX: user implements this
-sendRequestToPayer(paymentRequest.getPacket())
+    // XXX: user implements this
+    sendRequestToPayer(paymentRequest.getPacket())
 
-// This automatically checks the incoming transfer and fulfills the condition
-client.on('incoming', (transfer, paymentRequest) => {
-  console.log('Got paid ' + paymentRequest.destinationAmount + ' for ' + paymentRequest.data.thisIsFor)
-})
+    // This automatically checks the incoming transfer and fulfills the condition
+    client.on('incoming', (transfer, paymentRequest) => {
+      console.log('Got paid ' + paymentRequest.destinationAmount + ' for ' + paymentRequest.data.thisIsFor)
+    })
+  })
 ```
 
 ### Paying
