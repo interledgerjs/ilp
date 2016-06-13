@@ -40,8 +40,8 @@ class Client extends EventEmitter {
     this.isConnected = false
     // this.coreClient.on('connect', () => this.emit('connect'))
     // this.coreClient.on('disconnect', () => this.emit('disconnect'))
-    this.coreClient.on('incoming', (transfer) => this._handleIncoming(transfer))
-    // this.coreClient.on('fulfill_execution_condition', (transfer, fulfillment) => this._handleIncoming(transfer, fulfillment))
+    this.coreClient.on('receive', this._handleIncoming.bind(this))
+    // this.coreClient.on('fulfill_execution_condition', this._handleIncoming.bind(this))
   }
 
   connect () {
@@ -213,6 +213,8 @@ class Client extends EventEmitter {
       this.emit('incoming', transfer)
       return
     }
+
+    // TODO validate fulfillment and emit events accordingly
 
     if (!transfer.data || !transfer.data.ilp_header) {
       debug('got incoming transfer with no ilp_header in the data field:', transfer)

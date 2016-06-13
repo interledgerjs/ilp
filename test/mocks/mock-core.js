@@ -74,7 +74,7 @@ class MockClient extends EventEmitter {
         }
       }
     }, transfer || {})
-    this.emit('incoming', t, fulfillment)
+    this.emit('receive', t, fulfillment)
   }
 }
 
