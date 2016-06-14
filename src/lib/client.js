@@ -48,14 +48,13 @@ class Client extends EventEmitter {
     this.coreClient.connect()
     return this.coreClient.waitForConnection()
       .then(() => {
-        if (this._account && this._ledger) {
-          return
+        // If we weren't connected before, get the account and ledger
+        if (!this.isConnected) {
+          return Promise.all([
+            this.getAccount().then((account) => this._account = account),
+            this._getLedger().then((ledger) => this._ledger = ledger)
+          ])
         }
-
-        return Promise.all([
-          this.getAccount().then((account) => this._account = account),
-          this._getLedger().then((ledger) => this._ledger = ledger)
-        ])
       })
       .then(() => {
         this.isConnected = true

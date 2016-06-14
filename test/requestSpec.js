@@ -49,7 +49,7 @@ describe('PaymentRequest', function () {
 
     it('should generate a uuid if no id is provided', function () {
       const request = new PaymentRequest(this.client, {
-        destinationAmount: '10',
+        destinationAmount: 10,
         destinationAccount: 'https://ledger.example/accounts/alice',
         destinationLedger: 'https://ledger.example'
       })

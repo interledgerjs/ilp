@@ -13,7 +13,6 @@ class MockClient extends EventEmitter {
     this.auth = opts.auth
     this.account = this.auth.account
     this.ledger = /(.+)\/accounts\/.+$/.exec(this.auth.account)[1]
-    this.isConnected = false
   }
 
   getPlugin () {
@@ -33,9 +32,6 @@ class MockClient extends EventEmitter {
 
   waitForConnection () {
     return Promise.resolve()
-      .then(() => {
-        this.isConnected = true
-      })
   }
 
   createPayment (params) {

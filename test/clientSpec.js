@@ -116,6 +116,26 @@ describe('Client', function () {
           done()
         })
     })
+
+    it('should not query the ilp-core client for the account if the client already knows it', function (done) {
+      const getPlugin = sinon.spy(MockCore.Client.prototype, 'getPlugin')
+
+      const client = new Client({
+        auth: {
+          account: 'https://ledger.example/accounts/alice',
+          password: 'alice'
+        }
+      })
+      client.connect().then(() => {
+        return client.connect().then(() => {
+          // once for getAccount, once for getLedger (but no more than twice)
+          expect(getPlugin).to.be.calledTwice
+          getPlugin.restore()
+          done()
+        })
+      })
+      .catch(done)
+    })
   })
 
   describe('quote', function () {
