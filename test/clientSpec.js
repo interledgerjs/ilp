@@ -1,6 +1,7 @@
 'use strict'
 /* global describe it beforeEach afterEach */
 
+const _ = require('lodash')
 const chai = require('chai')
 const expect = chai.expect
 const mockRequire = require('mock-require')
@@ -301,7 +302,7 @@ describe('Client', function () {
     })
   })
 
-  describe('_handleIncoming', function () {
+  describe('_handleReceive', function () {
     beforeEach(function () {
       this.clock = sinon.useFakeTimers(FAKE_TIME)
       this.client = new Client({
@@ -311,6 +312,30 @@ describe('Client', function () {
         },
         conditionHashlockSeed: Buffer.from('secret', 'utf8')
       })
+
+      this.incomingTransfer = {
+        id: 'e99af93f-8c97-4f7f-bcfd-e1beef847c4f',
+        direction: 'incoming',
+        ledger: 'https://ledger.example',
+        account: 'https://ledger.example/accounts/alice',
+        amount: '10',
+        executionCondition: 'cc:0:3:bdd87WVBDoSNhAmfNxIJofP42bIUGcGPNOS-GWg72e0:32',
+        data: {
+          ilp_header: {
+            ledger: 'https://ledger.example',
+            account: 'https://ledger.example/accounts/alice',
+            amount: '10',
+            data: {
+              id: '3cb34c81-5104-415d-8be8-138a22158a48',
+              expiresAt: '1970-01-01T00:00:01.000Z',
+              executionCondition: 'cc:0:3:bdd87WVBDoSNhAmfNxIJofP42bIUGcGPNOS-GWg72e0:32',
+              userData: {
+                foo: 'bar'
+              }
+            }
+          }
+        }
+      }
     })
 
     afterEach(function () {
@@ -318,8 +343,136 @@ describe('Client', function () {
     })
 
     it('should disregard outgoing transfers', function (done) {
-      const spy = sinon.spy(PaymentRequest, 'fromPacket')
-      this.client.coreClient.emitIncoming({ direction: 'outgoing' })
+      const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
+      this.client.on('incoming', () => {
+        done(new Error('should disregard'))
+      })
+      this.client.coreClient.emit('receive', _.assign({}, this.incomingTransfer, {
+        direction: 'outgoing'
+      }))
+      process.nextTick(() => {
+        expect(spy).to.have.not.been.called
+        spy.restore()
+        done()
+      })
+    })
+
+    it('should disregard transfers with cancellationConditions', function (done) {
+      const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
+      this.client.on('incoming', () => {
+        done(new Error('should disregard'))
+      })
+      this.client.coreClient.emit('receive', _.assign({}, this.incomingTransfer, {
+        cancellationCondition: 'cc:0:'
+      }))
+      process.nextTick(() => {
+        expect(spy).to.have.not.been.called
+        spy.restore()
+        done()
+      })
+    })
+
+    it('should disregard transfers with executionConditions but no ilp packet in the data field', function (done) {
+      const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
+      this.client.on('incoming', () => {
+        done(new Error('should disregard'))
+      })
+      this.client.coreClient.emit('receive', _.assign({}, this.incomingTransfer, {
+        data: {
+          ilp_header: null,
+          other_thing: {
+            foo: 'bar '
+          }
+        }
+      }))
+      process.nextTick(() => {
+        expect(spy).to.have.not.been.called
+        spy.restore()
+        done()
+      })
+    })
+
+    it('should disregard transfers where the amount does not match the ilp packet amount', function (done) {
+      const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
+      this.client.on('incoming', () => {
+        done(new Error('should disregard'))
+      })
+      this.client.coreClient.emit('receive', _.assign({}, this.incomingTransfer, {
+        amount: '9.99'
+      }))
+      process.nextTick(() => {
+        expect(spy).to.have.not.been.called
+        spy.restore()
+        done()
+      })
+    })
+
+    it('should disregard transfers where the packet has an invalid expiresAt', function (done) {
+      const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
+      this.client.on('incoming', () => {
+        done(new Error('should disregard'))
+      })
+      this.client.coreClient.emit('receive', _.merge({}, this.incomingTransfer, {
+        data: {
+          ilp_header: {
+            data: {
+              expiresAt: 'not a date'
+            }
+          }
+        }
+      }))
+      process.nextTick(() => {
+        expect(spy).to.have.not.been.called
+        spy.restore()
+        done()
+      })
+    })
+
+    it('should disregard transfers where packet has expired', function (done) {
+      this.clock = sinon.useFakeTimers(FAKE_TIME + 10000)
+      const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
+      this.client.on('incoming', () => {
+        done(new Error('should disregard'))
+      })
+      this.client.coreClient.emit('receive', this.incomingTransfer)
+      process.nextTick(() => {
+        expect(spy).to.have.not.been.called
+        spy.restore()
+        done()
+      })
+    })
+
+    it('should disregard transfers where the transfer condition does not match the packet condition', function (done) {
+      const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
+      this.client.on('incoming', () => {
+        done(new Error('should disregard'))
+      })
+      this.client.coreClient.emit('receive', _.assign({}, this.incomingTransfer, {
+        executionCondition: 'cc:3:11:Mjmrcm06fOo-3WOEZu9YDSNfqmn0lj4iOsTVEurtCdI:518'
+      }))
+      process.nextTick(() => {
+        expect(spy).to.have.not.been.called
+        spy.restore()
+        done()
+      })
+    })
+
+    it('should disregard transfers where the fulfillment generated does not match the transfer executionCondition', function (done) {
+      const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
+      this.client.on('incoming', () => {
+        done(new Error('should disregard'))
+      })
+      this.client.coreClient.emit('receive', _.merge({}, this.incomingTransfer, {
+        data: {
+          ilp_header: {
+            data: {
+              userData: {
+                something: 'extra'
+              }
+            }
+          }
+        }
+      }))
       process.nextTick(() => {
         expect(spy).to.have.not.been.called
         spy.restore()
@@ -328,134 +481,83 @@ describe('Client', function () {
     })
 
     it('should emit an `incoming` event for a transfer without a condition', function (done) {
+      const incomingTransfer = _.assign({}, this.incomingTransfer, {
+        executionCondition: null
+      })
       this.client.on('incoming', (transfer) => {
+        expect(transfer).to.deep.equal(incomingTransfer)
         done()
       })
       this.client.on('error', done)
-      this.client.coreClient.emitIncoming({ executionCondition: null })
+      this.client.coreClient.emit('receive', incomingTransfer)
     })
 
     it('should emit an `incoming` event for a transfer without a condition even if the packet is expired', function (done) {
       this.clock = sinon.useFakeTimers(FAKE_TIME + 10000)
+      const incomingTransfer = _.assign({}, this.incomingTransfer, {
+        executionCondition: null
+      })
       this.client.on('incoming', (transfer) => {
+        expect(transfer).to.deep.equal(incomingTransfer)
         done()
       })
       this.client.on('error', done)
-      this.client.coreClient.emitIncoming({ executionCondition: null })
+      this.client.coreClient.emit('receive', incomingTransfer)
     })
 
-    it('should emit an error and not fulfill the condition if there is no packet', function (done) {
-      const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
-      this.client.on('error', (err) => {
-        expect(err).to.be.ok
-        expect(err.message).to.match(/Received incoming transfer with a condition but no ilp_header in the data field \(.+\)/)
-        expect(spy).to.have.not.been.called
-        spy.restore()
-        done()
-      })
-      this.client.on('incoming', () => done(new Error('should error')))
-      this.client.coreClient.emitIncoming({ data: null })
-    })    
-
-    it('should emit an error and not fulfill the condition if the transfer amount does not match the ilp packet amount', function (done) {
-      const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
-      this.client.on('error', (err) => {
-        expect(err).to.be.ok
-        expect(err.message).to.match(/Received incoming transfer where the amount \(\d*\.?\d+\) does not match the packet amount \(\d*\.?\d+\)/)
-        expect(spy).to.have.not.been.called
-        spy.restore()
-        done()
-      })
-      this.client.on('incoming', () => done(new Error('should error')))
-      this.client.coreClient.emitIncoming({ amount: '9.99'})
-    })
-
-    it('should emit an error and not fulfill the condition if the packet has an invalid expiresAt', function (done) {
-      const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
-      this.client.on('error', (err) => {
-        expect(err).to.be.ok
-        expect(err.message).to.match(/Received incoming transfer with invalid expiresAt \(.+\)/)
-        expect(spy).to.have.not.been.called
-        spy.restore()
-        done()
-      })
-      this.client.on('incoming', () => done(new Error('should error')))
-      this.client.coreClient.emitIncoming({ data: { ilp_header: { data: { expiresAt: 'blah' } } } })
-    })
-
-    it('should emit an error and not fulfill the condition if packet has expired', function (done) {
-      this.clock = sinon.useFakeTimers(FAKE_TIME + 10000)
-      const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
-      this.client.on('error', (err) => {
-        expect(err).to.be.ok
-        expect(err.message).to.match(/Received incoming transfer with an expired packet \(.+\)/)
-        expect(spy).to.have.not.been.called
-        spy.restore()
-        done()
-      })
-      this.client.on('incoming', () => done(new Error('should error')))
-      this.client.coreClient.emitIncoming()
-    })
-
-    it('should emit an error and not fulfill the condition if the transfer condition does not match the ilp packet condition', function (done) {
-      const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
-      this.client.on('error', (err) => {
-        expect(err).to.be.ok
-        expect(err.message).to.match(/Received incoming transfer where the condition \(.+\) does not match the packet condition \(.+\)/)
-        expect(spy).to.have.not.been.called
-        spy.restore()
-        done()
-      })
-      this.client.on('incoming', () => done(new Error('should error')))
-      this.client.coreClient.emitIncoming({
-        executionCondition: 'cc:3:11:Mjmrcm06fOo-3WOEZu9YDSNfqmn0lj4iOsTVEurtCdI:518'
-      })
-    })
 
     it('should automatically fulfill transfers for which it can generate the executionCondition fulfillment', function (done) {
       const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
       this.client.on('error', done)
-      this.client.on('incoming', (transfer) => {
+      process.nextTick(() => {
         expect(spy).to.have.been.calledOnce
-        expect(spy).to.have.been.calledWith('e99af93f-8c97-4f7f-bcfd-e1beef847c4f', 'cf:0:v6PPZ44L4pRoa4g5kWZRSYajfJQ3j6fJxG-Ysw8wg5k')
+        expect(spy).to.have.been.calledWith('e99af93f-8c97-4f7f-bcfd-e1beef847c4f', 'cf:0:ov9BVoAi6rwwAzFl-4dMslNdqz9MWFPGS6zffUgjtNg')
         spy.restore()
         done()
       })
-      this.client.coreClient.emitIncoming()
+      this.client.coreClient.emit('receive', this.incomingTransfer)
     })
 
-    it('should use the executionCondition from the transfer even if none is given in the packet', function (done) {
+    it('should use the executionCondition from the transfer if none is given in the packet', function (done) {
       const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
       this.client.on('error', done)
-      this.client.on('incoming', (transfer) => {
+      process.nextTick(() => {
         expect(spy).to.have.been.calledOnce
-        expect(spy).to.have.been.calledWith('e99af93f-8c97-4f7f-bcfd-e1beef847c4f', 'cf:0:v6PPZ44L4pRoa4g5kWZRSYajfJQ3j6fJxG-Ysw8wg5k')
+        expect(spy).to.have.been.calledWith('e99af93f-8c97-4f7f-bcfd-e1beef847c4f', 'cf:0:ov9BVoAi6rwwAzFl-4dMslNdqz9MWFPGS6zffUgjtNg')
         spy.restore()
         done()
       })
-      this.client.coreClient.emitIncoming({ data: { ilp_header: { data: { executionCondition: null } } } })
+      this.client.coreClient.emit('receive', _.merge({}, this.incomingTransfer, {
+        data: {
+          ilp_header: {
+            data: {
+              executionCondition: null
+            }
+          }
+        }
+      }))
     })
 
-    it('should not care if the packet has no expiresAt as long as the conditions match', function (done) {
-      this.client.on('incoming', (transfer) => {
-        done()
-      })
-      this.client.on('error', done)
-      const condition = 'cc:0:3:ZCEN8Xb9woXrLbNmEs8666HIV0SjVoXNFBmHQH02Pdc:32'
-      this.client.coreClient.emitIncoming({ data: { ilp_header: { data: { expiresAt: null, executionCondition: condition } } }, executionCondition: condition })
-    })
-
-
-    it('should emit an error when the condition fulfillment generated does not match the transfer executionCondition', function (done) {
+    it('should not care if the packet has no expiresAt', function (done) {
       const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
-      this.client.on('incoming', (transfer) => done(new Error('should error')))
-      this.client.on('error', (err) => {
-        expect(err).to.be.ok
-        expect(spy).to.have.not.been.called
+      this.client.on('error', done)
+      process.nextTick(() => {
+        expect(spy).to.have.been.calledOnce
         spy.restore()
         done()
       })
-      this.client.coreClient.emitIncoming({ data: { ilp_header: { data: { userData: { something: 'extra' } } } } })
+      const condition = 'cc:0:3:xxVcfSkv9CGNPtHy2v8rulpdxsMnW11B5CE4vyQGsIE:32'
+      this.client.coreClient.emit('receive', _.merge({}, this.incomingTransfer, {
+        executionCondition: condition,
+        data: {
+          ilp_header: {
+            data: {
+              expiresAt: null,
+              executionCondition: condition
+            }
+          }
+        }
+      }))
     })
 
     it('should emit an error if there is an error when submitting the condition fulfillment', function (done) {
@@ -468,7 +570,8 @@ describe('Client', function () {
         spy.restore()
         done()
       })
-      this.client.coreClient.emitIncoming()
+      this.client.coreClient.emit('receive', this.incomingTransfer)
     })
+
   })
 })

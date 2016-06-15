@@ -45,33 +45,6 @@ class MockClient extends EventEmitter {
       return Promise.reject(new Error('fulfillCondition called with invalid arguments:', transferId, fulfillment))
     }
   }
-
-  emitIncoming (transfer, fulfillment) {
-    const t = _.merge({
-      id: 'e99af93f-8c97-4f7f-bcfd-e1beef847c4f',
-      direction: 'incoming',
-      ledger: this.ledger,
-      account: this.account,
-      amount: '10',
-      executionCondition: 'cc:0:3:ERFUgCWoa85FwZGDUuMFGB73RftgZjsAdFuDJcX1WnM:32',
-      data: {
-        ilp_header: {
-          account: this.account,
-          ledger: this.account,
-          amount: '10',
-          data: {
-            id: '3cb34c81-5104-415d-8be8-138a22158a48',
-            expiresAt: '1970-01-01T00:00:01.000Z',
-            executionCondition: 'cc:0:3:ERFUgCWoa85FwZGDUuMFGB73RftgZjsAdFuDJcX1WnM:32',
-            userData: {
-              foo: 'bar'
-            }
-          }
-        }
-      }
-    }, transfer || {})
-    this.emit('receive', t, fulfillment)
-  }
 }
 
 class MockPayment extends EventEmitter {

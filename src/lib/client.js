@@ -40,8 +40,8 @@ class Client extends EventEmitter {
     this.isConnected = false
     // this.coreClient.on('connect', () => this.emit('connect'))
     // this.coreClient.on('disconnect', () => this.emit('disconnect'))
-    this.coreClient.on('receive', this._handleIncoming.bind(this))
-    // this.coreClient.on('fulfill_execution_condition', this._handleIncoming.bind(this))
+    this.coreClient.on('receive', this._handleReceive.bind(this))
+    // this.coreClient.on('fulfill_execution_condition', this._handleFulfillment.bind(this))
   }
 
   connect () {
@@ -197,80 +197,80 @@ class Client extends EventEmitter {
     return PaymentRequest.fromPacket(this, packet)
   }
 
-  /**
-   * Automatically fulfill incoming requests that have conditions and emit events when money is received
-   * @private
-   * @param  {Transfer} transfer [Incoming transfer]{@link https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer}
-   * @param {String} fulfillment Transfer condition fulfillment
-   */
-  _handleIncoming (transfer, fulfillment) {
-    if (transfer.direction !== 'incoming') {
-      debug('got notification of outgoing transfer:', transfer, fulfillment)
+  _tryFulfillCondition (transfer) {
+    const packet = transfer.data.ilp_header
+    const request = PaymentRequest.fromPacket(this, packet)
+    const regeneratedPacket = request._getPacketWithoutCondition()
+    const condition = request._generateCondition(regeneratedPacket)
+    if (condition.getConditionUri() !== transfer.executionCondition) {
+      debug('got incoming transfer where the condition we generate from the packet (' + condition.getConditionUri() + ') does not match the executionCondition:', JSON.stringify(transfer))
       return
     }
-    if (!transfer.executionCondition && !transfer.cancellationCondition) {
+    const fulfillmentUri = condition.serializeUri()
+    this.coreClient.fulfillCondition(transfer.id, fulfillmentUri)
+      .then(() => debug('submitted transfer fulfillment: ' + fulfillmentUri + ' for transfer:', JSON.stringify(transfer)))
+      .catch((err) => this.emit('error', err))
+  }
+
+  /**
+   * Emit incoming events for unconditional transfers and automatically fulfill conditional transfers.
+   * @param  {Transfer} transfer [Incoming transfer]{@link https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer}
+   */
+  _handleReceive (transfer) {
+    // Disregard outgoing transfers
+    if (transfer.direction !== 'incoming') {
+      debug('got notification of outgoing transfer:', JSON.stringify(transfer))
+      return
+    }
+    // Disregard transfers with cancellationConditions
+    if (transfer.cancellationCondition) {
+      debug('got notification of transfer with cancellationCondition:', JSON.stringify(transfer))
+      return
+    }
+
+    // Emit incoming events for unconditional transfers
+    if (!transfer.executionCondition) {
       this.emit('incoming', transfer)
       return
     }
 
-    // TODO validate fulfillment and emit events accordingly
-
+    // Check packet
     if (!transfer.data || !transfer.data.ilp_header) {
-      debug('got incoming transfer with no ilp_header in the data field:', transfer)
-      this.emit('error', new Error('Received incoming transfer with a condition but no ilp_header in the data field (' + JSON.stringify(transfer.data) + ')'))
-      return
+      debug('got notification of transfer with no ilp packet in the data field:', transfer)
+      return false
     }
-    let packet = transfer.data.ilp_header
 
-    // Check packet against incoming transfer
+    const packet = transfer.data.ilp_header
 
     // Check amount
     // TODO: add option to allow amounts that are greater than the requested one
     if (!(new BigNumber(transfer.amount).equals(packet.amount))) {
-      debug('got incoming transfer where the amount (' + transfer.amount + ') does not match the packet amount (' + packet.amount + ')')
-      this.emit('error', new Error('Received incoming transfer where the amount (' + transfer.amount + ') does not match the packet amount (' + packet.amount + ')'))
+      debug('got incoming transfer where the amount does not match the packet amount:', JSON.stringify(transfer))
       return
     }
 
     // Check condition
     const packetCondition = packet.data.executionCondition
     if (packetCondition && transfer.executionCondition !== packetCondition) {
-      debug('got incoming transfer where the condition (' + transfer.executionCondition + ') does not match the packet condition (' + packetCondition + ')')
-      this.emit('error', new Error('Received incoming transfer where the condition (' + transfer.executionCondition + ') does not match the packet condition (' + packetCondition + ')'))
+      debug('got incoming transfer where the condition does not match the packet condition:', JSON.stringify(transfer))
       return
     }
-    // Get the condition from the transfer if there isn't one in the packet
-    if (!packetCondition) {
-      packet.data.executionCondition = transfer.executionCondition
-    }
 
-    // Check expiry
+    // Check packet expiry
     if (packet.data.expiresAt) {
       const expiresAt = Date.parse(packet.data.expiresAt)
       if (Number.isNaN(expiresAt)) {
-        debug('got incoming transfer with invalid expiresAt (' + packet.data.expiresAt + ')')
-        this.emit('error', new Error('Received incoming transfer with invalid expiresAt (' + packet.data.expiresAt + ')'))
+        debug('got incoming transfer with invalid expiresAt:', JSON.stringify(transfer))
         return
       }
       if (expiresAt < Date.now()) {
-        debug('got incoming transfer with expired packet (' + packet.data.expiresAt + ')')
-        this.emit('error', new Error('Received incoming transfer with an expired packet (' + packet.data.expiresAt + ')'))
+        debug('got incoming transfer with expired packet:', JSON.stringify(transfer))
         return
       }
     }
 
-    // Try to fulfill condition
-    const request = PaymentRequest.fromPacket(this, packet)
-    const regeneratedPacket = request._getPacket()
-    const condition = request._generateCondition(regeneratedPacket)
-    if (condition.getConditionUri() !== transfer.executionCondition) {
-      debug('got incoming transfer where the condition we generate from the packet (' + condition.getConditionUri() + ') does not match the executionCondition:', transfer)
-      this.emit('error', new Error('Received incoming transfer where the condition we generate from the packet (' + condition.getConditionUri() + ') does not match the executionCondition (' + transfer.executionCondition + ')'))
-      return
-    }
-    this.coreClient.fulfillCondition(transfer.id, condition.serializeUri())
-      .then(() => this.emit('incoming', transfer, request))
-      .catch((err) => this.emit('error', err))
+    // If we get here that means the packet/transfer checks out
+    this._tryFulfillCondition(transfer)
   }
 }
 

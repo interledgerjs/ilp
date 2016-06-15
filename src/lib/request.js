@@ -85,7 +85,7 @@ class PaymentRequest extends EventEmitter {
    * @return {Object}
    */
   getPacket () {
-    let packet = this._getPacket()
+    let packet = this._getPacketWithoutCondition()
 
     if (!this.unsafeOptimisticTransport) {
       const conditionUri = this._generateCondition(packet).getConditionUri()
@@ -100,7 +100,7 @@ class PaymentRequest extends EventEmitter {
    * @private
    * Get the ILP packet without generating a condition.
    */
-  _getPacket () {
+  _getPacketWithoutCondition () {
     let packet = {
       account: this.destinationAccount,
       ledger: this.destinationLedger,
