@@ -31,7 +31,7 @@ const REQUEST_PACKET = {
     id: '3cb34c81-5104-415d-8be8-138a22158a48',
     expiresAt: '2016-06-06T03:07:43.655Z',
     executionCondition: 'cc:0:3:jDO9-BfPkOSLUgi77QY2wEgh-CFb5vECOlmlxqYAxw8:32',
-    userData: {
+    destinationMemo: {
       foo: 'bar'
     }
   }
@@ -201,6 +201,21 @@ describe('PaymentRequest', function () {
       request.pay({
         maxSourceAmount: '10'
       }).then((result) => {
+        done()
+      }).catch(done)
+    })
+
+    it('should include the ilp packet in the destinationMemo parameter', function (done) {
+      const spy = sinon.spy(this.client.coreClient, 'createPayment')
+      const request = PaymentRequest.fromPacket(this.client, this.packet)
+      request.pay({
+        maxSourceAmount: '10'
+      }).then((result) => {
+        expect(spy).to.have.been.calledWithMatch({
+          destinationMemo: {
+            ilp_header: request._getDataField()
+          }})
+        spy.restore()
         done()
       }).catch(done)
     })

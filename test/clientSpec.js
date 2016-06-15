@@ -319,7 +319,7 @@ describe('Client', function () {
         ledger: 'https://ledger.example',
         account: 'https://ledger.example/accounts/alice',
         amount: '10',
-        executionCondition: 'cc:0:3:bdd87WVBDoSNhAmfNxIJofP42bIUGcGPNOS-GWg72e0:32',
+        executionCondition: 'cc:0:3:L6R-TUf1S-PHh8sUKFTQ8LT75DC6JByKsl0IM5OfF98:32',
         data: {
           ilp_header: {
             ledger: 'https://ledger.example',
@@ -328,8 +328,8 @@ describe('Client', function () {
             data: {
               id: '3cb34c81-5104-415d-8be8-138a22158a48',
               expiresAt: '1970-01-01T00:00:01.000Z',
-              executionCondition: 'cc:0:3:bdd87WVBDoSNhAmfNxIJofP42bIUGcGPNOS-GWg72e0:32',
-              userData: {
+              executionCondition: 'cc:0:3:L6R-TUf1S-PHh8sUKFTQ8LT75DC6JByKsl0IM5OfF98:32',
+              destinationMemo: {
                 foo: 'bar'
               }
             }
@@ -466,7 +466,7 @@ describe('Client', function () {
         data: {
           ilp_header: {
             data: {
-              userData: {
+              destinationMemo: {
                 something: 'extra'
               }
             }
@@ -509,24 +509,18 @@ describe('Client', function () {
     it('should automatically fulfill transfers for which it can generate the executionCondition fulfillment', function (done) {
       const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
       this.client.on('error', done)
+      this.client.coreClient.emit('receive', this.incomingTransfer)
       process.nextTick(() => {
         expect(spy).to.have.been.calledOnce
-        expect(spy).to.have.been.calledWith('e99af93f-8c97-4f7f-bcfd-e1beef847c4f', 'cf:0:ov9BVoAi6rwwAzFl-4dMslNdqz9MWFPGS6zffUgjtNg')
+        expect(spy).to.have.been.calledWith('e99af93f-8c97-4f7f-bcfd-e1beef847c4f', 'cf:0:VSoU2V9QUOeGFoy_zEI2bD3e5xBH9-BocwvuGIwFOxI')
         spy.restore()
         done()
       })
-      this.client.coreClient.emit('receive', this.incomingTransfer)
     })
 
     it('should use the executionCondition from the transfer if none is given in the packet', function (done) {
       const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
       this.client.on('error', done)
-      process.nextTick(() => {
-        expect(spy).to.have.been.calledOnce
-        expect(spy).to.have.been.calledWith('e99af93f-8c97-4f7f-bcfd-e1beef847c4f', 'cf:0:ov9BVoAi6rwwAzFl-4dMslNdqz9MWFPGS6zffUgjtNg')
-        spy.restore()
-        done()
-      })
       this.client.coreClient.emit('receive', _.merge({}, this.incomingTransfer, {
         data: {
           ilp_header: {
@@ -536,17 +530,18 @@ describe('Client', function () {
           }
         }
       }))
+      process.nextTick(() => {
+        expect(spy).to.have.been.calledOnce
+        expect(spy).to.have.been.calledWith('e99af93f-8c97-4f7f-bcfd-e1beef847c4f', 'cf:0:VSoU2V9QUOeGFoy_zEI2bD3e5xBH9-BocwvuGIwFOxI')
+        spy.restore()
+        done()
+      })
     })
 
     it('should not care if the packet has no expiresAt', function (done) {
       const spy = sinon.spy(this.client.coreClient, 'fulfillCondition')
       this.client.on('error', done)
-      process.nextTick(() => {
-        expect(spy).to.have.been.calledOnce
-        spy.restore()
-        done()
-      })
-      const condition = 'cc:0:3:xxVcfSkv9CGNPtHy2v8rulpdxsMnW11B5CE4vyQGsIE:32'
+      const condition = 'cc:0:3:CilvT5hsCgNGvOMpTNihQRLbPDSQty9e1Zykn5OAqrs:32'
       this.client.coreClient.emit('receive', _.merge({}, this.incomingTransfer, {
         executionCondition: condition,
         data: {
@@ -558,6 +553,11 @@ describe('Client', function () {
           }
         }
       }))
+      process.nextTick(() => {
+        expect(spy).to.have.been.calledOnce
+        spy.restore()
+        done()
+      })
     })
 
     it('should emit an error if there is an error when submitting the condition fulfillment', function (done) {
@@ -572,6 +572,5 @@ describe('Client', function () {
       })
       this.client.coreClient.emit('receive', this.incomingTransfer)
     })
-
   })
 })

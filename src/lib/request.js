@@ -51,7 +51,7 @@ class PaymentRequest extends EventEmitter {
     this.id = params.id || uuid.v4()
     this.destinationAmount = (typeof params.destinationAmount !== 'string' ? new BigNumber(params.destinationAmount).toString() : params.destinationAmount)
     this.expiresAt = (typeof params.expiresAt !== 'string' ? (new Date(Date.now() + (params.timeout || DEFAULT_TIMEOUT))).toISOString() : params.expiresAt)
-    this.data = params.data
+    this.destinationMemo = params.destinationMemo
     this.destinationLedger = params.destinationLedger
     this.destinationAccount = params.destinationAccount
     this.executionCondition = params.executionCondition // this will be generated if it is not set
@@ -68,7 +68,7 @@ class PaymentRequest extends EventEmitter {
       destinationAccount: packet.account,
       destinationAmount: packet.amount,
       expiresAt: packet.data.expiresAt,
-      data: packet.data.userData,
+      destinationMemo: packet.data.destinationMemo,
       executionCondition: packet.data.executionCondition,
       unsafeOptimisticTransport: !packet.data.executionCondition
     }
@@ -98,6 +98,22 @@ class PaymentRequest extends EventEmitter {
 
   /**
    * @private
+   * Get the ILP packet data field
+   * @return {Object}
+   */
+  _getDataField () {
+    let data = {
+      id: this.id,
+      expiresAt: this.expiresAt
+    }
+    if (this.destinationMemo) {
+      data.destinationMemo = this.destinationMemo
+    }
+    return data
+  }
+
+  /**
+   * @private
    * Get the ILP packet without generating a condition.
    */
   _getPacketWithoutCondition () {
@@ -105,13 +121,7 @@ class PaymentRequest extends EventEmitter {
       account: this.destinationAccount,
       ledger: this.destinationLedger,
       amount: this.destinationAmount,
-      data: {
-        id: this.id,
-        expiresAt: this.expiresAt
-      }
-    }
-    if (this.data) {
-      packet.data.userData = this.data
+      data: this._getDataField()
     }
     return packet
   }
@@ -163,6 +173,7 @@ class PaymentRequest extends EventEmitter {
       destinationAccount: this.destinationAccount,
       destinationLedger: this.destinationLedger,
       destinationAmount: this.destinationAmount,
+      destinationMemo: this._getDataField(),
       executionCondition: this.executionCondition,
       expiresAt: this.expiresAt
     })
