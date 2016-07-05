@@ -5,27 +5,30 @@ const BigNumber = require('bignumber.js')
 const debug = require('debug')('ilp-client')
 const EventEmitter = require('eventemitter2')
 const CoreClient = require('ilp-core').Client
-const PaymentRequest = require('./request')
+const PaymentRequest = require('./request').PaymentRequest
 
 /**
  * @module Client
  */
 
 /**
- * Low-level client for sending and receiving ILP payments
+ * Low-level client for sending and receiving ILP payments (extends [Core Client](https://github.com/interledger/js-ilp-core))
  * @class
  */
-class Client extends EventEmitter {
+class Client extends CoreClient {
   /**
    * Instantiates an ILP client
-   * @param {String} [opts.ledgerType='five-bells'] Ledger type to connect to, defaults to 'five-bells'
+   * @param {String} [opts.type='bells'] Ledger type to connect to, defaults to 'five-bells'
    * @param {Object} opts.auth Auth parameters for connecting to the ledger. Fields are defined by the ledger plugin corresponding to the ledgerType`
-   * @param {Number} [opts.maxSourceHoldDuration=10] Default maximum time (in seconds) the client will allow the source funds to be held for when sending a transfer
    * @param {Buffer} [opts.conditionHashlockSeed=crypto.randomBytes(32)] Seed to use for generating the hashlock conditions
    */
   constructor (opts) {
-    super()
-    this.maxSourceHoldDuration = (opts.maxSourceHoldDuration || 10)
+    // Default to `five-bells-ledger`
+    if (!opts.type) {
+      opts.type = 'bells'
+    }
+
+    super(opts)
     if (Buffer.isBuffer(opts.conditionHashlockSeed)) {
       this.conditionHashlockSeed = opts.conditionHashlockSeed
     } else if (!opts.conditionHashlockSeed) {
@@ -33,190 +36,142 @@ class Client extends EventEmitter {
     } else {
       throw new Error('conditionHashlockSeed must be a Buffer')
     }
-    this.coreClient = new CoreClient({
-      type: (opts.ledgerType === 'five-bells' || !opts.ledgerType ? 'bells' : opts.ledgerType),
-      auth: opts.auth
-    })
-    this.isConnected = false
-    // this.coreClient.on('connect', () => this.emit('connect'))
-    // this.coreClient.on('disconnect', () => this.emit('disconnect'))
-    this.coreClient.on('receive', this._handleReceive.bind(this))
-    // this.coreClient.on('fulfill_execution_condition', this._handleFulfillment.bind(this))
+    this.on('receive', (transfer) => this._tryAutoFulfillPaymentRequest(transfer))
+    this.on('fulfill_execution_condition', (transfer, fulfillment) => this._handleFulfillment(transfer, fulfillment))
+
+    this._account = this.plugin.getAccount()
+    this._ledger = this.plugin.id
+
+    this._fulfillmentsToListenFor = {}
   }
 
   connect () {
-    this.coreClient.connect()
-    return this.coreClient.waitForConnection()
+    super.connect()
+    return super.waitForConnection()
       .then(() => {
-        // If we weren't connected before, get the account and ledger
-        if (!this.isConnected) {
-          return Promise.all([
-            this.getAccount().then((account) => this._account = account),
-            this._getLedger().then((ledger) => this._ledger = ledger)
-          ])
+        // TODO should ledger plugins have this before they're connected?
+        if (!this._ledger) {
+          this._ledger = this.plugin.id
         }
       })
-      .then(() => {
-        this.isConnected = true
-        debug('client connected')
-      })
-      .catch((err) => {
-        this.isConnected = false
-        debug('connection error', err)
-        throw err
-      })
   }
-
-  /**
-   * Returns the account URI
-   * @return {String}
-   */
-  getAccount () {
-    return this.coreClient.waitForConnection()
-      .then(() => this.coreClient.getPlugin().getAccount())
-  }
-
-  /**
-   * @private
-   */
-  _getLedger () {
-    // This is only needed while the ILP packet includes the ledger.
-    // It will be removed when the full ILP address scheme is implemented.
-    return this.coreClient.waitForConnection()
-      .then(() => this.coreClient.getPlugin().id)
-  }
-
-  /**
-   * @typedef {Object} QuoteResponse
-   * @param {String} sourceAmount
-   * @param {String} destinationAmount
-   */
 
   /**
    * Get a quote
-   *
-   * @param  {Object} params Payment params, see ilp-core docs
-   * @return {QuoteResponse}
+   * @param  {String} [params.sourceAmount] Either the sourceAmount or destinationAmount must be specified
+   * @param  {String} [params.destinationAmount] Either the sourceAmount or destinationAmount must be specified
+   * @param  {String} params.destinationLedger Recipient's ledger
+   * @return {Object} Object including the amount that was not specified
    */
   quote (params) {
-    return this._quote(params)
-      .then((quote) => {
-        return {
-          sourceAmount: quote.source_amount,
-          destinationAmount: quote.destination_amount
-        }
-      })
+    return super.quote(params)
+  }
+
+  /**
+   * Send a payment
+   * @param  {String} params.sourceAmount Amount to send
+   * @param  {String} params.destinationAmount Amount recipient will receive
+   * @param  {String} params.destinationAccount Recipient's account
+   * @param  {String} params.destinationLedger Recipient's ledger
+   * @param  {String} params.connectorAccount First connector's account on the source ledger (from the quote)
+   * @param  {Object} params.destinationMemo Memo for the recipient to be included with the payment
+   * @param  {String} params.expiresAt Payment expiry timestamp
+   * @param  {String} [params.executionCondition=Error unless unsafeOptimisticTransport is true] Crypto condition
+   * @param  {Boolean} [params.unsafeOptimisticTransport=false] Send payment without securing it with a condition
+   * @return {Promise.<null>} Resolves when the payment has been submitted to the plugin
+   */
+  sendQuotedPayment (params) {
+    return super.sendQuotedPayment(params)
+  }
+
+  /**
+   * Create a PaymentRequest.
+   *
+   * If the request is serialized, sent to the sender,
+   * and the sender pays for the request, the receiving client
+   * will automatically fulfill the condition iff the incoming transfer
+   * matches what was specified in the original request.
+   * 
+   * @param {module:PaymentRequest~PaymentRequestJson} params Parameters to create the PaymentRequest
+   * @return {module:PaymentRequest~PaymentRequest}
+   */
+  createRequest (params) {
+    const paymentRequest = new PaymentRequest(Object.assign({}, params, {
+      destinationAccount: this._account,
+      destinationLedger: this._ledger
+    }))
+
+    // Auto-generate the condition
+    if (!params.executionCondition && !params.unsafeOptimisticTransport) {
+      const condition = paymentRequest.generateHashlockCondition(this.conditionHashlockSeed)
+      paymentRequest.setCondition(condition.getConditionUri())
+    }
+
+    return paymentRequest
+  }
+
+  /**
+   * Parse a payment request from a serialized form
+   * @param  {PaymentRequestJson} input
+   * @return {PaymentRequest}
+   */
+  parseRequest (input) {
+    return PaymentRequest.fromJSON(input)
+  }
+
+  /**
+   * Get a quote for how much it would cost to pay for this payment request
+   * @param {PaymentRequest} paymentRequest Parsed PaymentRequest
+   * @return {module:Client~QuoteResponse}
+   */
+  quoteRequest (paymentRequest) {
+    return this.quote({
+      destinationAccount: paymentRequest.destinationAccount,
+      destinationLedger: paymentRequest.destinationLedger,
+      destinationAmount: paymentRequest.destinationAmount,
+      executionCondition: paymentRequest.executionCondition,
+      expiresAt: paymentRequest.expiresAt
+    })
+  }
+
+  /**
+   * Pay for a PaymentRequest
+   * @param {PaymentRequest} paymentRequest Request to pay for
+   * @param {String|Number|BigNumber} params.sourceAmount Amount to send. Should be determined from quote
+   * @return {Promise<null>} Resolves when the payment has been sent
+   */
+  payRequest (paymentRequest, params) {
+    if (!paymentRequest || !params.sourceAmount) {
+      return Promise.reject(new Error('sourceAmount is required'))
+    }
+
+    if (!paymentRequest.executionCondition) {
+      return Promise.reject(new Error('PaymentRequests must have executionConditions'))
+    }
+
+    // TODO local expiresAt should be less than the packet's expiry
+
+    return this.sendQuotedPayment({
+      sourceAmount: params.sourceAmount,
+      connectorAccount: params.connectorAccount,
+      unsafeOptimisticTransport: false,
+      destinationAccount: paymentRequest.destinationAccount,
+      destinationLedger: paymentRequest.destinationLedger,
+      destinationAmount: paymentRequest.destinationAmount,
+      destinationMemo: paymentRequest._getDataField(),
+      executionCondition: paymentRequest.executionCondition,
+      expiresAt: paymentRequest.expiresAt
+    })
+
+    // TODO resolve when we get the fulfillment back
   }
 
   /**
    * @private
+   * Automatically fulfill transfers that were PaymentRequests we generated
    */
-  _quote (params) {
-    return this.coreClient.waitForConnection()
-      .then(() => {
-        const payment = this.coreClient.createPayment(params)
-        return payment.quote()
-          .then((quote) => {
-            debug('got quote:', quote)
-            return quote
-          })
-      })
-  }
-
-  /**
-   * Send an ILP payment
-   * @param  {Object} params Payment params, see ilp-core docs
-   * @param  {String|Number|BigNumber} params.maxSourceAmount Reject if the quoted source amount exceeds this value
-   * @param {Number} [params.maxSourceHoldDuration=client.maxSourceHoldDuration] Maximum time (in seconds) the client will allow the source funds to be held for
-   * @param {Boolean} [params.unsafeOptimisticTransport=false] Allow sending without a condition using the Optimistic transport
-   * @return {Promise<Object>} Resolves when the payment has been sent
-   */
-  send (params) {
-    let maxSourceAmount
-    try {
-      maxSourceAmount = new BigNumber(params.maxSourceAmount)
-    } catch (e) {
-      throw new Error('maxSourceAmount is required')
-    }
-
-    if (!params.executionCondition && !params.unsafeOptimisticTransport) {
-      throw new Error('executionCondition is required unless unsafeOptimisticTransport is set to true')
-    }
-
-    debug('send:', params)
-    const payment = this.coreClient.createPayment(params)
-    return payment.quote()
-      .then((quote) => {
-        debug('send got quote:', quote)
-
-        // Check quoted amount
-        if (maxSourceAmount.lessThan(quote.source_amount)) {
-          throw new Error('Transfer source amount (' + quote.source_amount + ') would exceed maxSourceAmount (' + maxSourceAmount.toString() + ')')
-        }
-
-        // Check quoted source hold duration
-        const maxSourceHoldDuration = params.maxSourceHoldDuration || this.maxSourceHoldDuration
-        if ((new BigNumber(quote.source_expiry_duration)).greaterThan(maxSourceHoldDuration)) {
-          throw new Error('Source transfer hold duration (' + quote.source_expiry_duration + ') would exceed maxSourceHoldDuration (' + maxSourceHoldDuration + ')')
-        }
-
-        return payment.sendQuoted(quote)
-      })
-      .then((result) => {
-        debug('send result:', result)
-        return result
-      })
-      .catch((err) => {
-        debug('send error:', err)
-        throw err
-      })
-  }
-
-  /**
-   * Create a PaymentRequest. This is used on the receiving side.
-   * @param {module:PaymentRequest~Params} params Parameters to create the PaymentRequest
-   * @return {module:PaymentRequest~PaymentRequest}
-   */
-  createRequest (params) {
-    if (!this.isConnected) {
-      throw new Error('Client must be connected before it can create a PaymentRequest')
-    }
-
-    return new PaymentRequest(this, Object.assign({}, params, {
-      destinationAccount: this._account,
-      destinationLedger: this._ledger
-    }))
-  }
-
-  /**
-   * Parse a PaymentRequest from an ILP packet. This is used on the sending side.
-   * @param  {Object} packet [ILP Packet]{@link https://github.com/interledger/five-bells-shared/blob/master/schemas/IlpHeader.json}
-   * @return {module:PaymentRequest#PaymentRequest}
-   */
-  parseRequest (packet) {
-    return PaymentRequest.fromPacket(this, packet)
-  }
-
-  _tryFulfillCondition (transfer) {
-    const packet = transfer.data.ilp_header
-    const request = PaymentRequest.fromPacket(this, packet)
-    const regeneratedPacket = request._getPacketWithoutCondition()
-    const condition = request._generateCondition(regeneratedPacket)
-    if (condition.getConditionUri() !== transfer.executionCondition) {
-      debug('got incoming transfer where the condition we generate from the packet (' + condition.getConditionUri() + ') does not match the executionCondition:', JSON.stringify(transfer))
-      return
-    }
-    const fulfillmentUri = condition.serializeUri()
-    this.coreClient.fulfillCondition(transfer.id, fulfillmentUri)
-      .then(() => debug('submitted transfer fulfillment: ' + fulfillmentUri + ' for transfer:', JSON.stringify(transfer)))
-      .catch((err) => this.emit('error', err))
-  }
-
-  /**
-   * Emit incoming events for unconditional transfers and automatically fulfill conditional transfers.
-   * @param  {Transfer} transfer [Incoming transfer]{@link https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer}
-   */
-  _handleReceive (transfer) {
+  _tryAutoFulfillPaymentRequest (transfer) {
+    debug('got notification of transfer', transfer)
     // Disregard outgoing transfers
     if (transfer.direction !== 'incoming') {
       debug('got notification of outgoing transfer:', JSON.stringify(transfer))
@@ -228,50 +183,71 @@ class Client extends EventEmitter {
       return
     }
 
-    // Emit incoming events for unconditional transfers
     if (!transfer.executionCondition) {
-      this.emit('incoming', transfer)
+      debug('got notification of transfer without an executionCondition')
       return
     }
 
-    // Check packet
-    if (!transfer.data || !transfer.data.ilp_header) {
-      debug('got notification of transfer with no ilp packet in the data field:', transfer)
-      return false
-    }
-
-    const packet = transfer.data.ilp_header
-
-    // Check amount
-    // TODO: add option to allow amounts that are greater than the requested one
-    if (!(new BigNumber(transfer.amount).equals(packet.amount))) {
-      debug('got incoming transfer where the amount does not match the packet amount:', JSON.stringify(transfer))
+    let parsedRequest
+    try {
+      parsedRequest = this._parseRequestFromTransfer(transfer)
+    } catch (e) {
+      debug('failed to parse payment request from transfer:', e)
       return
     }
 
-    // Check condition
-    const packetCondition = packet.data.executionCondition
-    if (packetCondition && transfer.executionCondition !== packetCondition) {
-      debug('got incoming transfer where the condition does not match the packet condition:', JSON.stringify(transfer))
-      return
-    }
-
-    // Check packet expiry
-    if (packet.data.expiresAt) {
-      const expiresAt = Date.parse(packet.data.expiresAt)
-      if (Number.isNaN(expiresAt)) {
-        debug('got incoming transfer with invalid expiresAt:', JSON.stringify(transfer))
-        return
-      }
-      if (expiresAt < Date.now()) {
-        debug('got incoming transfer with expired packet:', JSON.stringify(transfer))
+    // Check request expiry
+    if (parsedRequest.expiresAt) {
+      const expiresAt = Date.parse(parsedRequest.expiresAt)
+      if (Number.isNaN(expiresAt) || expiresAt < Date.now()) {
+        debug('got incoming transfer with invalid or passed expiry:', JSON.stringify(transfer))
         return
       }
     }
 
-    // If we get here that means the packet/transfer checks out
-    this._tryFulfillCondition(transfer)
+    // Regenerate the condition
+    // Note the condition will not match if any of the fields do not match what we set originally
+    const generatedCondition = parsedRequest.generateHashlockCondition(this.conditionHashlockSeed)
+    if (generatedCondition.getConditionUri() !== transfer.executionCondition) {
+      debug('got incoming transfer where the condition (' + transfer.executionCondition + ') does not match what we generate (' + generatedCondition.getConditionUri() + '):', JSON.stringify(transfer))
+      return
+    }
+
+    // Submit the fulfillment to the ledger
+    const fulfillment = generatedCondition.serializeUri()
+    this._fulfillmentsToListenFor[transfer.id] = fulfillment
+    this.fulfillCondition(transfer.id, fulfillment)
+      .then(() => {
+        debug('submitted transfer fulfillment: ' + fulfillment + ' for transfer:', JSON.stringify(transfer))
+      })
+      .catch((err) => {
+        debug('error submitting fulfillment:', err)
+        this.emit('error', err)
+      })
+  }
+
+  /**
+   * @private
+   */
+  _parseRequestFromTransfer (transfer) {
+    return PaymentRequest.fromTransfer(transfer, {
+      account: this._account,
+      ledger: this._ledger
+    })
+  }
+
+  /**
+   * @private
+   */
+  _handleFulfillment (transfer, fulfillment) {
+    if (transfer &&
+        transfer.id &&
+        this._fulfillmentsToListenFor[transfer.id] &&
+        this._fulfillmentsToListenFor[transfer.id] === fulfillment) {
+      this.emit('payment_request_paid', this._parseRequestFromTransfer(transfer), fulfillment)
+      this._fulfillmentsToListenFor[transfer.id] = null
+    }
   }
 }
 
-module.exports = Client
+exports.Client = Client

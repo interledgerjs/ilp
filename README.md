@@ -27,12 +27,9 @@ For a simple, high-level interface see the [Wallet Client](https://github.com/in
 
 #### The ILP Client does:
 
-* Generate payment requests for the Universal or Optimistic transport protocols (receiving side)*
-* Handle [Crypto Condition](https://github.com/interledger/rfcs/tree/master/0002-crypto-conditions) generation and fulfillment (receiving side)
-* Pay for payment requests (sending side)*
-* Initiate Optimistic payments (sending side)*
-* Connect to multiple ledger types using the [Ledger Plugin Interface](https://github.com/interledger/rfcs/tree/master/0004-ledger-plugin-interface)
-* Communicate with [ILP Connectors](https://github.com/interledger/five-bells-connector) to send Interledger payments
+* Generate payment requests on the receiving side, including handling [Crypto Condition](https://github.com/interledger/rfcs/tree/master/0002-crypto-conditions) generation and fulfillment*
+* Pay for payment requests on the sending side*
+* Quote and send payments through multiple ledger types (this library extends the functionality of [`ilp-core`](https://github.com/interledger/js-ilp-core))
 
 *See note on [Request/Response Flow](#request-response-flow) below
 
@@ -40,17 +37,17 @@ For a simple, high-level interface see the [Wallet Client](https://github.com/in
 
 * Account discovery
 * Amount negotiation
-* Condition communication from recipient to sender
+* Communication of requests from recipient to sender
 
 ## Request/Response Flow
 
 The [Universal Transport Protocol (UTP)](https://github.com/interledger/rfcs/blob/master/0006-universal-transport-protocol/0006-universal-transport-protocol.md) uses recipient-generated conditions to secure payments. This means that the recipient must first generate a payment request, which the sender then fulfills. This client library handles the [generation of such requests](#request-pay), but **not** the communication of the request details from the recipient to the sender.
 
-Since the [Optimistic Transport Protocol (OTP)](https://github.com/interledger/rfcs/blob/master/0005-optimistic-transport-protocol/0005-optimistic-transport-protocol.md) does not use conditions, payments can be [initiated by the sender](#initiating-optimistic-payments).
-
 ## Installation
 
-`npm install --save ilp`
+`npm install --save ilp ilp-plugin-bells`
+
+*Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module
 
 
 ## Request / Pay
@@ -62,111 +59,67 @@ The default behavior is to use the Universal transport protocol and the recipien
 ```js
 import { Client } from 'ilp'
 const client = new Client({
-  ledgerType: 'five-bells',
+  type: 'bells', // indicates which ledger plugin to use
   auth: {
-    account: 'https://far-far-away-ledger.example/accounts/bob',
-    password: 'super-secret-password'
+    account: 'https://blue.ilpdemo.org/ledger/accounts/receiver',
+    password: 'receiver'
   }
 })
 
-client.connect()
-  .then(() => {
-    const paymentRequest = client.createRequest({
-      destinationAmount: '10',
-      timeout: 10000,
-      data: {
-        thisIsFor: 'that thing'
-      }
-    })
+const paymentRequest = client.createRequest({
+  destinationAmount: '10',
+  expiresAt: (new Date(Date.now() + 10000)).toISOString(),
+  data: {
+    thisIsFor: 'that thing'
+  }
+})
 
-    // XXX: user implements this
-    sendRequestToPayer(paymentRequest.getPacket())
+// XXX: user implements this
+sendRequestToPayer(paymentRequest.getPacket())
 
-    // This automatically checks the incoming transfer and fulfills the condition
-    client.on('incoming', (transfer, paymentRequest) => {
-      console.log('Got paid ' + paymentRequest.destinationAmount + ' for ' + paymentRequest.data.thisIsFor)
-    })
-  })
+// This automatically checks the incoming transfer and fulfills the condition
+client.on('payment_request_paid', (paymentRequest, fulfillment) => {
+  console.log('Got paid ' + paymentRequest.destinationAmount + ' for ' + paymentRequest.destinationMemo.thisIsFor)
+})
 ```
 
 ### Paying
 ```js
 import { Client } from 'ilp'
-const client = new ILP.Client({
-  account: 'https://ledgers.example/accounts/alice',
-  password: 'ultra-secret-password'
+const client = new Client({
+  account: 'https://red.ilpdemo.org/ledger/accounts/sender',
+  password: 'sender'
 })
 
 // XXX: user implements this
 const packetJson = { /* request from recipient */ }
 
 const paymentRequest = client.parseRequest(packetJson)
-paymentRequest.quote()
+client.quote(paymentRequest)
   .then((quote) => {
-    paymentRequest.pay({
-      maxSourceAmount: quote.sourceAmount
+    client.payRequest(paymentRequest, {
+      sourceAmount: quote.sourceAmount
     })
   })
 ```
-
-## Initiating Optimistic Payments
-
-**WARNING**: Optimistic payments do not use conditions and holds so **money can be lost**.
-
-Make sure you understand [Optimistic ILP](https://github.com/interledger/rfcs/tree/master/0005-optimistic-transport-protocol) before using this.
-
-### Sending
-
-```js
-import ILP from 'ilp'
-const client = new ILP.Client({
-  account: 'https://ledgers.example/accounts/alice',
-  password: 'ultra-secret-password'
-})
-
-// Automatically gets quote and generates ILP Packet
-client.send({
-  destinationAccount: 'https://far-far-away-ledger.example/accounts/bob',
-  destinationAmount: '0.0001',
-  maxSourceAmount: '0.0002',
-  unsafeOptimisticTransport: true,
-  data: {
-    hi: 'there'
-  }
-})
-```
-
-### Receiving
-
-```js
-import ILP from 'ilp'
-const client = new ILP.Client({
-  account: 'https://far-far-away-ledger.example/accounts/bob',
-  password: 'super-secret-password'
-})
-
-client.on('incoming', (transfer) => {
-  console.log('Got payment of ' + transfer.amount + ' with data ' + transfer.data.toString())
-})
-```
-
 
 ## API Reference
 
 <a name="module_Client..Client"></a>
 
 ### Client~Client
-Low-level client for sending and receiving ILP payments
+Low-level client for sending and receiving ILP payments (extends [Core Client](https://github.com/interledger/js-ilp-core))
 
 **Kind**: inner class of <code>[Client](#module_Client)</code>  
 
 * [~Client](#module_Client..Client)
     * [new Client()](#new_module_Client..Client_new)
-    * [.getAccount()](#module_Client..Client+getAccount) ⇒ <code>String</code>
-    * [.quote(params)](#module_Client..Client+quote) ⇒ <code>QuoteResponse</code>
-    * [.send(params)](#module_Client..Client+send) ⇒ <code>Promise.&lt;Object&gt;</code>
+    * [.quote()](#module_Client..Client+quote) ⇒ <code>Object</code>
+    * [.sendQuotedPayment()](#module_Client..Client+sendQuotedPayment) ⇒ <code>Promise.&lt;null&gt;</code>
     * [.createRequest(params)](#module_Client..Client+createRequest) ⇒ <code>[PaymentRequest](#module_PaymentRequest..PaymentRequest)</code>
-    * [.parseRequest(packet)](#module_Client..Client+parseRequest) ⇒ <code>module:PaymentRequest#PaymentRequest</code>
+    * [.parseRequest(input)](#module_Client..Client+parseRequest) ⇒ <code>PaymentRequest</code>
+    * [.quoteRequest(paymentRequest)](#module_Client..Client+quoteRequest) ⇒ <code>module:Client~QuoteResponse</code>
+    * [.payRequest(paymentRequest)](#module_Client..Client+payRequest) ⇒ <code>Promise.&lt;null&gt;</code>
 
 <a name="new_module_Client..Client_new"></a>
 
@@ -176,42 +129,44 @@ Instantiates an ILP client
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
-| [opts.ledgerType] | <code>String</code> | <code>&#x27;five-bells&#x27;</code> | Ledger type to connect to, defaults to 'five-bells' |
+| [opts.type] | <code>String</code> | <code>&#x27;bells&#x27;</code> | Ledger type to connect to, defaults to 'five-bells' |
 | opts.auth | <code>Object</code> |  | Auth parameters for connecting to the ledger. Fields are defined by the ledger plugin corresponding to the ledgerType` |
 | [opts.maxSourceHoldDuration] | <code>Number</code> | <code>10</code> | Default maximum time (in seconds) the client will allow the source funds to be held for when sending a transfer |
 | [opts.conditionHashlockSeed] | <code>Buffer</code> | <code>crypto.randomBytes(32)</code> | Seed to use for generating the hashlock conditions |
 
-<a name="module_Client..Client+getAccount"></a>
-
-#### client.getAccount() ⇒ <code>String</code>
-Returns the account URI
-
-**Kind**: instance method of <code>[Client](#module_Client..Client)</code>  
 <a name="module_Client..Client+quote"></a>
 
-#### client.quote(params) ⇒ <code>QuoteResponse</code>
+#### client.quote() ⇒ <code>Object</code>
 Get a quote
 
 **Kind**: instance method of <code>[Client](#module_Client..Client)</code>  
+**Returns**: <code>Object</code> - Object including the amount that was not specified  
 
 | Param | Type | Description |
 | --- | --- | --- |
-| params | <code>Object</code> | Payment params, see ilp-core docs |
+| [params.sourceAmount] | <code>String</code> | Either the sourceAmount or destinationAmount must be specified |
+| [params.destinationAmount] | <code>String</code> | Either the sourceAmount or destinationAmount must be specified |
+| params.destinationLedger | <code>String</code> | Recipient's ledger |
 
-<a name="module_Client..Client+send"></a>
+<a name="module_Client..Client+sendQuotedPayment"></a>
 
-#### client.send(params) ⇒ <code>Promise.&lt;Object&gt;</code>
-Send an ILP payment
+#### client.sendQuotedPayment() ⇒ <code>Promise.&lt;null&gt;</code>
+Send a payment
 
 **Kind**: instance method of <code>[Client](#module_Client..Client)</code>  
-**Returns**: <code>Promise.&lt;Object&gt;</code> - Resolves when the payment has been sent  
+**Returns**: <code>Promise.&lt;null&gt;</code> - Resolves when the payment has been submitted to the plugin  
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
-| params | <code>Object</code> |  | Payment params, see ilp-core docs |
-| params.maxSourceAmount | <code>String</code> &#124; <code>Number</code> &#124; <code>BigNumber</code> |  | Reject if the quoted source amount exceeds this value |
-| [params.maxSourceHoldDuration] | <code>Number</code> | <code>client.maxSourceHoldDuration</code> | Maximum time (in seconds) the client will allow the source funds to be held for |
-| [params.unsafeOptimisticTransport] | <code>Boolean</code> | <code>false</code> | Allow sending without a condition using the Optimistic transport |
+| params.sourceAmount | <code>String</code> |  | Amount to send |
+| params.destinationAmount | <code>String</code> |  | Amount recipient will receive |
+| params.destinationAccount | <code>String</code> |  | Recipient's account |
+| params.destinationLedger | <code>String</code> |  | Recipient's ledger |
+| params.connectorAccount | <code>String</code> |  | First connector's account on the source ledger (from the quote) |
+| params.destinationMemo | <code>Object</code> |  | Memo for the recipient to be included with the payment |
+| params.expiresAt | <code>String</code> |  | Payment expiry timestamp |
+| [params.executionCondition] | <code>String</code> | <code>Error unless unsafeOptimisticTransport is true</code> | Crypto condition |
+| [params.unsafeOptimisticTransport] | <code>Boolean</code> | <code>false</code> | Send payment without securing it with a condition |
 
 <a name="module_Client..Client+createRequest"></a>
 
@@ -222,28 +177,42 @@ Create a PaymentRequest. This is used on the receiving side.
 
 | Param | Type | Description |
 | --- | --- | --- |
-| params | <code>[Params](#module_PaymentRequest..Params)</code> | Parameters to create the PaymentRequest |
+| params | <code>[PaymentRequestJson](#module_PaymentRequest..PaymentRequestJson)</code> | Parameters to create the PaymentRequest |
 
 <a name="module_Client..Client+parseRequest"></a>
 
-#### client.parseRequest(packet) ⇒ <code>module:PaymentRequest#PaymentRequest</code>
-Parse a PaymentRequest from an ILP packet. This is used on the sending side.
+#### client.parseRequest(input) ⇒ <code>PaymentRequest</code>
+Parse a payment request from a serialized form
+
+**Kind**: instance method of <code>[Client](#module_Client..Client)</code>  
+
+| Param | Type |
+| --- | --- |
+| input | <code>PaymentRequestJson</code> | 
+
+<a name="module_Client..Client+quoteRequest"></a>
+
+#### client.quoteRequest(paymentRequest) ⇒ <code>module:Client~QuoteResponse</code>
+Get a quote for how much it would cost to pay for this payment request
 
 **Kind**: instance method of <code>[Client](#module_Client..Client)</code>  
 
 | Param | Type | Description |
 | --- | --- | --- |
-| packet | <code>Object</code> | [ILP Packet](https://github.com/interledger/five-bells-shared/blob/master/schemas/IlpHeader.json) |
+| paymentRequest | <code>PaymentRequest</code> | Parsed PaymentRequest |
 
-<a name="module_Client..QuoteResponse"></a>
+<a name="module_Client..Client+payRequest"></a>
 
-### Client~QuoteResponse : <code>Object</code>
-**Kind**: inner typedef of <code>[Client](#module_Client)</code>  
+#### client.payRequest(paymentRequest) ⇒ <code>Promise.&lt;null&gt;</code>
+Pay for a PaymentRequest
 
-| Param | Type |
-| --- | --- |
-| sourceAmount | <code>String</code> | 
-| destinationAmount | <code>String</code> | 
+**Kind**: instance method of <code>[Client](#module_Client..Client)</code>  
+**Returns**: <code>Promise.&lt;null&gt;</code> - Resolves when the payment has been sent  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| paymentRequest | <code>PaymentRequest</code> | Request to pay for |
+| params.sourceAmount | <code>String</code> &#124; <code>Number</code> &#124; <code>BigNumber</code> | Amount to send. Should be determined from quote |
 
 
 <a name="module_PaymentRequest..PaymentRequest"></a>
@@ -252,60 +221,89 @@ Parse a PaymentRequest from an ILP packet. This is used on the sending side.
 **Kind**: inner class of <code>[PaymentRequest](#module_PaymentRequest)</code>  
 
 * [~PaymentRequest](#module_PaymentRequest..PaymentRequest)
-    * [new PaymentRequest(client, params)](#new_module_PaymentRequest..PaymentRequest_new)
-    * [.getPacket()](#module_PaymentRequest..PaymentRequest+getPacket) ⇒ <code>Object</code>
-    * [.quote()](#module_PaymentRequest..PaymentRequest+quote) ⇒ <code>[QuoteResponse](#module_Client..QuoteResponse)</code>
-    * [.pay()](#module_PaymentRequest..PaymentRequest+pay) ⇒ <code>Promise.&lt;Object&gt;</code>
+    * [new PaymentRequest(params)](#new_module_PaymentRequest..PaymentRequest_new)
+    * _instance_
+        * [.toJSON()](#module_PaymentRequest..PaymentRequest+toJSON) ⇒ <code>PaymentRequestJson</code>
+        * [.setCondition(conditionUri)](#module_PaymentRequest..PaymentRequest+setCondition)
+        * [.generateHashlockCondition(conditionHashlockSeed)](#module_PaymentRequest..PaymentRequest+generateHashlockCondition) ⇒ <code>Condition</code>
+    * _static_
+        * [.fromJSON(json)](#module_PaymentRequest..PaymentRequest.fromJSON) ⇒ <code>PaymentRequest</code>
+        * [.fromTransfer([Transfer])](#module_PaymentRequest..PaymentRequest.fromTransfer) ⇒ <code>PaymentRequest</code>
 
 <a name="new_module_PaymentRequest..PaymentRequest_new"></a>
 
-#### new PaymentRequest(client, params)
+#### new PaymentRequest(params)
 Instantiates a PaymentRequest
 
 
+| Param | Type |
+| --- | --- |
+| params | <code>PaymentRequestJson</code> | 
+
+<a name="module_PaymentRequest..PaymentRequest+toJSON"></a>
+
+#### paymentRequest.toJSON() ⇒ <code>PaymentRequestJson</code>
+Get the JSON representation of the PaymentRequest to send to the sender.
+
+**Kind**: instance method of <code>[PaymentRequest](#module_PaymentRequest..PaymentRequest)</code>  
+<a name="module_PaymentRequest..PaymentRequest+setCondition"></a>
+
+#### paymentRequest.setCondition(conditionUri)
+Set the request condition
+
+**Kind**: instance method of <code>[PaymentRequest](#module_PaymentRequest..PaymentRequest)</code>  
+
 | Param | Type | Description |
 | --- | --- | --- |
-| client | <code>[Client](#module_Client..Client)</code> | ILP client used for quoting and paying |
-| params | <code>Params</code> | PaymentRequest parameters |
+| conditionUri | <code>String</code> | String serialized condition URI |
 
-<a name="module_PaymentRequest..PaymentRequest+getPacket"></a>
+<a name="module_PaymentRequest..PaymentRequest+generateHashlockCondition"></a>
 
-#### paymentRequest.getPacket() ⇒ <code>Object</code>
-Get the ILP packet to send to the sender.
-
-If unsafeOptimisticTransport is not set, this will deterministically generate a condition from the packet fields.
-Note that it is **VERY IMPORTANT** that the PaymentRequest ID be unique, otherwise multiple requests will have the same condition.
+#### paymentRequest.generateHashlockCondition(conditionHashlockSeed) ⇒ <code>Condition</code>
+Generate a five-bells-condition PREIMAGE-SHA-256 Condition
 
 **Kind**: instance method of <code>[PaymentRequest](#module_PaymentRequest..PaymentRequest)</code>  
-<a name="module_PaymentRequest..PaymentRequest+quote"></a>
+**Returns**: <code>Condition</code> - [five-bells-condition](https://github.com/interledger/five-bells-condition)  
 
-#### paymentRequest.quote() ⇒ <code>[QuoteResponse](#module_Client..QuoteResponse)</code>
-Get a quote for how much it would cost to pay for this payment request
+| Param | Type | Description |
+| --- | --- | --- |
+| conditionHashlockSeed | <code>Buffer</code> | Key for the HMAC used to create the fulfillment |
 
-**Kind**: instance method of <code>[PaymentRequest](#module_PaymentRequest..PaymentRequest)</code>  
-<a name="module_PaymentRequest..PaymentRequest+pay"></a>
+<a name="module_PaymentRequest..PaymentRequest.fromJSON"></a>
 
-#### paymentRequest.pay() ⇒ <code>Promise.&lt;Object&gt;</code>
-Pay for the payment request
+#### PaymentRequest.fromJSON(json) ⇒ <code>PaymentRequest</code>
+Parse PaymentRequest from JSON serialization
 
-**Kind**: instance method of <code>[PaymentRequest](#module_PaymentRequest..PaymentRequest)</code>  
-**Returns**: <code>Promise.&lt;Object&gt;</code> - Resolves when the payment has been sent  
+**Kind**: static method of <code>[PaymentRequest](#module_PaymentRequest..PaymentRequest)</code>  
 
-| Param | Type | Default | Description |
-| --- | --- | --- | --- |
-| params.maxSourceAmount | <code>String</code> &#124; <code>Number</code> &#124; <code>BigNumber</code> |  | Maximum amount to send |
-| [params.maxSourceHoldDuration] | <code>Number</code> | <code>client.maxSourceHoldDuration</code> | Maximum time (in seconds) the client will allow the source funds to be held for |
-| [params.allowUnsafeOptimisticTransport] | <code>Boolean</code> | <code>false</code> | If false, do not send Optimistic payments, even if they are requested (because they may be lost in transit) |
+| Param | Type |
+| --- | --- |
+| json | <code>PaymentRequestJson</code> | 
 
-<a name="module_PaymentRequest..Params"></a>
+<a name="module_PaymentRequest..PaymentRequest.fromTransfer"></a>
 
-### PaymentRequest~Params : <code>Object</code>
+#### PaymentRequest.fromTransfer([Transfer]) ⇒ <code>PaymentRequest</code>
+Parse PaymentRequest from a [Transfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#class-transfer)
+
+**Kind**: static method of <code>[PaymentRequest](#module_PaymentRequest..PaymentRequest)</code>  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| [Transfer] | <code>Transfer</code> | ledger-plugin-interface/0004-ledger-plugin-interface.md#class-transfer) |
+| additionalParams.ledger | <code>String</code> | Destination ledger |
+| additionalParams.account | <code>String</code> | Destination account |
+
+<a name="module_PaymentRequest..PaymentRequestJson"></a>
+
+### PaymentRequest~PaymentRequestJson : <code>Object</code>
 **Kind**: inner typedef of <code>[PaymentRequest](#module_PaymentRequest)</code>  
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
 | [id] | <code>String</code> | <code>(random UUID v4)</code> | Unique request ID. MUST be unique because it is used to generate the condition |
 | destinationAmount | <code>String</code> &#124; <code>Number</code> &#124; <code>BigNumber</code> |  | The amount to receive |
-| [timeout] | <code>Number</code> | <code>10000</code> | Number of milliseconds to expire request after |
-| [data] | <code>Object</code> |  | Additional data to include in the PaymentRequest (and the sender's corresponding payment). This can be used to add metadata for use when handling incoming payments |
-| [unsafeOptimisticTransport] | <code>Boolean</code> | <code>false</code> | Don't use a condition to secure the payment, use the Optimistic Transport Protocol |
+| destinationLedger | <code>String</code> |  | Receiver's ledger |
+| destinationAccount | <code>String</code> |  | Receiver's account |
+| [expiresAt] | <code>String</code> | <code>(never)</code> | Timestamp when request expires and will no longer be fulfilled by the recipient |
+| [destinationMemo] | <code>Object</code> |  | Additional data to include in the PaymentRequest (and the sender's corresponding payment). This can be used to add metadata for use when handling incoming payments |
+| [executionCondition] | <code>String</code> |  | Request condition. Required but may be set after instantiation |

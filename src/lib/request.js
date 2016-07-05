@@ -15,26 +15,25 @@ const DEFAULT_TIMEOUT = 10000
  */
 
 /**
+ * @typedef {Object} PaymentRequestJson
+ * @param {String} [id=(random UUID v4)] Unique request ID. MUST be unique because it is used to generate the condition
+ * @param {String|Number|BigNumber} destinationAmount The amount to receive
+ * @param {String} destinationLedger Receiver's ledger
+ * @param {String} destinationAccount Receiver's account
+ * @param {String} [expiresAt=(never)] Timestamp when request expires and will no longer be fulfilled by the recipient
+ * @param {Object} [destinationMemo] Additional data to include in the PaymentRequest (and the sender's corresponding payment). This can be used to add metadata for use when handling incoming payments
+ * @param {String} [executionCondition] Request condition. Required but may be set after instantiation
+ */
+
+/**
  * @class
  */
-class PaymentRequest extends EventEmitter {
-  /**
-   * @typedef {Object} Params
-   * @param {String} [id=(random UUID v4)] Unique request ID. MUST be unique because it is used to generate the condition
-   * @param {String|Number|BigNumber} destinationAmount The amount to receive
-   * @param {Number} [timeout=10000] Number of milliseconds to expire request after
-   * @param {Object} [data] Additional data to include in the PaymentRequest (and the sender's corresponding payment). This can be used to add metadata for use when handling incoming payments
-   * @param {Boolean} [unsafeOptimisticTransport=false] Don't use a condition to secure the payment, use the Optimistic Transport Protocol
-   */
-
+class PaymentRequest {
   /**
    * Instantiates a PaymentRequest
-   * @param  {module:Client~Client} client ILP client used for quoting and paying
-   * @param  {Params} params PaymentRequest parameters
+   * @param {PaymentRequestJson} params
    */
-  constructor (client, params) {
-    super()
-    this.client = client
+  constructor (params) {
     if (typeof params !== 'object') {
       throw new Error('PaymentRequest must be instantiated with a client and params')
     }
@@ -50,134 +49,106 @@ class PaymentRequest extends EventEmitter {
 
     this.id = params.id || uuid.v4()
     this.destinationAmount = (typeof params.destinationAmount !== 'string' ? new BigNumber(params.destinationAmount).toString() : params.destinationAmount)
-    this.expiresAt = (typeof params.expiresAt !== 'string' ? (new Date(Date.now() + (params.timeout || DEFAULT_TIMEOUT))).toISOString() : params.expiresAt)
-    this.destinationMemo = params.destinationMemo
     this.destinationLedger = params.destinationLedger
     this.destinationAccount = params.destinationAccount
-    this.executionCondition = params.executionCondition // this will be generated if it is not set
-    this.unsafeOptimisticTransport = (params.unsafeOptimisticTransport === true)
-  }
-
-  static fromPacket (client, packet) {
-    if (!packet) {
-      throw new Error('Must provide client and packet')
-    }
-    const params = {
-      id: packet.data.id,
-      destinationLedger: packet.ledger,
-      destinationAccount: packet.account,
-      destinationAmount: packet.amount,
-      expiresAt: packet.data.expiresAt,
-      destinationMemo: packet.data.destinationMemo,
-      executionCondition: packet.data.executionCondition,
-      unsafeOptimisticTransport: !packet.data.executionCondition
-    }
-
-    return new PaymentRequest(client, params)
+    // Optional params
+    this.expiresAt = params.expiresAt
+    this.destinationMemo = params.destinationMemo
+    this.executionCondition = params.executionCondition
   }
 
   /**
-   * Get the ILP packet to send to the sender.
-   *
-   * If unsafeOptimisticTransport is not set, this will deterministically generate a condition from the packet fields.
-   * Note that it is **VERY IMPORTANT** that the PaymentRequest ID be unique, otherwise multiple requests will have the same condition.
-   *
-   * @return {Object}
+   * Parse PaymentRequest from JSON serialization
+   * @param  {PaymentRequestJson} json
+   * @return {PaymentRequest}
    */
-  getPacket () {
-    let packet = this._getPacketWithoutCondition()
+  static fromJSON (json) {
+    return new PaymentRequest(json)
+  }
 
-    if (!this.unsafeOptimisticTransport) {
-      const conditionUri = this._generateCondition(packet).getConditionUri()
-      debug('generated condition:', conditionUri, ' from packet:', packet)
-      packet.data.executionCondition = conditionUri
+  /**
+   * Parse PaymentRequest from a [Transfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#class-transfer)
+   * @param  {Transfer} [Transfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#class-transfer)
+   * @param  {String} additionalParams.ledger Destination ledger
+   * @param  {String} additionalParams.account Destination account
+   * @return {PaymentRequest}
+   */
+  static fromTransfer (transfer, additionalParams) {
+    const params = {
+      id: transfer.data.id,
+      destinationAmount: transfer.amount,
+      expiresAt: transfer.data.expiresAt,
+      destinationMemo: transfer.data.destinationMemo,
+      executionCondition: transfer.executionCondition,
+      // Supplied in additionalParams:
+      destinationLedger: additionalParams.ledger,
+      destinationAccount: additionalParams.account
     }
 
-    return packet
+    return new PaymentRequest(params)
+  }
+
+  /**
+   * Get the JSON representation of the PaymentRequest to send to the sender.
+   * @return {PaymentRequestJson}
+   */
+  toJSON () {
+    if (!this.executionCondition) {
+      throw new Error('PaymentRequests must have executionConditions')
+    }
+
+    return {
+      id: this.id,
+      destinationAmount: this.destinationAmount,
+      destinationLedger: this.destinationLedger,
+      destinationAccount: this.destinationAccount,
+      expiresAt: this.expiresAt,
+      destinationMemo: this.destinationMemo,
+      executionCondition: this.executionCondition
+    }
   }
 
   /**
    * @private
-   * Get the ILP packet data field
-   * @return {Object}
    */
   _getDataField () {
-    let data = {
+    return {
       id: this.id,
+      destinationMemo: this.destinationMemo,
       expiresAt: this.expiresAt
     }
-    if (this.destinationMemo) {
-      data.destinationMemo = this.destinationMemo
-    }
-    return data
   }
 
   /**
-   * @private
-   * Get the ILP packet without generating a condition.
+   * Set the request condition
+   * @param {String} conditionUri String serialized condition URI
    */
-  _getPacketWithoutCondition () {
-    let packet = {
-      account: this.destinationAccount,
-      ledger: this.destinationLedger,
-      amount: this.destinationAmount,
-      data: this._getDataField()
-    }
-    return packet
+  setCondition (conditionUri) {
+    this.executionCondition = conditionUri
   }
 
   /**
-   * @private
-   * Generate a five-bells-condition PREIMAGE-SHA-256 Condition from a JSON ILP packet.
+   * Generate a five-bells-condition PREIMAGE-SHA-256 Condition
+   * @param {Buffer} conditionHashlockSeed Key for the HMAC used to create the fulfillment
+   * @return {Condition} [five-bells-condition](https://github.com/interledger/five-bells-condition)
    */
-  _generateCondition (packet) {
-    const hmac = crypto.createHmac('sha256', this.client.conditionHashlockSeed)
-    const jsonString = stringify(packet)
-    hmac.update(jsonString)
+  generateHashlockCondition (conditionHashlockSeed) {
+    const hmac = crypto.createHmac('sha256', conditionHashlockSeed)
+    const jsonString = stringify({
+      id: this.id,
+      destinationAmount: this.destinationAmount,
+      destinationLedger: this.destinationLedger,
+      destinationAccount: this.destinationAccount,
+      expiresAt: this.expiresAt,
+      destinationMemo: this.destinationMemo
+    })
+    hmac.update(jsonString, 'utf8')
     const hmacOutput = hmac.digest()
 
     const condition = new cc.PreimageSha256()
     condition.setPreimage(hmacOutput)
     return condition
   }
-
-  /**
-   * Get a quote for how much it would cost to pay for this payment request
-   * @return {module:Client~QuoteResponse}
-   */
-  quote () {
-    return this.client.quote({
-      destinationAccount: this.destinationAccount,
-      destinationLedger: this.destinationLedger,
-      destinationAmount: this.destinationAmount,
-      executionCondition: this.executionCondition,
-      expiresAt: this.expiresAt
-    })
-  }
-
-  /**
-   * Pay for the payment request
-   * @param  {String|Number|BigNumber} params.maxSourceAmount Maximum amount to send
-   * @param {Number} [params.maxSourceHoldDuration=client.maxSourceHoldDuration] Maximum time (in seconds) the client will allow the source funds to be held for
-   * @param {Boolean} [params.allowUnsafeOptimisticTransport=false] If false, do not send Optimistic payments, even if they are requested (because they may be lost in transit)
-   * @return {Promise<Object>} Resolves when the payment has been sent
-   */
-  pay (params) {
-    if (!params || !params.maxSourceAmount) {
-      throw new Error('maxSourceAmount is required')
-    }
-    return this.client.send({
-      maxSourceAmount: params.maxSourceAmount,
-      maxSourceHoldDuration: params.maxSourceHoldDuration || this.client.maxSourceHoldDuration,
-      unsafeOptimisticTransport: (params.allowUnsafeOptimisticTransport && !this.executionCondition),
-      destinationAccount: this.destinationAccount,
-      destinationLedger: this.destinationLedger,
-      destinationAmount: this.destinationAmount,
-      destinationMemo: this._getDataField(),
-      executionCondition: this.executionCondition,
-      expiresAt: this.expiresAt
-    })
-  }
 }
 
-module.exports = PaymentRequest
+exports.PaymentRequest = PaymentRequest

@@ -9,8 +9,6 @@ const sinon = require('sinon')
 const sinonChai = require('sinon-chai')
 chai.use(sinonChai)
 
-const MockCore = require('./mocks/mock-core')
-mockRequire('ilp-core', MockCore)
 const Client = require('../src/lib/client')
 const PaymentRequest = require('../src/lib/request')
 
@@ -18,7 +16,7 @@ const FAKE_TIME = 0
 
 describe('Client', function () {
   describe('constructor', function () {
-    it('should instantiate an ilp-core client', function () {
+    it('should expose the functionality of the ilp-core client', function () {
       const client = new Client({
         auth: {
           account: 'https://ledger.example/accounts/alice',
@@ -26,11 +24,10 @@ describe('Client', function () {
         }
       })
 
-      expect(client).to.be.instanceof(Client)
-      expect(client.coreClient).to.be.instanceof(MockCore.Client)
+      expect(client.sendQuotedPayment).to.be.a('function')
     })
 
-    it('should default to ledgerType: "five-bells"', function () {
+    it('should default to type "bells"', function () {
       const client = new Client({
         auth: {
           account: 'https://ledger.example/accounts/alice',
@@ -38,21 +35,10 @@ describe('Client', function () {
         }
       })
 
-      expect(client.coreClient.type).to.equal('bells')
+      expect(client.plugin.type).to.equal('bells')
     })
 
-    it('should default to a maxSourceHoldDuration of 10 seconds', function () {
-      const client = new Client({
-        auth: {
-          account: 'https://ledger.example/accounts/alice',
-          password: 'alice'
-        }
-      })
-
-      expect(client.maxSourceHoldDuration).to.equal(10)
-    })
-
-    it('should throw an error if the ledgerType is unknown', function () {
+    it('should throw an error if the ledger type is unknown', function () {
       expect(() => new Client({
         ledgerType: 'fake',
         auth: {}
@@ -116,26 +102,6 @@ describe('Client', function () {
           waitForConnection.restore()
           done()
         })
-    })
-
-    it('should not query the ilp-core client for the account if the client already knows it', function (done) {
-      const getPlugin = sinon.spy(MockCore.Client.prototype, 'getPlugin')
-
-      const client = new Client({
-        auth: {
-          account: 'https://ledger.example/accounts/alice',
-          password: 'alice'
-        }
-      })
-      client.connect().then(() => {
-        return client.connect().then(() => {
-          // once for getAccount, once for getLedger (but no more than twice)
-          expect(getPlugin).to.be.calledTwice
-          getPlugin.restore()
-          done()
-        })
-      })
-      .catch(done)
     })
   })
 
