@@ -35,7 +35,7 @@ describe('Receiver Module', function () {
     it('should throw an error if the hmacKey is not a buffer', function () {
       expect(() => {
         createReceiver({
-          _client: this.client,
+          client: this.client,
           hmacKey: 'secret'
         })
       }).to.throw('hmacKey must be 32-byte Buffer if supplied')
@@ -44,7 +44,7 @@ describe('Receiver Module', function () {
     it('should throw an error if the hmacKey is less than 32 bytes', function () {
       expect(() => {
         createReceiver({
-          _client: this.client,
+          client: this.client,
           hmacKey: Buffer.from('secret')
         })
       }).to.throw('hmacKey must be 32-byte Buffer if supplied')
@@ -52,7 +52,7 @@ describe('Receiver Module', function () {
 
     it('should return an object that is an EventEmitter with the `createRequest` and `listen` functions', function () {
       const receiver = createReceiver({
-        _client: this.client,
+        client: this.client,
         hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64')
       })
       expect(receiver).to.be.a('object')
@@ -68,7 +68,7 @@ describe('Receiver Module', function () {
       })
       const createReceiverWithMock = mockRequire.reRequire('../src/lib/receiver').createReceiver
       createReceiverWithMock({
-        _client: this.client
+        client: this.client
       })
       expect(stub).to.have.been.calledOnce
       mockRequire.stop('crypto')
@@ -91,7 +91,7 @@ describe('Receiver Module', function () {
   describe('Receiver', function () {
     beforeEach(function () {
       this.receiver = createReceiver({
-        _client: this.client,
+        client: this.client,
         hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64')
       })
     })

@@ -30,7 +30,7 @@ describe('Sender Module', function () {
   describe('createSender', function () {
     it('should return an object with the `quoteRequest` and `payRequest` functions', function () {
       const sender = createSender({
-        _client: this.client
+        client: this.client
       })
       expect(sender).to.be.a('object')
       expect(sender.quoteRequest).to.be.a('function')
@@ -55,7 +55,7 @@ describe('Sender Module', function () {
     beforeEach(function () {
       this.paymentParams = _.cloneDeep(paymentParams)
       this.sender = createSender({
-        _client: this.client
+        client: this.client
       })
     })
 

@@ -18,14 +18,15 @@ const debug = require('debug')('ilp-itp:receiver')
  * listen for incoming transfers, and automatically fulfill conditions
  * of transfers paying for the payment requests created by the Receiver.
  *
- * @param  {String} opts.ledgerType Type of ledger to connect to, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
- * @param  {Objct}  opts.auth Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
+ * @param  {String} [opts.ledgerType] Type of ledger to connect to, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
+ * @param  {Objct}  [opts.auth] Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
+ * @param  {ilp-core.Client} [opts.client] [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options
  * @param  {Buffer} [opts.hmacKey=crypto.randomBytes(32)] 32-byte secret used for generating request conditions
  * @param  {Number} [opts.defaultRequestTimeout=30] Default time in seconds that requests will be valid for
  * @return {Receiver}
  */
 function createReceiver (opts) {
-  const client = opts._client || new Client({
+  const client = opts.client || new Client({
     type: opts.ledgerType,
     auth: opts.auth
   })
