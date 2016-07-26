@@ -5,7 +5,7 @@
 </h1>
 
 <h4 align="center">
-A JS client library for sending and receiving <a href="https://interledger.org">Interledger</a> payments.
+A low-level JS <a href="https://interledger.org">Interledger</a> sender/receiver library
 </h4>
 
 <br>
@@ -23,19 +23,19 @@ A JS client library for sending and receiving <a href="https://interledger.org">
 
 This is a low-level interface to ILP, largely intended for building ILP into other [Application layer](https://github.com/interledger/rfcs/tree/master/0001-interledger-architecture) protocols.
 
-For a simple, high-level interface see the [Wallet Client](https://github.com/interledger/five-bells-wallet-client).  
-
 #### The ILP Client does:
 
-* Generate payment requests on the receiving side, including handling [Crypto Condition](https://github.com/interledger/rfcs/tree/master/0002-crypto-conditions) generation and fulfillment
-* Pay for payment requests on the sending side*
-* Quote and send payments through multiple ledger types (this library extends the functionality of [`ilp-core`](https://github.com/interledger/js-ilp-core))
+* Generate payment requests on the receiving side, including handling [Crypto Condition](https://github.com/interledger/rfcs/tree/master/0002-crypto-conditions) generation and fulfillment (using the [Interactive Transport Protocol (ITP)](https://github.com/interledger/rfcs/blob/master/0011-interactive-transport-protocol/0011-interactive-transport-protocol.md) )
+* Pay for payment requests on the sending side
+* Quote and send payments through multiple ledger types (using [`ilp-core`](https://github.com/interledger/js-ilp-core))
 
 #### The ILP Client does **not** handle:
 
 * Account discovery
 * Amount negotiation
 * Communication of requests from recipient to sender
+
+For a higher-level interface that includes the above features, see the [Wallet Client](https://github.com/interledger/five-bells-wallet-client).  
 
 
 ## Installation
@@ -45,9 +45,11 @@ For a simple, high-level interface see the [Wallet Client](https://github.com/in
 *Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module
 
 
-## Request / Pay
+## ITP Request / Pay
 
-The client implements the [Interactive Transport Protocol (ITP)](https://github.com/interledger/rfcs/blob/master/0011-interactive-transport-protocol/0011-interactive-transport-protocol.md), which uses recipient-generated conditions to secure payments. This means that the recipient must first generate a payment request, which the sender then fulfills. This client library handles the [generation of such requests](#request-pay), but **not** the communication of the request details from the recipient to the sender.
+The client implements the [Interactive Transport Protocol (ITP)](https://github.com/interledger/rfcs/blob/master/0011-interactive-transport-protocol/0011-interactive-transport-protocol.md) for generating and fulfilling payment requests.
+
+ITP uses recipient-generated conditions to secure payments. This means that the recipient must first generate a payment request, which the sender then fulfills. This client library handles the generation of such requests, but **not** the communication of the request details from the recipient to the sender.
 
 ### Requesting + Handling Incoming Payments
 
@@ -154,8 +156,9 @@ Returns an ITP/ILP Sender to quote and pay for payment requests.
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
-| opts.ledgerType | <code>String</code> |  | Type of ledger to connect to, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
-| opts.auth | <code>Objct</code> |  | Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
+| [opts.ledgerType] | <code>String</code> |  | Type of ledger to connect to, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
+| [opts.auth] | <code>Objct</code> |  | Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
+| [opts.client] | <code>ilp-core.Client</code> |  | [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options |
 | [opts.maxHoldDuration] | <code>Buffer</code> | <code>10</code> | Maximum time in seconds to allow money to be held for |
 
 
@@ -199,8 +202,9 @@ of transfers paying for the payment requests created by the Receiver.
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
-| opts.ledgerType | <code>String</code> |  | Type of ledger to connect to, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
-| opts.auth | <code>Objct</code> |  | Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
+| [opts.ledgerType] | <code>String</code> |  | Type of ledger to connect to, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
+| [opts.auth] | <code>Objct</code> |  | Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
+| [opts.client] | <code>ilp-core.Client</code> |  | [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options |
 | [opts.hmacKey] | <code>Buffer</code> | <code>crypto.randomBytes(32)</code> | 32-byte secret used for generating request conditions |
 | [opts.defaultRequestTimeout] | <code>Number</code> | <code>30</code> | Default time in seconds that requests will be valid for |
 
