@@ -1,0 +1,12 @@
+{
+  "id": "2325986c-880b-43e6-813a-bdde8e042992",
+  "direction": "incoming",
+  "account": "https://blue.ilpdemo.org/ledger/accounts/connie",
+  "amount": "1.0000",
+  "data":{
+    "request_id": "22e315dc-3f99-4f89-9914-1987ceaa906d",
+    "expires_at": "1970-01-01T00:00:10Z"
+  },
+  "executionCondition": "cc:0:3:crwqC6igtxv1DsIFiKv91roUp7qQxToKutwGELGQZIE:32",
+  "expiresAt": "1970-01-01T00:00:10.000Z"
+}

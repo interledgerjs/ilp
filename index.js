@@ -1,3 +1,4 @@
 'use strict'
 
-exports.Client = require('./src/lib/client').Client
+exports.createSender = require('./src/lib/sender').createSender
+exports.createReceiver = require('./src/lib/receiver').createReceiver
