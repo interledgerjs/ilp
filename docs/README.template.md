@@ -5,7 +5,7 @@
 </h1>
 
 <h4 align="center">
-A JS client library for sending and receiving <a href="https://interledger.org">Interledger</a> payments.
+A low-level JS <a href="https://interledger.org">Interledger</a> sender/receiver library
 </h4>
 
 <br>
@@ -23,15 +23,11 @@ A JS client library for sending and receiving <a href="https://interledger.org">
 
 This is a low-level interface to ILP, largely intended for building ILP into other [Application layer](https://github.com/interledger/rfcs/tree/master/0001-interledger-architecture) protocols.
 
-For a simple, high-level interface see the [Wallet Client](https://github.com/interledger/five-bells-wallet-client).  
-
 #### The ILP Client does:
 
-* Generate payment requests on the receiving side, including handling [Crypto Condition](https://github.com/interledger/rfcs/tree/master/0002-crypto-conditions) generation and fulfillment*
-* Pay for payment requests on the sending side*
-* Quote and send payments through multiple ledger types (this library extends the functionality of [`ilp-core`](https://github.com/interledger/js-ilp-core))
-
-*See note on [Request/Response Flow](#request-response-flow) below
+* Generate payment requests on the receiving side, including handling [Crypto Condition](https://github.com/interledger/rfcs/tree/master/0002-crypto-conditions) generation and fulfillment (using the [Interactive Transport Protocol (ITP)](https://github.com/interledger/rfcs/blob/master/0011-interactive-transport-protocol/0011-interactive-transport-protocol.md) )
+* Pay for payment requests on the sending side
+* Quote and send payments through multiple ledger types (using [`ilp-core`](https://github.com/interledger/js-ilp-core))
 
 #### The ILP Client does **not** handle:
 
@@ -39,9 +35,8 @@ For a simple, high-level interface see the [Wallet Client](https://github.com/in
 * Amount negotiation
 * Communication of requests from recipient to sender
 
-## Request/Response Flow
+For a higher-level interface that includes the above features, see the [Wallet Client](https://github.com/interledger/five-bells-wallet-client).  
 
-The [Universal Transport Protocol (UTP)](https://github.com/interledger/rfcs/blob/master/0006-universal-transport-protocol/0006-universal-transport-protocol.md) uses recipient-generated conditions to secure payments. This means that the recipient must first generate a payment request, which the sender then fulfills. This client library handles the [generation of such requests](#request-pay), but **not** the communication of the request details from the recipient to the sender.
 
 ## Installation
 
@@ -50,67 +45,117 @@ The [Universal Transport Protocol (UTP)](https://github.com/interledger/rfcs/blo
 *Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module
 
 
-## Request / Pay
+## ITP Request / Pay
 
-The default behavior is to use the Universal transport protocol and the recipient's client will automatically generate and fulfill the condition.
+The client implements the [Interactive Transport Protocol (ITP)](https://github.com/interledger/rfcs/blob/master/0011-interactive-transport-protocol/0011-interactive-transport-protocol.md) for generating and fulfilling payment requests.
+
+ITP uses recipient-generated conditions to secure payments. This means that the recipient must first generate a payment request, which the sender then fulfills. This client library handles the generation of such requests, but **not** the communication of the request details from the recipient to the sender.
 
 ### Requesting + Handling Incoming Payments
 
 ```js
-import { Client } from 'ilp'
-const client = new Client({
-  type: 'bells', // indicates which ledger plugin to use
+'use strict'
+
+const ILP = require('ilp')
+const receiver = ILP.createReceiver({
+  ledgerType: 'bells', // indicates which ledger plugin to use
   auth: {
     account: 'https://blue.ilpdemo.org/ledger/accounts/receiver',
     password: 'receiver'
   }
 })
+receiver.listen()
 
-const paymentRequest = client.createRequest({
-  destinationAmount: '10',
-  expiresAt: (new Date(Date.now() + 10000)).toISOString(),
-  data: {
-    thisIsFor: 'that thing'
-  }
+const paymentRequest = receiver.createRequest({
+  amount: 10
 })
 
 // XXX: user implements this
-sendRequestToPayer(paymentRequest.getPacket())
+sendRequestToPayer(paymentRequest)
 
 // This automatically checks the incoming transfer and fulfills the condition
-client.on('payment_request_paid', (paymentRequest, fulfillment) => {
+receiver.on('incoming', (transfer, fulfillment) => {
   console.log('Got paid ' + paymentRequest.destinationAmount + ' for ' + paymentRequest.destinationMemo.thisIsFor)
 })
 ```
 
 ### Paying
 ```js
-import { Client } from 'ilp'
-const client = new Client({
-  account: 'https://red.ilpdemo.org/ledger/accounts/sender',
-  password: 'sender'
+'use strict'
+
+const ILP = require('ilp')
+const sender = ILP.createSender({
+  ledgerType: 'bells',
+  auth: {
+    account: 'https://red.ilpdemo.org/ledger/accounts/alice',
+    password: 'alice'
+  }
 })
 
 // XXX: user implements this
-const packetJson = { /* request from recipient */ }
+const paymentRequest = { /* request from recipient */ }
 
-const paymentRequest = client.parseRequest(packetJson)
-client.quote(paymentRequest)
-  .then((quote) => {
-    client.payRequest(paymentRequest, {
-      sourceAmount: quote.sourceAmount
-    })
+sender.quoteRequest(paymentRequest)
+  .then((paymentParams) => {
+    return sender.payRequest(paymentParams)
   })
+```
+
+### Combined Example
+
+```js
+'use strict'
+
+const co = require('co')
+const ILP = require('ilp')
+
+const sender = ILP.createSender({
+  ledgerType: 'bells',
+  auth: {
+    account: 'https://red.ilpdemo.org/ledger/accounts/alice',
+    password: 'alice'
+  }
+})
+
+const receiver = ILP.createReceiver({
+  ledgerType: 'bells',
+  auth: {
+    account: 'https://blue.ilpdemo.org/ledger/accounts/bob',
+    password: 'bobbob'
+  }
+})
+
+co(function * () {
+  yield receiver.listen()
+  receiver.on('incoming', (transfer, fulfillment) => {
+    console.log('received transfer:', transfer)
+    console.log('fulfilled transfer hold with fulfillment:', fulfillment)
+  })
+
+  const request = receiver.createRequest({
+    amount: '10',
+  })
+  console.log('request:', request)
+
+  const paymentParams = yield sender.quoteRequest(request)
+  console.log('paymentParams', paymentParams)
+
+  const result = yield sender.payRequest(paymentParams)
+  console.log('sender result:', result)
+}).catch((err) => {
+  console.log(err)
+})
+
 ```
 
 ## API Reference
 
-{{#module name="Client"~}}
+{{#module name="Sender"~}}
 {{>body~}}
 {{>members~}}
 {{/module}}
 
-{{#module name="PaymentRequest"~}}
+{{#module name="Receiver"~}}
 {{>body~}}
 {{>members~}}
 {{/module}}

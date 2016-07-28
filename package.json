@@ -1,12 +1,11 @@
 {
   "name": "ilp",
   "version": "1.0.0",
-  "description": "ILP client library for JavaScript",
+  "description": "ILP client library for sending and receiving payments",
   "main": "index.js",
   "scripts": {
-    "lint": "standard .",
-    "test-no-lint": "istanbul test -- _mocha",
-    "test": "npm run lint && npm run test-no-lint",
+    "lint": "eslint src/**/*.js",
+    "test": "istanbul test -- _mocha",
     "docs:api": "jsdoc2md --global-index-format none \"src/**/*.js\" --template docs/README.template.md > docs/README.intermediate.md",
     "docs:toc": "md-toc-filter docs/README.intermediate.md > README.md",
     "docs": "npm run docs:api && npm run docs:toc"
@@ -16,16 +15,15 @@
     "url": "git+https://github.com/interledger/js-ilp.git"
   },
   "keywords": [
-    "virtual",
-    "trustline",
-    "ripple",
-    "ledgerless",
-    "trust",
-    "connector",
-    "ilp",
     "interledger",
-    "payment",
-    "financial"
+    "ilp",
+    "interactive",
+    "itp",
+    "crypto",
+    "condition",
+    "five-bells-condition",
+    "crypto condition",
+    "payments"
   ],
   "author": "Interledger Team <info@interledger.org>",
   "license": "ISC",
@@ -33,22 +31,35 @@
     "url": "https://github.com/interledger/js-ilp/issues"
   },
   "homepage": "https://github.com/interledger/js-ilp#readme",
+  "dependencies": {
+    "canonical-json": "0.0.4",
+    "debug": "^2.2.0",
+    "eventemitter2": "^2.0.0",
+    "five-bells-condition": "^3.2.0",
+    "ilp-core": "^4.1.0",
+    "moment": "^2.14.1",
+    "node-uuid": "^1.4.7"
+  },
   "devDependencies": {
     "chai": "^3.5.0",
+    "chai-as-promised": "^5.3.0",
     "co-mocha": "^1.1.2",
     "cz-conventional-changelog": "^1.1.6",
-    "five-bells-shared": "^16.1.0",
-    "ghooks": "^1.2.1",
-    "istanbul": "^0.4.3",
+    "eslint": "^3.1.1",
+    "eslint-config-standard": "^5.3.5",
+    "eslint-plugin-promise": "^2.0.0",
+    "eslint-plugin-standard": "^2.0.0",
+    "ghooks": "^1.3.2",
+    "istanbul": "^0.4.4",
     "jsdoc-to-markdown": "^1.3.6",
     "lodash": "^4.13.1",
     "md-toc-filter": "^0.9.0",
     "mocha": "^2.5.3",
     "mock-require": "^1.3.0",
-    "nock": "^8.0.0",
     "sinon": "^1.17.4",
+    "sinon-as-promised": "^3.0.1",
     "sinon-chai": "^2.8.0",
-    "standard": "^7.1.2",
+    "timekeeper": "^0.1.1",
     "validate-commit-msg": "^2.6.1"
   },
   "config": {
@@ -58,14 +69,5 @@
     "commitizen": {
       "path": "./node_modules/cz-conventional-changelog"
     }
-  },
-  "dependencies": {
-    "bignumber.js": "^2.3.0",
-    "canonical-json": "0.0.4",
-    "debug": "^2.2.0",
-    "eventemitter2": "^1.0.3",
-    "five-bells-condition": "^3.2.0",
-    "ilp-core": "^1.0.0",
-    "node-uuid": "^1.4.7"
   }
 }
