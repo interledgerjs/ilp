@@ -24,7 +24,7 @@ const BigNumber = require('bignumber.js')
  * @param  {ilp-core.Client} [opts.client] [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options
  * @param  {Buffer} [opts.hmacKey=crypto.randomBytes(32)] 32-byte secret used for generating request conditions
  * @param  {Number} [opts.defaultRequestTimeout=30] Default time in seconds that requests will be valid for
- * @param  {Boolean} [opts.disallowOverPayment=false] Require that incoming transfer amounts exactly match the requested amount
+ * @param  {Boolean} [opts.allowOverPayment=false] Allow transfers where the amount is greater than requested
  * @return {Receiver}
  */
 function createReceiver (opts) {
@@ -40,7 +40,7 @@ function createReceiver (opts) {
   }
   const hmacKey = opts.hmacKey || crypto.randomBytes(32)
   const defaultRequestTimeout = opts.defaultRequestTimeout || 30
-  const disallowOverPayment = !!opts.disallowOverPayment
+  const allowOverPayment = !!opts.allowOverPayment
 
   /**
    * Create a payment request
@@ -130,7 +130,7 @@ function createReceiver (opts) {
       return 'insufficient'
     }
 
-    if (disallowOverPayment && (new BigNumber(transfer.amount)).greaterThan(request.amount)) {
+    if (!allowOverPayment && (new BigNumber(transfer.amount)).greaterThan(request.amount)) {
       debug('got notification of transfer where amount is greater than expected (' + request.amount + ')', transfer)
       return 'overpayment-disallowed'
     }

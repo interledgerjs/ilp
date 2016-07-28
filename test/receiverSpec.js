@@ -210,18 +210,11 @@ describe('Receiver Module', function () {
           expect(results).to.deep.equal(['insufficient'])
         })
 
-        it('should ignore transfers where the amount is more than requested if disallowOverPayment is set', function * () {
-          const receiver = createReceiver({
-            client: this.client,
-            hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
-            disallowOverPayment: true
-          })
-          yield receiver.listen()
+        it('should ignore transfers where the amount is more than requested', function * () {
           const results = yield this.client.emitAsync('receive', _.merge(this.transfer, {
             amount: '1.0000000001'
           }))
-          // because we're instantiating an extra receiver there will actually be two events
-          expect(results).to.contain('overpayment-disallowed')
+          expect(results).to.deep.equal(['overpayment-disallowed'])
         })
 
         it('should ignore transfers where the executionCondition does not match the generated condition', function * () {
@@ -244,11 +237,18 @@ describe('Receiver Module', function () {
           expect(results).to.deep.equal(['sent'])
         })
 
-        it('should allow overpayment if disallowOverPayment is not set', function * () {
+        it('should allow overpayment if allowOverPayment is set', function * () {
+          const receiver = createReceiver({
+            client: this.client,
+            hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+            allowOverPayment: true
+          })
+          yield receiver.listen()
           const results = yield this.client.emitAsync('receive', _.assign(this.transfer, {
             amount: '10000000000000' // a bit excessive, i know
           }))
-          expect(results).to.deep.equal(['sent'])
+          // because we're instantiating an extra receiver there will actually be two events
+          expect(results).to.contain('sent')
         })
 
         it('should (temporarily) support the old behavior where the connector only passes on the ilp packet data field', function * () {
