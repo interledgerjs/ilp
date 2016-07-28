@@ -84,9 +84,12 @@ receiver.on('incoming', (transfer, fulfillment) => {
 'use strict'
 
 const ILP = require('ilp')
-const sender = new sender({
-  account: 'https://red.ilpdemo.org/ledger/accounts/sender',
-  password: 'sender'
+const sender = ILP.createSender({
+  ledgerType: 'bells',
+  auth: {
+    account: 'https://red.ilpdemo.org/ledger/accounts/alice',
+    password: 'alice'
+  }
 })
 
 // XXX: user implements this
