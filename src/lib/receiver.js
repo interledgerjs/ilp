@@ -8,6 +8,7 @@ const Client = require('ilp-core').Client
 const cc = require('five-bells-condition')
 const EventEmitter = require('eventemitter2')
 const debug = require('debug')('ilp-itp:receiver')
+const BigNumber = require('bignumber.js')
 
 /**
  * @module Receiver
@@ -97,27 +98,36 @@ function createReceiver (opts) {
       return 'no-execution'
     }
 
-    // TODO look for the request in transfer.data.ilp_header after https://github.com/interledger/five-bells-connector/pull/195 is merged
-    // if (!transfer.data || !transfer.data.ilp_header) {
-    //   debug('got notification of transfer without ilp packet', transfer)
-    //   return false
-    // }
-    const request = {
-      amount: String(transfer.amount),
-      ledger: client.getPlugin().id,
-      account: client.getPlugin().getAccount(),
-      data: {
-        expires_at: transfer.data.expires_at,
-        request_id: transfer.data.request_id
+    // The request is the ilp_header
+    let request = transfer.data && transfer.data.ilp_header
+    if (request && request.data && request.data.execution_condition) {
+      delete request.data.execution_condition
+    }
+
+    // For now support the old connector behavior that only passes on the ILP packet data field
+    if (!request && transfer.data.request_id) {
+      debug('using old behavior for when connector only passes on the ilp packet data field')
+      request = {
+        amount: (new BigNumber(transfer.amount)).toString(),
+        ledger: client.getPlugin().id,
+        account: client.getPlugin().getAccount(),
+        data: {
+          expires_at: transfer.data.expires_at,
+          request_id: transfer.data.request_id
+        }
       }
     }
 
-    // TODO re-enable this when we aren't using the transfer's amount
+    if (!request) {
+      debug('got notification of transfer with no request attached')
+      return 'no-packet'
+    }
+
     // TODO also allow receiver to disallow amounts greater than requested
-    // if ((new BigNumber(transfer.amount)).lessThan(request.amount)) {
-    //   debug('got notification of transfer where amount is less than expected (' + request.amount + ')', transfer)
-    //   return 'insufficient'
-    // }
+    if ((new BigNumber(transfer.amount)).lessThan(request.amount)) {
+      debug('got notification of transfer where amount is less than expected (' + request.amount + ')', transfer)
+      return 'insufficient'
+    }
 
     if (request.data.expires_at && moment().isAfter(request.data.expires_at)) {
       debug('got notification of transfer with expired request packet', transfer)
