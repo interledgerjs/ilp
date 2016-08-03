@@ -8,6 +8,7 @@ const Client = require('ilp-core').Client
 const cc = require('five-bells-condition')
 const EventEmitter = require('eventemitter2')
 const debug = require('debug')('ilp-itp:receiver')
+const BigNumber = require('bignumber.js')
 
 /**
  * @module Receiver
@@ -23,6 +24,7 @@ const debug = require('debug')('ilp-itp:receiver')
  * @param  {ilp-core.Client} [opts.client] [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options
  * @param  {Buffer} [opts.hmacKey=crypto.randomBytes(32)] 32-byte secret used for generating request conditions
  * @param  {Number} [opts.defaultRequestTimeout=30] Default time in seconds that requests will be valid for
+ * @param  {Boolean} [opts.allowOverPayment=false] Allow transfers where the amount is greater than requested
  * @return {Receiver}
  */
 function createReceiver (opts) {
@@ -38,6 +40,7 @@ function createReceiver (opts) {
   }
   const hmacKey = opts.hmacKey || crypto.randomBytes(32)
   const defaultRequestTimeout = opts.defaultRequestTimeout || 30
+  const allowOverPayment = !!opts.allowOverPayment
 
   /**
    * Create a payment request
@@ -97,27 +100,40 @@ function createReceiver (opts) {
       return 'no-execution'
     }
 
-    // TODO look for the request in transfer.data.ilp_header after https://github.com/interledger/five-bells-connector/pull/195 is merged
-    // if (!transfer.data || !transfer.data.ilp_header) {
-    //   debug('got notification of transfer without ilp packet', transfer)
-    //   return false
-    // }
-    const request = {
-      amount: String(transfer.amount),
-      ledger: client.getPlugin().id,
-      account: client.getPlugin().getAccount(),
-      data: {
-        expires_at: transfer.data.expires_at,
-        request_id: transfer.data.request_id
+    // The request is the ilp_header
+    let request = transfer.data && transfer.data.ilp_header
+    if (request && request.data && request.data.execution_condition) {
+      delete request.data.execution_condition
+    }
+
+    // For now support the old connector behavior that only passes on the ILP packet data field
+    if (!request && transfer.data.request_id) {
+      debug('using old behavior for when connector only passes on the ilp packet data field')
+      request = {
+        amount: (new BigNumber(transfer.amount)).toString(),
+        ledger: client.getPlugin().id,
+        account: client.getPlugin().getAccount(),
+        data: {
+          expires_at: transfer.data.expires_at,
+          request_id: transfer.data.request_id
+        }
       }
     }
 
-    // TODO re-enable this when we aren't using the transfer's amount
-    // TODO also allow receiver to disallow amounts greater than requested
-    // if ((new BigNumber(transfer.amount)).lessThan(request.amount)) {
-    //   debug('got notification of transfer where amount is less than expected (' + request.amount + ')', transfer)
-    //   return 'insufficient'
-    // }
+    if (!request) {
+      debug('got notification of transfer with no request attached')
+      return 'no-packet'
+    }
+
+    if ((new BigNumber(transfer.amount)).lessThan(request.amount)) {
+      debug('got notification of transfer where amount is less than expected (' + request.amount + ')', transfer)
+      return 'insufficient'
+    }
+
+    if (!allowOverPayment && (new BigNumber(transfer.amount)).greaterThan(request.amount)) {
+      debug('got notification of transfer where amount is greater than expected (' + request.amount + ')', transfer)
+      return 'overpayment-disallowed'
+    }
 
     if (request.data.expires_at && moment().isAfter(request.data.expires_at)) {
       debug('got notification of transfer with expired request packet', transfer)
