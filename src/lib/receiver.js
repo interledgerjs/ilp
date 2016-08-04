@@ -7,7 +7,7 @@ const stringify = require('canonical-json')
 const Client = require('ilp-core').Client
 const cc = require('five-bells-condition')
 const EventEmitter = require('eventemitter2')
-const debug = require('debug')('ilp-itp:receiver')
+const debug = require('debug')('ilp:receiver')
 const BigNumber = require('bignumber.js')
 
 /**
@@ -87,6 +87,8 @@ function createReceiver (opts) {
       debug('got notification of outgoing transfer', transfer)
       return 'outgoing'
     }
+
+    debug('got notification of incoming transfer', transfer)
 
     if (transfer.cancellationCondition) {
       debug('got notification of transfer with cancellationCondition', transfer)

@@ -109,6 +109,34 @@ describe('Sender Module', function () {
         const result = yield this.sender.quoteRequest(this.paymentRequest)
         expect(result).to.deep.equal(this.paymentParams)
       })
+
+      it('should reject if the there is an error with the quote', function * () {
+        this.quoteStub.restore()
+        const stub = sinon.stub(this.client, 'quote').rejects('Some error')
+        let error
+        try {
+          yield this.sender.quoteRequest(this.paymentRequest)
+        } catch (e) {
+          error = e
+        }
+        expect(error).to.be.ok
+        expect(error.message).to.equal('Some error')
+        stub.restore()
+      })
+
+      it('should reject if the quote response from the connector is empty', function * () {
+        this.quoteStub.restore()
+        const stub = sinon.stub(this.client, 'quote').resolves(null)
+        let error
+        try {
+          yield this.sender.quoteRequest(this.paymentRequest)
+        } catch (e) {
+          error = e
+        }
+        expect(error).to.be.ok
+        expect(error.message).to.equal('Got empty quote response from the connector')
+        stub.restore()
+      })
     })
 
     describe('payRequest', function () {

@@ -2,7 +2,7 @@
 
 const moment = require('moment')
 const Client = require('ilp-core').Client
-const debug = require('debug')('ilp-itp:sender')
+const debug = require('debug')('ilp:sender')
 
 /**
  * @module Sender
@@ -40,6 +40,9 @@ function createSender (opts) {
       }))
       .then((quote) => {
         debug('got quote response', quote)
+        if (!quote) {
+          throw new Error('Got empty quote response from the connector')
+        }
         return {
           sourceAmount: String(quote.sourceAmount),
           connectorAccount: quote.connectorAccount,
