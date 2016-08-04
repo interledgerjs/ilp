@@ -11,17 +11,14 @@ const debug = require('debug')('ilp-itp:sender')
 /**
  * Returns an ITP/ILP Sender to quote and pay for payment requests.
  *
- * @param  {String} [opts.ledgerType] Type of ledger to connect to, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
- * @param  {Objct}  [opts.auth] Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
+ * @param  {LedgerPlugin} opts.plugin Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
+ * @param  {Objct}  opts.auth Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
  * @param  {ilp-core.Client} [opts.client] [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options
  * @param  {Buffer} [opts.maxHoldDuration=10] Maximum time in seconds to allow money to be held for
  * @return {Sender}
  */
 function createSender (opts) {
-  const client = opts.client || new Client({
-    type: opts.ledgerType,
-    auth: opts.auth
-  })
+  const client = opts.client || new Client(opts)
 
   const maxHoldDuration = opts.maxHoldDuration || 10
 
@@ -38,7 +35,7 @@ function createSender (opts) {
     return client.connect()
       .then(() => client.waitForConnection())
       .then(() => client.quote({
-        destinationLedger: request.ledger,
+        destinationAddress: request.account,
         destinationAmount: request.amount
       }))
       .then((quote) => {
@@ -48,7 +45,6 @@ function createSender (opts) {
           connectorAccount: quote.connectorAccount,
           destinationAmount: String(request.amount),
           destinationAccount: request.account,
-          destinationLedger: request.ledger,
           destinationMemo: {
             request_id: request.data.request_id,
             expires_at: request.data.expires_at

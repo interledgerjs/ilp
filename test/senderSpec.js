@@ -39,14 +39,21 @@ describe('Sender Module', function () {
 
     it('should instantiate a new ilp-core Client if one is not supplied', function () {
       const stub = sinon.stub().returns({})
+      const fakePlugin = function () {}
       mockRequire('ilp-core', {
         Client: stub
       })
       const createSenderWithMock = mockRequire.reRequire('../src/lib/sender').createSender
       createSenderWithMock({
-        hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64')
+        hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+        plugin: fakePlugin,
+        auth: { some: 'auth' }
       })
       expect(stub).to.have.been.calledOnce
+      expect(stub).to.have.been.calledWithMatch({
+        plugin: fakePlugin,
+        auth: { some: 'auth' }
+      })
       mockRequire.stop('ilp-core')
     })
   })
@@ -64,7 +71,7 @@ describe('Sender Module', function () {
         this.paymentRequest = _.cloneDeep(paymentRequest)
         this.quoteStub = sinon.stub(this.client, 'quote')
         this.quoteStub.withArgs({
-          destinationLedger: 'https://blue.ilpdemo.org/ledger',
+          destinationAddress: 'ilpdemo.blue.bob',
           destinationAmount: '1'
         }).resolves({
           connectorAccount: 'https://blue.ilpdemo.org/ledger/accounts/connie',
@@ -74,6 +81,10 @@ describe('Sender Module', function () {
 
       afterEach(function () {
         this.quoteStub.restore()
+      })
+
+      it.skip('should quote using the destination precision and scale provided in the request', function () {
+
       })
 
       it.skip('should reject if the hold time is greater than the maxHoldDuration', function () {
@@ -111,19 +122,7 @@ describe('Sender Module', function () {
         }))
         const result = yield this.sender.payRequest(this.paymentParams)
         expect(result).to.be.ok
-        expect(stub).to.have.been.calledWith({
-          'connectorAccount': 'https://blue.ilpdemo.org/ledger/accounts/connie',
-          'destinationAccount': 'https://blue.ilpdemo.org/ledger/accounts/bob',
-          'destinationLedger': 'https://blue.ilpdemo.org/ledger',
-          'sourceAmount': '2',
-          'destinationAmount': '1',
-          'destinationMemo': {
-            'request_id': '22e315dc-3f99-4f89-9914-1987ceaa906d',
-            'expires_at': '1970-01-01T00:00:10Z'
-          },
-          'executionCondition': 'cc:0:3:4l2SBwP_i-oCEzaD2IGRpwdywCfaBmrxJcpJ_3PXv6o:32',
-          'expiresAt': '1970-01-01T00:00:10.000Z'
-        })
+        expect(stub).to.have.been.calledWith(this.paymentParams)
       })
 
       it('should resolve to the transfer\'s condition fulfillment', function * () {
