@@ -157,13 +157,21 @@ describe('Receiver Module', function () {
         stub.restore()
       })
 
+      it('should time out if waitForConnection takes too long', function (done) {
+        timekeeper.reset()
+        const clock = sinon.useFakeTimers(0)
+        const stub = sinon.stub(this.client, 'connect').resolves(new Promise((resolve, reject) => {
+          setTimeout(resolve, 10001)
+        }))
+        expect(this.receiver.listen()).to.be.rejected.and.notify(done)
+        clock.tick(10000)
+        stub.restore()
+        clock.restore()
+      })
+
       describe('autoFulfillConditions', function () {
         beforeEach(function * () {
           yield this.receiver.listen()
-        })
-
-        it.skip('should time out if waitForConnection takes too long', function () {
-
         })
 
         it('should ignore outgoing transfers', function * () {

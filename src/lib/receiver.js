@@ -25,6 +25,7 @@ const BigNumber = require('bignumber.js')
  * @param  {Buffer} [opts.hmacKey=crypto.randomBytes(32)] 32-byte secret used for generating request conditions
  * @param  {Number} [opts.defaultRequestTimeout=30] Default time in seconds that requests will be valid for
  * @param  {Boolean} [opts.allowOverPayment=false] Allow transfers where the amount is greater than requested
+ * @param  {Number} [opts.connectionTimeout=10] Time in seconds to wait for the ledger to connect
  * @return {Receiver}
  */
 function createReceiver (opts) {
@@ -38,6 +39,7 @@ function createReceiver (opts) {
   const hmacKey = opts.hmacKey || crypto.randomBytes(32)
   const defaultRequestTimeout = opts.defaultRequestTimeout || 30
   const allowOverPayment = !!opts.allowOverPayment
+  const connectionTimeout = opts.connectionTimeout || 10
 
   /**
    * Create a payment request
@@ -172,13 +174,17 @@ function createReceiver (opts) {
      * @type {object}
      */
 
-    // TODO add connection timeout
     // don't have multiple listeners even if listen is called more than once
     client.removeListener('receive', autoFulfillConditions)
     client.on('receive', autoFulfillConditions)
-    return client.connect()
-      .then(() => client.waitForConnection())
-      .then(() => debug('receiver listening'))
+    return Promise.race([
+      client.connect()
+        .then(() => client.waitForConnection())
+        .then(() => debug('receiver listening')),
+      new Promise((resolve, reject) => {
+        setTimeout(() => reject(new Error('Ledger connection timed out')), connectionTimeout * 1000)
+      })
+    ])
   }
 
   return Object.assign(eventEmitter, {

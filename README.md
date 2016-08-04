@@ -215,6 +215,7 @@ of transfers paying for the payment requests created by the Receiver.
 | [opts.hmacKey] | <code>Buffer</code> | <code>crypto.randomBytes(32)</code> | 32-byte secret used for generating request conditions |
 | [opts.defaultRequestTimeout] | <code>Number</code> | <code>30</code> | Default time in seconds that requests will be valid for |
 | [opts.allowOverPayment] | <code>Boolean</code> | <code>false</code> | Allow transfers where the amount is greater than requested |
+| [opts.connectionTimeout] | <code>Number</code> | <code>10</code> | Time in seconds to wait for the ledger to connect |
 
 
 * [~createReceiver()](#module_Receiver..createReceiver) ⇒ <code>Receiver</code>
