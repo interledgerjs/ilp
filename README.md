@@ -60,6 +60,7 @@ const ILP = require('ilp')
 const receiver = ILP.createReceiver({
   ledgerType: 'bells', // indicates which ledger plugin to use
   auth: {
+    prefix: 'ilpdemo.blue.',
     account: 'https://blue.ilpdemo.org/ledger/accounts/receiver',
     password: 'receiver'
   }
@@ -85,8 +86,12 @@ receiver.on('incoming', (transfer, fulfillment) => {
 
 const ILP = require('ilp')
 const sender = new sender({
-  account: 'https://red.ilpdemo.org/ledger/accounts/sender',
-  password: 'sender'
+  ledgerType: 'bells',
+  auth: {
+    prefix: 'ilpdemo.red.',
+    account: 'https://red.ilpdemo.org/ledger/accounts/sender',
+    password: 'sender'
+  }
 })
 
 // XXX: user implements this
@@ -109,6 +114,7 @@ const ILP = require('ilp')
 const sender = ILP.createSender({
   ledgerType: 'bells',
   auth: {
+    prefix: 'ilpdemo.red.',
     account: 'https://red.ilpdemo.org/ledger/accounts/alice',
     password: 'alice'
   }
@@ -117,6 +123,7 @@ const sender = ILP.createSender({
 const receiver = ILP.createReceiver({
   ledgerType: 'bells',
   auth: {
+    prefix: 'ilpdemo.blue.',
     account: 'https://blue.ilpdemo.org/ledger/accounts/bob',
     password: 'bobbob'
   }
