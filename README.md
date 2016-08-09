@@ -57,8 +57,9 @@ ITP uses recipient-generated conditions to secure payments. This means that the 
 'use strict'
 
 const ILP = require('ilp')
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 const receiver = ILP.createReceiver({
-  ledgerType: 'bells', // indicates which ledger plugin to use
+  plugin: FiveBellsLedgerPlugin,
   auth: {
     prefix: 'ilpdemo.blue.',
     account: 'https://blue.ilpdemo.org/ledger/accounts/receiver',
@@ -85,8 +86,9 @@ receiver.on('incoming', (transfer, fulfillment) => {
 'use strict'
 
 const ILP = require('ilp')
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 const sender = ILP.createSender({
-  ledgerType: 'bells',
+  plugin: FiveBellsLedgerPlugin,
   auth: {
     prefix: 'ilpdemo.red.',
     account: 'https://red.ilpdemo.org/ledger/accounts/alice',
@@ -110,9 +112,10 @@ sender.quoteRequest(paymentRequest)
 
 const co = require('co')
 const ILP = require('ilp')
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 
 const sender = ILP.createSender({
-  ledgerType: 'bells',
+  plugin: FiveBellsLedgerPlugin,
   auth: {
     prefix: 'ilpdemo.red.',
     account: 'https://red.ilpdemo.org/ledger/accounts/alice',
@@ -121,7 +124,7 @@ const sender = ILP.createSender({
 })
 
 const receiver = ILP.createReceiver({
-  ledgerType: 'bells',
+  plugin: FiveBellsLedgerPlugin,
   auth: {
     prefix: 'ilpdemo.blue.',
     account: 'https://blue.ilpdemo.org/ledger/accounts/bob',
