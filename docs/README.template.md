@@ -57,13 +57,12 @@ ITP uses recipient-generated conditions to secure payments. This means that the 
 'use strict'
 
 const ILP = require('ilp')
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 const receiver = ILP.createReceiver({
-  ledgerType: 'bells', // indicates which ledger plugin to use
-  auth: {
-    prefix: 'ilpdemo.blue.',
-    account: 'https://blue.ilpdemo.org/ledger/accounts/receiver',
-    password: 'receiver'
-  }
+  _plugin: FiveBellsLedgerPlugin,
+  prefix: 'ilpdemo.blue.',
+  account: 'https://blue.ilpdemo.org/ledger/accounts/receiver',
+  password: 'receiver'
 })
 receiver.listen()
 
@@ -85,13 +84,12 @@ receiver.on('incoming', (transfer, fulfillment) => {
 'use strict'
 
 const ILP = require('ilp')
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 const sender = ILP.createSender({
-  ledgerType: 'bells',
-  auth: {
-    prefix: 'ilpdemo.red.',
-    account: 'https://red.ilpdemo.org/ledger/accounts/alice',
-    password: 'alice'
-  }
+  _plugin: FiveBellsLedgerPlugin,
+  prefix: 'ilpdemo.red.',
+  account: 'https://red.ilpdemo.org/ledger/accounts/alice',
+  password: 'alice'
 })
 
 // XXX: user implements this
@@ -110,23 +108,20 @@ sender.quoteRequest(paymentRequest)
 
 const co = require('co')
 const ILP = require('ilp')
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 
 const sender = ILP.createSender({
-  ledgerType: 'bells',
-  auth: {
-    prefix: 'ilpdemo.red.',
-    account: 'https://red.ilpdemo.org/ledger/accounts/alice',
-    password: 'alice'
-  }
+  _plugin: FiveBellsLedgerPlugin,
+  prefix: 'ilpdemo.red.',
+  account: 'https://red.ilpdemo.org/ledger/accounts/alice',
+  password: 'alice'
 })
 
 const receiver = ILP.createReceiver({
-  ledgerType: 'bells',
-  auth: {
-    prefix: 'ilpdemo.blue.',
-    account: 'https://blue.ilpdemo.org/ledger/accounts/bob',
-    password: 'bobbob'
-  }
+  _plugin: FiveBellsLedgerPlugin,
+  prefix: 'ilpdemo.blue.',
+  account: 'https://blue.ilpdemo.org/ledger/accounts/bob',
+  password: 'bobbob'
 })
 
 co(function * () {

@@ -11,9 +11,9 @@ const debug = require('debug')('ilp:sender')
 /**
  * Returns an ITP/ILP Sender to quote and pay for payment requests.
  *
- * @param  {LedgerPlugin} opts.plugin Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
- * @param  {Objct}  opts.auth Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
- * @param  {ilp-core.Client} [opts.client] [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options
+ * @param  {LedgerPlugin} opts._plugin Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
+ * @param  {Objct}  opts Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
+ * @param  {ilp-core.Client} [opts.client=create a new instance with the plugin and opts] [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options
  * @param  {Buffer} [opts.maxHoldDuration=10] Maximum time in seconds to allow money to be held for
  * @return {Sender}
  */
