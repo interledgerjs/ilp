@@ -57,9 +57,11 @@ ITP uses recipient-generated conditions to secure payments. This means that the 
 'use strict'
 
 const ILP = require('ilp')
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 const receiver = ILP.createReceiver({
-  ledgerType: 'bells', // indicates which ledger plugin to use
+  plugin: FiveBellsLedgerPlugin,
   auth: {
+    prefix: 'ilpdemo.blue.',
     account: 'https://blue.ilpdemo.org/ledger/accounts/receiver',
     password: 'receiver'
   }
@@ -84,9 +86,14 @@ receiver.on('incoming', (transfer, fulfillment) => {
 'use strict'
 
 const ILP = require('ilp')
-const sender = new sender({
-  account: 'https://red.ilpdemo.org/ledger/accounts/sender',
-  password: 'sender'
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
+const sender = ILP.createSender({
+  plugin: FiveBellsLedgerPlugin,
+  auth: {
+    prefix: 'ilpdemo.red.',
+    account: 'https://red.ilpdemo.org/ledger/accounts/alice',
+    password: 'alice'
+  }
 })
 
 // XXX: user implements this
@@ -105,18 +112,21 @@ sender.quoteRequest(paymentRequest)
 
 const co = require('co')
 const ILP = require('ilp')
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 
 const sender = ILP.createSender({
-  ledgerType: 'bells',
+  plugin: FiveBellsLedgerPlugin,
   auth: {
+    prefix: 'ilpdemo.red.',
     account: 'https://red.ilpdemo.org/ledger/accounts/alice',
     password: 'alice'
   }
 })
 
 const receiver = ILP.createReceiver({
-  ledgerType: 'bells',
+  plugin: FiveBellsLedgerPlugin,
   auth: {
+    prefix: 'ilpdemo.blue.',
     account: 'https://blue.ilpdemo.org/ledger/accounts/bob',
     password: 'bobbob'
   }
@@ -156,8 +166,8 @@ Returns an ITP/ILP Sender to quote and pay for payment requests.
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
-| [opts.ledgerType] | <code>String</code> |  | Type of ledger to connect to, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
-| [opts.auth] | <code>Objct</code> |  | Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
+| opts.plugin | <code>LedgerPlugin</code> |  | Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
+| opts.auth | <code>Objct</code> |  | Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
 | [opts.client] | <code>ilp-core.Client</code> |  | [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options |
 | [opts.maxHoldDuration] | <code>Buffer</code> | <code>10</code> | Maximum time in seconds to allow money to be held for |
 
@@ -202,11 +212,13 @@ of transfers paying for the payment requests created by the Receiver.
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
-| [opts.ledgerType] | <code>String</code> |  | Type of ledger to connect to, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
-| [opts.auth] | <code>Objct</code> |  | Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
-| [opts.client] | <code>ilp-core.Client</code> |  | [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options |
+| opts.plugin | <code>LedgerPlugin</code> |  | Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
+| opts.auth | <code>Objct</code> |  | Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
+| [opts.client] | <code>ilp-core.Client</code> | <code>create a new instance with the plugin and auth</code> | [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options |
 | [opts.hmacKey] | <code>Buffer</code> | <code>crypto.randomBytes(32)</code> | 32-byte secret used for generating request conditions |
 | [opts.defaultRequestTimeout] | <code>Number</code> | <code>30</code> | Default time in seconds that requests will be valid for |
+| [opts.allowOverPayment] | <code>Boolean</code> | <code>false</code> | Allow transfers where the amount is greater than requested |
+| [opts.connectionTimeout] | <code>Number</code> | <code>10</code> | Time in seconds to wait for the ledger to connect |
 
 
 * [~createReceiver()](#module_Receiver..createReceiver) ⇒ <code>Receiver</code>

@@ -20,8 +20,7 @@ const transfer = require('./data/transferIncoming.json')
 describe('Receiver Module', function () {
   beforeEach(function () {
     this.client = new MockClient({
-      ledger: 'https://blue.ilpdemo.org/ledger',
-      account: 'https://blue.ilpdemo.org/ledger/accounts/bob'
+      account: 'ilpdemo.blue.bob'
     })
     this.transfer = _.cloneDeep(transfer)
     timekeeper.freeze(new Date(0))
@@ -76,14 +75,21 @@ describe('Receiver Module', function () {
 
     it('should instantiate a new ilp-core Client if one is not supplied', function () {
       const stub = sinon.stub().returns({})
+      const fakePlugin = function () {}
       mockRequire('ilp-core', {
         Client: stub
       })
       const createReceiverWithMock = mockRequire.reRequire('../src/lib/receiver').createReceiver
       createReceiverWithMock({
-        hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64')
+        hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+        plugin: fakePlugin,
+        auth: { some: 'auth' }
       })
       expect(stub).to.have.been.calledOnce
+      expect(stub).to.have.been.calledWithMatch({
+        plugin: fakePlugin,
+        auth: { some: 'auth' }
+      })
       mockRequire.stop('ilp-core')
     })
   })
@@ -125,12 +131,11 @@ describe('Receiver Module', function () {
         expect(request.data.request_id).to.match(/^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/)
       })
 
-      it('should use the account and ledger from the client', function () {
+      it('should use the account from the client', function () {
         const request = this.receiver.createRequest({
           amount: 10
         })
-        expect(request.ledger).to.equal('https://blue.ilpdemo.org/ledger')
-        expect(request.account).to.equal('https://blue.ilpdemo.org/ledger/accounts/bob')
+        expect(request.account).to.equal('ilpdemo.blue.bob')
       })
 
       it('should set the expiresAt to be 30 seconds if one is not supplied', function () {
@@ -152,13 +157,21 @@ describe('Receiver Module', function () {
         stub.restore()
       })
 
+      it('should time out if waitForConnection takes too long', function (done) {
+        timekeeper.reset()
+        const clock = sinon.useFakeTimers(0)
+        const stub = sinon.stub(this.client, 'connect').resolves(new Promise((resolve, reject) => {
+          setTimeout(resolve, 10001)
+        }))
+        expect(this.receiver.listen()).to.be.rejected.and.notify(done)
+        clock.tick(10000)
+        stub.restore()
+        clock.restore()
+      })
+
       describe('autoFulfillConditions', function () {
         beforeEach(function * () {
           yield this.receiver.listen()
-        })
-
-        it.skip('should time out if waitForConnection takes too long', function () {
-
         })
 
         it('should ignore outgoing transfers', function * () {
