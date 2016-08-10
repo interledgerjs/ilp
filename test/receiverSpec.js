@@ -175,28 +175,28 @@ describe('Receiver Module', function () {
         })
 
         it('should ignore outgoing transfers', function * () {
-          const results = yield this.client.emitAsync('receive', _.assign(this.transfer, {
+          const results = yield this.client.emitAsync('outgoing_prepare', _.assign(this.transfer, {
             direction: 'outgoing'
           }))
-          expect(results).to.deep.equal(['outgoing'])
+          expect(results).to.deep.equal([])
         })
 
         it('should ignore transfers with cancellation conditions', function * () {
-          const results = yield this.client.emitAsync('receive', _.assign(this.transfer, {
+          const results = yield this.client.emitAsync('incoming_prepare', _.assign(this.transfer, {
             cancellationCondition: 'cc:0:3:47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU:0'
           }))
           expect(results).to.deep.equal(['cancellation'])
         })
 
         it('should ignore transfers without execution conditions', function * () {
-          const results = yield this.client.emitAsync('receive', _.assign(this.transfer, {
+          const results = yield this.client.emitAsync('incoming_prepare', _.assign(this.transfer, {
             executionCondition: null
           }))
           expect(results).to.deep.equal(['no-execution'])
         })
 
         it('should ignore transfers without ilp packets in the data field', function * () {
-          const results = yield this.client.emitAsync('receive', _.assign(this.transfer, {
+          const results = yield this.client.emitAsync('incoming_prepare', _.assign(this.transfer, {
             data: { not: 'a packet' }
           }))
           expect(results).to.deep.equal(['no-packet'])
@@ -204,7 +204,7 @@ describe('Receiver Module', function () {
 
         it('should ignore expired packets', function * () {
           timekeeper.freeze(new Date(10000))
-          const results = yield this.client.emitAsync('receive', _.merge(this.transfer, {
+          const results = yield this.client.emitAsync('incoming_prepare', _.merge(this.transfer, {
             data: {
               ilp_header: {
                 data: {
@@ -217,21 +217,21 @@ describe('Receiver Module', function () {
         })
 
         it('should ignore transfers where the amount is less than specified in the packet', function * () {
-          const results = yield this.client.emitAsync('receive', _.merge(this.transfer, {
+          const results = yield this.client.emitAsync('incoming_prepare', _.merge(this.transfer, {
             amount: '0.999999999'
           }))
           expect(results).to.deep.equal(['insufficient'])
         })
 
         it('should ignore transfers where the amount is more than requested', function * () {
-          const results = yield this.client.emitAsync('receive', _.merge(this.transfer, {
+          const results = yield this.client.emitAsync('incoming_prepare', _.merge(this.transfer, {
             amount: '1.0000000001'
           }))
           expect(results).to.deep.equal(['overpayment-disallowed'])
         })
 
         it('should ignore transfers where the executionCondition does not match the generated condition', function * () {
-          const results = yield this.client.emitAsync('receive', _.assign(this.transfer, {
+          const results = yield this.client.emitAsync('incoming_prepare', _.assign(this.transfer, {
             executionCondition: 'cc:0:3:47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU:0'
           }))
           expect(results).to.deep.equal(['condition-mismatch'])
@@ -241,7 +241,7 @@ describe('Receiver Module', function () {
           const request = this.receiver.createRequest({
             amount: 1
           })
-          const results = yield this.client.emitAsync('receive', _.assign(this.transfer, {
+          const results = yield this.client.emitAsync('incoming_prepare', _.assign(this.transfer, {
             data: {
               ilp_header: request
             },
@@ -257,7 +257,7 @@ describe('Receiver Module', function () {
             allowOverPayment: true
           })
           yield receiver.listen()
-          const results = yield this.client.emitAsync('receive', _.assign(this.transfer, {
+          const results = yield this.client.emitAsync('incoming_prepare', _.assign(this.transfer, {
             amount: '10000000000000' // a bit excessive, i know
           }))
           // because we're instantiating an extra receiver there will actually be two events
@@ -265,7 +265,7 @@ describe('Receiver Module', function () {
         })
 
         it('should (temporarily) support the old behavior where the connector only passes on the ilp packet data field', function * () {
-          const results = yield this.client.emitAsync('receive', _.assign(this.transfer, {
+          const results = yield this.client.emitAsync('incoming_prepare', _.assign(this.transfer, {
             data: this.transfer.data.ilp_header.data
           }))
           expect(results).to.deep.equal(['sent'])
@@ -285,7 +285,7 @@ describe('Receiver Module', function () {
           expect(fulfillment).to.be.a('string')
           emitted = true
         })
-        yield this.client.emitAsync('receive', this.transfer)
+        yield this.client.emitAsync('incoming_prepare', this.transfer)
         expect(emitted).to.be.true
       })
     })

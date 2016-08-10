@@ -75,7 +75,7 @@ function createSender (opts) {
           // TODO just have one listener for the client
           const transferTimeout = setTimeout(() => {
             debug('transfer timed out')
-            client.removeListener('fulfill_execution_condition', fulfillmentListener)
+            client.removeListener('outgoing_fulfill', fulfillmentListener)
             reject(new Error('Transfer expired, money returned'))
           }, moment(paymentParams.expiresAt).diff(moment()))
 
@@ -86,7 +86,7 @@ function createSender (opts) {
               resolve(fulfillment)
             }
           }
-          client.on('fulfill_execution_condition', fulfillmentListener)
+          client.on('outgoing_fulfill', fulfillmentListener)
         })
       })
   }

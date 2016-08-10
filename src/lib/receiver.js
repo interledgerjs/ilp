@@ -82,13 +82,6 @@ function createReceiver (opts) {
    * Note return values are only for testing
    */
   function autoFulfillConditions (transfer) {
-    if (transfer.direction !== 'incoming') {
-      debug('got notification of outgoing transfer', transfer)
-      return 'outgoing'
-    }
-
-    debug('got notification of incoming transfer', transfer)
-
     if (transfer.cancellationCondition) {
       debug('got notification of transfer with cancellationCondition', transfer)
       return 'cancellation'
@@ -177,8 +170,8 @@ function createReceiver (opts) {
      */
 
     // don't have multiple listeners even if listen is called more than once
-    client.removeListener('receive', autoFulfillConditions)
-    client.on('receive', autoFulfillConditions)
+    client.removeListener('incoming_prepare', autoFulfillConditions)
+    client.on('incoming_prepare', autoFulfillConditions)
     return Promise.race([
       client.connect()
         .then(() => client.waitForConnection())

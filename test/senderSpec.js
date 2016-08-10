@@ -143,7 +143,7 @@ describe('Sender Module', function () {
       it('should accept the output of quoteRequest', function * () {
         const stub = sinon.stub(this.client, 'sendQuotedPayment')
         stub.resolves(new Promise((resolve) => {
-          setImmediate(() => this.client.emit('fulfill_execution_condition', {
+          setImmediate(() => this.client.emit('outgoing_fulfill', {
             executionCondition: this.paymentParams.executionCondition
           }, 'fulfillment'))
           resolve()
@@ -156,7 +156,7 @@ describe('Sender Module', function () {
       it('should resolve to the transfer\'s condition fulfillment', function * () {
         const stub = sinon.stub(this.client, 'sendQuotedPayment')
         stub.resolves(new Promise((resolve) => {
-          setImmediate(() => this.client.emit('fulfill_execution_condition', {
+          setImmediate(() => this.client.emit('outgoing_fulfill', {
             executionCondition: this.paymentParams.executionCondition
           }, 'fulfillment'))
           resolve()
@@ -186,11 +186,11 @@ describe('Sender Module', function () {
         const stub = sinon.stub(this.client, 'sendQuotedPayment')
         stub.resolves(new Promise((resolve) => {
           setImmediate(() => {
-            return this.client.emitAsync('fulfill_execution_condition', {
+            return this.client.emitAsync('outgoing_fulfill', {
               executionCondition: 'some-other-condition'
             }, 'not-the-right-fulfillment')
             .then(() => {
-              return this.client.emitAsync('fulfill_execution_condition', {
+              return this.client.emitAsync('outgoing_fulfill', {
                 executionCondition: this.paymentParams.executionCondition
               }, 'correct-fulfillment')
             })
