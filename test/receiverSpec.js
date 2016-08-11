@@ -103,6 +103,17 @@ describe('Receiver Module', function () {
     })
 
     describe('createRequest', function () {
+      it('should throw an error if the plugin is not connected', function () {
+        const stub = sinon.stub(this.client, 'getPlugin')
+          .returns({
+            getAccount: () => null,
+            isConnected: () => false
+          })
+        expect(() => {
+          this.receiver.createRequest({})
+        }).to.throw('receiver must be connected to create requests')
+      })
+
       it('should throw an error if no amount is given', function () {
         expect(() => {
           this.receiver.createRequest({})

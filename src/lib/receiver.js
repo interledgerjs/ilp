@@ -49,6 +49,10 @@ function createReceiver (opts) {
    * @return {Object}
    */
   function createRequest (params) {
+    if (!client.getPlugin().isConnected()) {
+      throw new Error('receiver must be connected to create requests')
+    }
+
     if (!params.amount) {
       throw new Error('amount is required')
     }
