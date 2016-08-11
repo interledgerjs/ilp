@@ -1,6 +1,6 @@
 {
   "name": "ilp",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "ILP client library for sending and receiving payments",
   "main": "index.js",
   "scripts": {
