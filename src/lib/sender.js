@@ -2,7 +2,7 @@
 
 const moment = require('moment')
 const Client = require('ilp-core').Client
-const debug = require('debug')('ilp-itp:sender')
+const debug = require('debug')('ilp:sender')
 
 /**
  * @module Sender
@@ -11,17 +11,14 @@ const debug = require('debug')('ilp-itp:sender')
 /**
  * Returns an ITP/ILP Sender to quote and pay for payment requests.
  *
- * @param  {String} [opts.ledgerType] Type of ledger to connect to, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
- * @param  {Objct}  [opts.auth] Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
- * @param  {ilp-core.Client} [opts.client] [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options
+ * @param  {LedgerPlugin} opts._plugin Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
+ * @param  {Objct}  opts Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
+ * @param  {ilp-core.Client} [opts.client=create a new instance with the plugin and opts] [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options
  * @param  {Buffer} [opts.maxHoldDuration=10] Maximum time in seconds to allow money to be held for
  * @return {Sender}
  */
 function createSender (opts) {
-  const client = opts.client || new Client({
-    type: opts.ledgerType,
-    auth: opts.auth
-  })
+  const client = opts.client || new Client(opts)
 
   const maxHoldDuration = opts.maxHoldDuration || 10
 
@@ -31,33 +28,37 @@ function createSender (opts) {
    * @return {Promise.<PaymentParams>} Resolves with the parameters that can be passed to payRequest
    */
   function quoteRequest (request) {
-    if (!request.data.execution_condition) {
-      return Promise.reject(new Error('Payment requests must have execution conditions'))
+    if (!request.packet) {
+      return Promise.reject(new Error('Malformed payment request: no packet'))
     }
+    if (!request.condition) {
+      return Promise.reject(new Error('Malformed payment request: no condition'))
+    }
+
+    // TODO validate request more
 
     return client.connect()
       .then(() => client.waitForConnection())
       .then(() => client.quote({
-        destinationLedger: request.ledger,
-        destinationAmount: request.amount
+        destinationAddress: request.packet.account,
+        destinationAmount: request.packet.amount
       }))
       .then((quote) => {
         debug('got quote response', quote)
+        if (!quote) {
+          throw new Error('Got empty quote response from the connector')
+        }
         return {
           sourceAmount: String(quote.sourceAmount),
           connectorAccount: quote.connectorAccount,
-          destinationAmount: String(request.amount),
-          destinationAccount: request.account,
-          destinationLedger: request.ledger,
-          destinationMemo: {
-            request_id: request.data.request_id,
-            expires_at: request.data.expires_at
-          },
+          destinationAmount: String(request.packet.amount),
+          destinationAccount: request.packet.account,
+          destinationMemo: request.packet.data,
           expiresAt: moment.min([
-            moment(request.data.expires_at),
+            moment(request.packet.data.expires_at),
             moment().add(maxHoldDuration, 'seconds')
           ]).toISOString(),
-          executionCondition: request.data.execution_condition
+          executionCondition: request.condition
         }
       })
   }
@@ -76,7 +77,7 @@ function createSender (opts) {
           // TODO just have one listener for the client
           const transferTimeout = setTimeout(() => {
             debug('transfer timed out')
-            client.removeListener('fulfill_execution_condition', fulfillmentListener)
+            client.removeListener('outgoing_fulfill', fulfillmentListener)
             reject(new Error('Transfer expired, money returned'))
           }, moment(paymentParams.expiresAt).diff(moment()))
 
@@ -87,7 +88,7 @@ function createSender (opts) {
               resolve(fulfillment)
             }
           }
-          client.on('fulfill_execution_condition', fulfillmentListener)
+          client.on('outgoing_fulfill', fulfillmentListener)
         })
       })
   }

@@ -5,9 +5,8 @@ const uuid = require('node-uuid')
 const moment = require('moment')
 const stringify = require('canonical-json')
 const Client = require('ilp-core').Client
-const cc = require('five-bells-condition')
 const EventEmitter = require('eventemitter2')
-const debug = require('debug')('ilp-itp:receiver')
+const debug = require('debug')('ilp:receiver')
 const BigNumber = require('bignumber.js')
 
 /**
@@ -19,19 +18,17 @@ const BigNumber = require('bignumber.js')
  * listen for incoming transfers, and automatically fulfill conditions
  * of transfers paying for the payment requests created by the Receiver.
  *
- * @param  {String} [opts.ledgerType] Type of ledger to connect to, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
- * @param  {Objct}  [opts.auth] Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
- * @param  {ilp-core.Client} [opts.client] [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options
+ * @param  {LedgerPlugin} opts._plugin Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
+ * @param  {Objct}  opts Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
+ * @param  {ilp-core.Client} [opts.client=create a new instance with the plugin and opts] [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options
  * @param  {Buffer} [opts.hmacKey=crypto.randomBytes(32)] 32-byte secret used for generating request conditions
  * @param  {Number} [opts.defaultRequestTimeout=30] Default time in seconds that requests will be valid for
  * @param  {Boolean} [opts.allowOverPayment=false] Allow transfers where the amount is greater than requested
+ * @param  {Number} [opts.connectionTimeout=10] Time in seconds to wait for the ledger to connect
  * @return {Receiver}
  */
 function createReceiver (opts) {
-  const client = opts.client || new Client({
-    type: opts.ledgerType,
-    auth: opts.auth
-  })
+  const client = opts.client || new Client(opts)
 
   const eventEmitter = new EventEmitter()
 
@@ -41,6 +38,7 @@ function createReceiver (opts) {
   const hmacKey = opts.hmacKey || crypto.randomBytes(32)
   const defaultRequestTimeout = opts.defaultRequestTimeout || 30
   const allowOverPayment = !!opts.allowOverPayment
+  const connectionTimeout = opts.connectionTimeout || 10
 
   /**
    * Create a payment request
@@ -51,6 +49,10 @@ function createReceiver (opts) {
    * @return {Object}
    */
   function createRequest (params) {
+    if (!client.getPlugin().isConnected()) {
+      throw new Error('receiver must be connected to create requests')
+    }
+
     if (!params.amount) {
       throw new Error('amount is required')
     }
@@ -59,9 +61,8 @@ function createReceiver (opts) {
       throw new Error('expiresAt must be an ISO 8601 timestamp')
     }
 
-    let request = {
+    const packet = {
       amount: String(params.amount),
-      ledger: client.getPlugin().id,
       account: client.getPlugin().getAccount(),
       data: {
         expires_at: params.expiresAt || moment().add(defaultRequestTimeout, 'seconds').toISOString(),
@@ -69,10 +70,12 @@ function createReceiver (opts) {
       }
     }
 
-    const condition = generateCondition(hmacKey, request)
-    request.data.execution_condition = condition.getConditionUri()
+    const conditionPreimage = generateConditionPreimage(hmacKey, packet)
 
-    return request
+    return {
+      packet: packet,
+      condition: toConditionUri(conditionPreimage)
+    }
   }
 
   /**
@@ -85,11 +88,6 @@ function createReceiver (opts) {
    * Note return values are only for testing
    */
   function autoFulfillConditions (transfer) {
-    if (transfer.direction !== 'incoming') {
-      debug('got notification of outgoing transfer', transfer)
-      return 'outgoing'
-    }
-
     if (transfer.cancellationCondition) {
       debug('got notification of transfer with cancellationCondition', transfer)
       return 'cancellation'
@@ -101,53 +99,37 @@ function createReceiver (opts) {
     }
 
     // The request is the ilp_header
-    let request = transfer.data && transfer.data.ilp_header
-    if (request && request.data && request.data.execution_condition) {
-      delete request.data.execution_condition
-    }
+    let packet = transfer.data && transfer.data.ilp_header
 
-    // For now support the old connector behavior that only passes on the ILP packet data field
-    if (!request && transfer.data.request_id) {
-      debug('using old behavior for when connector only passes on the ilp packet data field')
-      request = {
-        amount: (new BigNumber(transfer.amount)).toString(),
-        ledger: client.getPlugin().id,
-        account: client.getPlugin().getAccount(),
-        data: {
-          expires_at: transfer.data.expires_at,
-          request_id: transfer.data.request_id
-        }
-      }
-    }
-
-    if (!request) {
-      debug('got notification of transfer with no request attached')
+    if (!packet) {
+      debug('got notification of transfer with no packet attached')
       return 'no-packet'
     }
 
-    if ((new BigNumber(transfer.amount)).lessThan(request.amount)) {
-      debug('got notification of transfer where amount is less than expected (' + request.amount + ')', transfer)
+    if ((new BigNumber(transfer.amount)).lessThan(packet.amount)) {
+      debug('got notification of transfer where amount is less than expected (' + packet.amount + ')', transfer)
       return 'insufficient'
     }
 
-    if (!allowOverPayment && (new BigNumber(transfer.amount)).greaterThan(request.amount)) {
-      debug('got notification of transfer where amount is greater than expected (' + request.amount + ')', transfer)
+    if (!allowOverPayment && (new BigNumber(transfer.amount)).greaterThan(packet.amount)) {
+      debug('got notification of transfer where amount is greater than expected (' + packet.amount + ')', transfer)
       return 'overpayment-disallowed'
     }
 
-    if (request.data.expires_at && moment().isAfter(request.data.expires_at)) {
-      debug('got notification of transfer with expired request packet', transfer)
+    if (packet.data.expires_at && moment().isAfter(packet.data.expires_at)) {
+      debug('got notification of transfer with expired packet', transfer)
       return 'expired'
     }
 
-    const condition = generateCondition(hmacKey, request)
+    const conditionPreimage = generateConditionPreimage(hmacKey, packet)
 
-    if (transfer.executionCondition !== condition.getConditionUri()) {
-      debug('got notification of transfer where executionCondition does not match the one we generate (' + condition.getConditionUri() + ')', transfer)
+    if (transfer.executionCondition !== toConditionUri(conditionPreimage)) {
+      debug('got notification of transfer where executionCondition does not match the one we generate (' + toConditionUri(conditionPreimage) + ')', transfer)
       return 'condition-mismatch'
     }
 
-    const fulfillment = condition.serializeUri()
+    const fulfillment = toFulfillmentUri(conditionPreimage)
+    debug('about to submit fulfillment: ' + fulfillment)
     // returning the promise is only so the result is picked up by the tests' emitAsync
     return client.fulfillCondition(transfer.id, fulfillment)
       .then(() => {
@@ -177,13 +159,17 @@ function createReceiver (opts) {
      * @type {object}
      */
 
-    // TODO add connection timeout
     // don't have multiple listeners even if listen is called more than once
-    client.removeListener('receive', autoFulfillConditions)
-    client.on('receive', autoFulfillConditions)
-    return client.connect()
-      .then(() => client.waitForConnection())
-      .then(() => debug('receiver listening'))
+    client.removeListener('incoming_prepare', autoFulfillConditions)
+    client.on('incoming_prepare', autoFulfillConditions)
+    return Promise.race([
+      client.connect()
+        .then(() => client.waitForConnection())
+        .then(() => debug('receiver listening')),
+      new Promise((resolve, reject) => {
+        setTimeout(() => reject(new Error('Ledger connection timed out')), connectionTimeout * 1000)
+      })
+    ])
   }
 
   return Object.assign(eventEmitter, {
@@ -192,19 +178,35 @@ function createReceiver (opts) {
   })
 }
 
-// TODO remove dependency on five-bells-condition because we don't need the other types
-function generateCondition (hmacKey, request) {
+function generateConditionPreimage (hmacKey, request) {
   const hmac = crypto.createHmac('sha256', hmacKey)
   const jsonString = stringify(request)
   hmac.update(jsonString, 'utf8')
   const hmacOutput = hmac.digest()
 
-  const condition = new cc.PreimageSha256()
-  condition.setPreimage(hmacOutput)
+  return hmacOutput
+}
 
-  debug('generateCondition ' + jsonString + ' --> ' + condition.getConditionUri())
+// base64url encoded without padding
+function toCryptoConditionBase64 (normalBase64) {
+  return normalBase64.replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+}
 
-  return condition
+function toConditionUri (conditionPreimage) {
+  const hash = crypto.createHash('sha256')
+  hash.update(conditionPreimage)
+  const condition = hash.digest('base64')
+  const conditionUri = 'cc:0:3:' + toCryptoConditionBase64(condition) + ':32'
+
+  return conditionUri
+}
+
+function toFulfillmentUri (conditionPreimage) {
+  const fulfillment = conditionPreimage.toString('base64')
+  const fulfillmentUri = 'cf:0:' + toCryptoConditionBase64(fulfillment)
+  return fulfillmentUri
 }
 
 exports.createReceiver = createReceiver

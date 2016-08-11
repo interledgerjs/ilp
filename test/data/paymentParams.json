@@ -1,13 +1,12 @@
 {
   "connectorAccount": "https://blue.ilpdemo.org/ledger/accounts/connie",
-  "destinationAccount": "https://blue.ilpdemo.org/ledger/accounts/bob",
-  "destinationLedger": "https://blue.ilpdemo.org/ledger",
+  "destinationAccount": "ilpdemo.blue.bob",
   "sourceAmount": "2",
   "destinationAmount": "1",
   "destinationMemo":{
     "request_id": "22e315dc-3f99-4f89-9914-1987ceaa906d",
     "expires_at": "1970-01-01T00:00:10Z"
   },
-  "executionCondition": "cc:0:3:4l2SBwP_i-oCEzaD2IGRpwdywCfaBmrxJcpJ_3PXv6o:32",
+  "executionCondition": "cc:0:3:nQ7peM4X0r84PFg04aOKX84OR7WBLTVvppN8gFYC1Is:32",
   "expiresAt": "1970-01-01T00:00:10.000Z"
 }

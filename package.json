@@ -35,8 +35,7 @@
     "canonical-json": "0.0.4",
     "debug": "^2.2.0",
     "eventemitter2": "^2.0.0",
-    "five-bells-condition": "^3.2.0",
-    "ilp-core": "^4.1.0",
+    "ilp-core": "^6.0.1",
     "moment": "^2.14.1",
     "node-uuid": "^1.4.7"
   },

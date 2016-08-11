@@ -1,10 +1,11 @@
 {
-  "ledger": "https://blue.ilpdemo.org/ledger",
-  "account": "https://blue.ilpdemo.org/ledger/accounts/bob",
-  "amount": "1",
-  "data": {
-    "request_id": "22e315dc-3f99-4f89-9914-1987ceaa906d",
-    "expires_at": "1970-01-01T00:00:10Z",
-    "execution_condition": "cc:0:3:4l2SBwP_i-oCEzaD2IGRpwdywCfaBmrxJcpJ_3PXv6o:32"
-  }
+  "packet": {
+    "account": "ilpdemo.blue.bob",
+    "amount": "1",
+    "data": {
+      "request_id": "22e315dc-3f99-4f89-9914-1987ceaa906d",
+      "expires_at": "1970-01-01T00:00:10Z"
+    }
+  },
+  "condition": "cc:0:3:nQ7peM4X0r84PFg04aOKX84OR7WBLTVvppN8gFYC1Is:32"
 }

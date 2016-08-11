@@ -57,12 +57,12 @@ ITP uses recipient-generated conditions to secure payments. This means that the 
 'use strict'
 
 const ILP = require('ilp')
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 const receiver = ILP.createReceiver({
-  ledgerType: 'bells', // indicates which ledger plugin to use
-  auth: {
-    account: 'https://blue.ilpdemo.org/ledger/accounts/receiver',
-    password: 'receiver'
-  }
+  _plugin: FiveBellsLedgerPlugin,
+  prefix: 'ilpdemo.blue.',
+  account: 'https://blue.ilpdemo.org/ledger/accounts/receiver',
+  password: 'receiver'
 })
 receiver.listen()
 
@@ -84,9 +84,12 @@ receiver.on('incoming', (transfer, fulfillment) => {
 'use strict'
 
 const ILP = require('ilp')
-const sender = new sender({
-  account: 'https://red.ilpdemo.org/ledger/accounts/sender',
-  password: 'sender'
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
+const sender = ILP.createSender({
+  _plugin: FiveBellsLedgerPlugin,
+  prefix: 'ilpdemo.red.',
+  account: 'https://red.ilpdemo.org/ledger/accounts/alice',
+  password: 'alice'
 })
 
 // XXX: user implements this
@@ -105,21 +108,20 @@ sender.quoteRequest(paymentRequest)
 
 const co = require('co')
 const ILP = require('ilp')
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 
 const sender = ILP.createSender({
-  ledgerType: 'bells',
-  auth: {
-    account: 'https://red.ilpdemo.org/ledger/accounts/alice',
-    password: 'alice'
-  }
+  _plugin: FiveBellsLedgerPlugin,
+  prefix: 'ilpdemo.red.',
+  account: 'https://red.ilpdemo.org/ledger/accounts/alice',
+  password: 'alice'
 })
 
 const receiver = ILP.createReceiver({
-  ledgerType: 'bells',
-  auth: {
-    account: 'https://blue.ilpdemo.org/ledger/accounts/bob',
-    password: 'bobbob'
-  }
+  _plugin: FiveBellsLedgerPlugin,
+  prefix: 'ilpdemo.blue.',
+  account: 'https://blue.ilpdemo.org/ledger/accounts/bob',
+  password: 'bobbob'
 })
 
 co(function * () {
@@ -149,20 +151,20 @@ co(function * () {
 
 <a name="module_Sender..createSender"></a>
 
-### Sender~createSender() ⇒ <code>Sender</code>
+### Sender~createSender(opts) ⇒ <code>Sender</code>
 Returns an ITP/ILP Sender to quote and pay for payment requests.
 
 **Kind**: inner method of <code>[Sender](#module_Sender)</code>  
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
-| [opts.ledgerType] | <code>String</code> |  | Type of ledger to connect to, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
-| [opts.auth] | <code>Objct</code> |  | Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
-| [opts.client] | <code>ilp-core.Client</code> |  | [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options |
+| opts._plugin | <code>LedgerPlugin</code> |  | Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
+| opts | <code>Objct</code> |  | Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
+| [opts.client] | <code>ilp-core.Client</code> | <code>create a new instance with the plugin and opts</code> | [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options |
 | [opts.maxHoldDuration] | <code>Buffer</code> | <code>10</code> | Maximum time in seconds to allow money to be held for |
 
 
-* [~createSender()](#module_Sender..createSender) ⇒ <code>Sender</code>
+* [~createSender(opts)](#module_Sender..createSender) ⇒ <code>Sender</code>
     * [~quoteRequest(paymentRequest)](#module_Sender..createSender..quoteRequest) ⇒ <code>Promise.&lt;PaymentParams&gt;</code>
     * [~payRequest(paymentParams)](#module_Sender..createSender..payRequest) ⇒ <code>Promise.&lt;String&gt;</code>
 
@@ -193,7 +195,7 @@ Pay for a payment request
 
 <a name="module_Receiver..createReceiver"></a>
 
-### Receiver~createReceiver() ⇒ <code>Receiver</code>
+### Receiver~createReceiver(opts) ⇒ <code>Receiver</code>
 Returns an ITP/ILP Receiver to create payment requests,
 listen for incoming transfers, and automatically fulfill conditions
 of transfers paying for the payment requests created by the Receiver.
@@ -202,14 +204,16 @@ of transfers paying for the payment requests created by the Receiver.
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
-| [opts.ledgerType] | <code>String</code> |  | Type of ledger to connect to, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
-| [opts.auth] | <code>Objct</code> |  | Auth parameters for the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
-| [opts.client] | <code>ilp-core.Client</code> |  | [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options |
+| opts._plugin | <code>LedgerPlugin</code> |  | Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
+| opts | <code>Objct</code> |  | Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
+| [opts.client] | <code>ilp-core.Client</code> | <code>create a new instance with the plugin and opts</code> | [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options |
 | [opts.hmacKey] | <code>Buffer</code> | <code>crypto.randomBytes(32)</code> | 32-byte secret used for generating request conditions |
 | [opts.defaultRequestTimeout] | <code>Number</code> | <code>30</code> | Default time in seconds that requests will be valid for |
+| [opts.allowOverPayment] | <code>Boolean</code> | <code>false</code> | Allow transfers where the amount is greater than requested |
+| [opts.connectionTimeout] | <code>Number</code> | <code>10</code> | Time in seconds to wait for the ledger to connect |
 
 
-* [~createReceiver()](#module_Receiver..createReceiver) ⇒ <code>Receiver</code>
+* [~createReceiver(opts)](#module_Receiver..createReceiver) ⇒ <code>Receiver</code>
     * [~createRequest()](#module_Receiver..createReceiver..createRequest) ⇒ <code>Object</code>
     * [~listen()](#module_Receiver..createReceiver..listen) ⇒ <code>Promise.&lt;null&gt;</code>
 
