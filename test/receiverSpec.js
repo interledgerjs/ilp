@@ -139,21 +139,21 @@ describe('Receiver Module', function () {
         const request = this.receiver.createRequest({
           amount: 10
         })
-        expect(request.data.request_id).to.match(/^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/)
+        expect(request.packet.data.request_id).to.match(/^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/)
       })
 
       it('should use the account from the client', function () {
         const request = this.receiver.createRequest({
           amount: 10
         })
-        expect(request.account).to.equal('ilpdemo.blue.bob')
+        expect(request.packet.account).to.equal('ilpdemo.blue.bob')
       })
 
       it('should set the expiresAt to be 30 seconds if one is not supplied', function () {
         const request = this.receiver.createRequest({
           amount: 10
         })
-        expect(request.data.expires_at).to.equal('1970-01-01T00:00:30.000Z')
+        expect(request.packet.data.expires_at).to.equal('1970-01-01T00:00:30.000Z')
       })
 
       it.skip('should generate the condition from the request details', function () {
@@ -254,9 +254,9 @@ describe('Receiver Module', function () {
           })
           const results = yield this.client.emitAsync('incoming_prepare', _.assign(this.transfer, {
             data: {
-              ilp_header: request
+              ilp_header: request.packet
             },
-            executionCondition: request.data.execution_condition
+            executionCondition: request.condition
           }))
           expect(results).to.deep.equal(['sent'])
         })
@@ -273,13 +273,6 @@ describe('Receiver Module', function () {
           }))
           // because we're instantiating an extra receiver there will actually be two events
           expect(results).to.contain('sent')
-        })
-
-        it('should (temporarily) support the old behavior where the connector only passes on the ilp packet data field', function * () {
-          const results = yield this.client.emitAsync('incoming_prepare', _.assign(this.transfer, {
-            data: this.transfer.data.ilp_header.data
-          }))
-          expect(results).to.deep.equal(['sent'])
         })
       })
     })

@@ -61,7 +61,7 @@ function createReceiver (opts) {
       throw new Error('expiresAt must be an ISO 8601 timestamp')
     }
 
-    let request = {
+    const packet = {
       amount: String(params.amount),
       account: client.getPlugin().getAccount(),
       data: {
@@ -70,10 +70,12 @@ function createReceiver (opts) {
       }
     }
 
-    const conditionPreimage = generateConditionPreimage(hmacKey, request)
-    request.data.execution_condition = toConditionUri(conditionPreimage)
+    const conditionPreimage = generateConditionPreimage(hmacKey, packet)
 
-    return request
+    return {
+      packet: packet,
+      condition: toConditionUri(conditionPreimage)
+    }
   }
 
   /**
@@ -97,45 +99,29 @@ function createReceiver (opts) {
     }
 
     // The request is the ilp_header
-    let request = transfer.data && transfer.data.ilp_header
-    if (request && request.data && request.data.execution_condition) {
-      delete request.data.execution_condition
-    }
+    let packet = transfer.data && transfer.data.ilp_header
 
-    // For now support the old connector behavior that only passes on the ILP packet data field
-    if (!request && transfer.data.request_id) {
-      debug('using old behavior for when connector only passes on the ilp packet data field')
-      request = {
-        amount: (new BigNumber(transfer.amount)).toString(),
-        account: client.getPlugin().getAccount(),
-        data: {
-          expires_at: transfer.data.expires_at,
-          request_id: transfer.data.request_id
-        }
-      }
-    }
-
-    if (!request) {
-      debug('got notification of transfer with no request attached')
+    if (!packet) {
+      debug('got notification of transfer with no packet attached')
       return 'no-packet'
     }
 
-    if ((new BigNumber(transfer.amount)).lessThan(request.amount)) {
-      debug('got notification of transfer where amount is less than expected (' + request.amount + ')', transfer)
+    if ((new BigNumber(transfer.amount)).lessThan(packet.amount)) {
+      debug('got notification of transfer where amount is less than expected (' + packet.amount + ')', transfer)
       return 'insufficient'
     }
 
-    if (!allowOverPayment && (new BigNumber(transfer.amount)).greaterThan(request.amount)) {
-      debug('got notification of transfer where amount is greater than expected (' + request.amount + ')', transfer)
+    if (!allowOverPayment && (new BigNumber(transfer.amount)).greaterThan(packet.amount)) {
+      debug('got notification of transfer where amount is greater than expected (' + packet.amount + ')', transfer)
       return 'overpayment-disallowed'
     }
 
-    if (request.data.expires_at && moment().isAfter(request.data.expires_at)) {
-      debug('got notification of transfer with expired request packet', transfer)
+    if (packet.data.expires_at && moment().isAfter(packet.data.expires_at)) {
+      debug('got notification of transfer with expired packet', transfer)
       return 'expired'
     }
 
-    const conditionPreimage = generateConditionPreimage(hmacKey, request)
+    const conditionPreimage = generateConditionPreimage(hmacKey, packet)
 
     if (transfer.executionCondition !== toConditionUri(conditionPreimage)) {
       debug('got notification of transfer where executionCondition does not match the one we generate (' + toConditionUri(conditionPreimage) + ')', transfer)

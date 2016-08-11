@@ -28,15 +28,20 @@ function createSender (opts) {
    * @return {Promise.<PaymentParams>} Resolves with the parameters that can be passed to payRequest
    */
   function quoteRequest (request) {
-    if (!request.data.execution_condition) {
-      return Promise.reject(new Error('Payment requests must have execution conditions'))
+    if (!request.packet) {
+      return Promise.reject(new Error('Malformed payment request: no packet'))
     }
+    if (!request.condition) {
+      return Promise.reject(new Error('Malformed payment request: no condition'))
+    }
+
+    // TODO validate request more
 
     return client.connect()
       .then(() => client.waitForConnection())
       .then(() => client.quote({
-        destinationAddress: request.account,
-        destinationAmount: request.amount
+        destinationAddress: request.packet.account,
+        destinationAmount: request.packet.amount
       }))
       .then((quote) => {
         debug('got quote response', quote)
@@ -46,17 +51,14 @@ function createSender (opts) {
         return {
           sourceAmount: String(quote.sourceAmount),
           connectorAccount: quote.connectorAccount,
-          destinationAmount: String(request.amount),
-          destinationAccount: request.account,
-          destinationMemo: {
-            request_id: request.data.request_id,
-            expires_at: request.data.expires_at
-          },
+          destinationAmount: String(request.packet.amount),
+          destinationAccount: request.packet.account,
+          destinationMemo: request.packet.data,
           expiresAt: moment.min([
-            moment(request.data.expires_at),
+            moment(request.packet.data.expires_at),
             moment().add(maxHoldDuration, 'seconds')
           ]).toISOString(),
-          executionCondition: request.data.execution_condition
+          executionCondition: request.condition
         }
       })
   }
