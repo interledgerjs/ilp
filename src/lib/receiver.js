@@ -19,7 +19,7 @@ const BigNumber = require('bignumber.js')
  * of transfers paying for the payment requests created by the Receiver.
  *
  * @param  {LedgerPlugin} opts._plugin Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
- * @param  {Objct}  opts Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
+ * @param  {Object}  opts Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
  * @param  {ilp-core.Client} [opts.client=create a new instance with the plugin and opts] [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options
  * @param  {Buffer} [opts.hmacKey=crypto.randomBytes(32)] 32-byte secret used for generating request conditions
  * @param  {Number} [opts.defaultRequestTimeout=30] Default time in seconds that requests will be valid for
@@ -39,6 +39,7 @@ function createReceiver (opts) {
   const defaultRequestTimeout = opts.defaultRequestTimeout || 30
   const allowOverPayment = !!opts.allowOverPayment
   const connectionTimeout = opts.connectionTimeout || 10
+  let account
 
   /**
    * Create a payment request
@@ -63,7 +64,7 @@ function createReceiver (opts) {
 
     const packet = {
       amount: String(params.amount),
-      account: client.getPlugin().getAccount(),
+      account: account,
       data: {
         expires_at: params.expiresAt || moment().add(defaultRequestTimeout, 'seconds').toISOString(),
         request_id: params.id || uuid.v4()
@@ -165,6 +166,8 @@ function createReceiver (opts) {
     return Promise.race([
       client.connect()
         .then(() => client.waitForConnection())
+        .then(() => client.getPlugin().getAccount())
+        .then((_account) => { account = _account })
         .then(() => debug('receiver listening')),
       new Promise((resolve, reject) => {
         setTimeout(() => reject(new Error('Ledger connection timed out')), connectionTimeout * 1000)

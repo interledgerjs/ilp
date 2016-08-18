@@ -95,18 +95,19 @@ describe('Receiver Module', function () {
   })
 
   describe('Receiver', function () {
-    beforeEach(function () {
+    beforeEach(function * () {
       this.receiver = createReceiver({
         client: this.client,
         hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64')
       })
+      yield this.receiver.listen()
     })
 
     describe('createRequest', function () {
       it('should throw an error if the plugin is not connected', function () {
         const stub = sinon.stub(this.client, 'getPlugin')
           .returns({
-            getAccount: () => null,
+            getAccount: () => Promise.resolve(null),
             isConnected: () => false
           })
         expect(() => {

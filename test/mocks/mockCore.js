@@ -10,7 +10,7 @@ class Client extends EventEmitter {
 
   getPlugin () {
     return {
-      getAccount: () => this.account,
+      getAccount: () => Promise.resolve(this.account),
       isConnected: () => true
     }
   }
