@@ -42,7 +42,7 @@ For a higher-level interface that includes the above features, see the [Wallet C
 
 `npm install --save ilp ilp-plugin-bells`
 
-*Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module
+*Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module*
 
 
 ## ITP Request / Pay

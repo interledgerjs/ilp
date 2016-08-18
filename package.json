@@ -32,6 +32,7 @@
   },
   "homepage": "https://github.com/interledger/js-ilp#readme",
   "dependencies": {
+    "bignumber.js": "^2.4.0",
     "canonical-json": "0.0.4",
     "debug": "^2.2.0",
     "eventemitter2": "^2.0.0",
