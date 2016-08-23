@@ -14,7 +14,7 @@ const BigNumber = require('bignumber.js')
  */
 
 /**
- * Returns an ITP/ILP Receiver to create payment requests,
+ * Returns an ILP Receiver to create payment requests,
  * listen for incoming transfers, and automatically fulfill conditions
  * of transfers paying for the payment requests created by the Receiver.
  *
@@ -47,6 +47,7 @@ function createReceiver (opts) {
    * @param  {String} params.amount Amount to request
    * @param  {String} [params.id=uuid.v4()] Unique ID for the request (used to ensure conditions are unique per request)
    * @param  {String} [params.expiresAt=30 seconds from now] Expiry of request
+   * @param  {Object} [params.data=null] Additional data to include in the request
    * @return {Object}
    */
   function createRequest (params) {
@@ -62,21 +63,17 @@ function createReceiver (opts) {
       throw new Error('expiresAt must be an ISO 8601 timestamp')
     }
 
-    const packet = {
+    const paymentRequest = {
+      address: account + '.' + (params.id || uuid.v4()),
       amount: String(params.amount),
-      account: account,
-      data: {
-        expires_at: params.expiresAt || moment().add(defaultRequestTimeout, 'seconds').toISOString(),
-        request_id: params.id || uuid.v4()
-      }
+      expires_at: params.expiresAt || moment().add(defaultRequestTimeout, 'seconds').toISOString(),
+      data: params.data
     }
 
-    const conditionPreimage = generateConditionPreimage(hmacKey, packet)
+    const conditionPreimage = generateConditionPreimage(hmacKey, paymentRequest)
+    paymentRequest.condition = toConditionUri(conditionPreimage)
 
-    return {
-      packet: packet,
-      condition: toConditionUri(conditionPreimage)
-    }
+    return paymentRequest
   }
 
   /**
@@ -99,13 +96,21 @@ function createReceiver (opts) {
       return 'no-execution'
     }
 
-    // The request is the ilp_header
+    // The payment request is extracted from the ilp_header
     let packet = transfer.data && transfer.data.ilp_header
 
     if (!packet) {
       debug('got notification of transfer with no packet attached')
       return 'no-packet'
     }
+
+    const paymentRequest = {
+      address: packet.account,
+      amount: packet.amount,
+      expires_at: packet.data.expires_at,
+      data: packet.data.data
+    }
+
 
     if ((new BigNumber(transfer.amount)).lessThan(packet.amount)) {
       debug('got notification of transfer where amount is less than expected (' + packet.amount + ')', transfer)
@@ -117,7 +122,7 @@ function createReceiver (opts) {
       return 'overpayment-disallowed'
     }
 
-    if (packet.data.expires_at && moment().isAfter(packet.data.expires_at)) {
+    if (paymentRequest.expires_at && moment().isAfter(paymentRequest.expires_at)) {
       debug('got notification of transfer with expired packet', transfer)
       return 'expired'
     }
