@@ -25,7 +25,7 @@ This is a low-level interface to ILP, largely intended for building ILP into oth
 
 #### The ILP Client does:
 
-* Generate payment requests on the receiving side, including handling [Crypto Condition](https://github.com/interledger/rfcs/tree/master/0002-crypto-conditions) generation and fulfillment (using the [Interactive Transport Protocol (ITP)](https://github.com/interledger/rfcs/blob/master/0011-interactive-transport-protocol/0011-interactive-transport-protocol.md) )
+* Generate [Interledger Payment Requests](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md) on the receiving side, including handling [Crypto Condition](https://github.com/interledger/rfcs/tree/master/0002-crypto-conditions) generation and fulfillment)
 * Pay for payment requests on the sending side
 * Quote and send payments through multiple ledger types (using [`ilp-core`](https://github.com/interledger/js-ilp-core))
 
@@ -42,14 +42,12 @@ For a higher-level interface that includes the above features, see the [Wallet C
 
 `npm install --save ilp ilp-plugin-bells`
 
-*Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module
+*Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module*
 
 
 ## ITP Request / Pay
 
-The client implements the [Interactive Transport Protocol (ITP)](https://github.com/interledger/rfcs/blob/master/0011-interactive-transport-protocol/0011-interactive-transport-protocol.md) for generating and fulfilling payment requests.
-
-ITP uses recipient-generated conditions to secure payments. This means that the recipient must first generate a payment request, which the sender then fulfills. This client library handles the generation of such requests, but **not** the communication of the request details from the recipient to the sender.
+The client uses recipient-generated [Interledger Payment Requests](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md), which include the condition for the payment. This means that the recipient must first generate a payment request, which the sender then fulfills. This client library handles the generation of such requests, but **not** the communication of the request details from the recipient to the sender.
 
 ### Requesting + Handling Incoming Payments
 
