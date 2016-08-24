@@ -103,6 +103,28 @@ describe('Receiver Module', function () {
       yield this.receiver.listen()
     })
 
+    describe('getAddress', function () {
+      it('should throw an error if the plugin is not connected', function () {
+        const stub = sinon.stub(this.client, 'getPlugin')
+          .returns({
+            getAccount: () => Promise.resolve(null),
+            isConnected: () => false
+          })
+        let error
+        try {
+          this.receiver.getAddress()
+        } catch (e) {
+          error = e
+        }
+        expect(error).to.be.ok
+        expect(error.message).to.equal('receiver must be connected to get address')
+      })
+
+      it('should return the receiver ILP address', function () {
+        expect(this.receiver.getAddress()).to.equal('ilpdemo.blue.bob')
+      })
+    })
+
     describe('createRequest', function () {
       it('should throw an error if the plugin is not connected', function () {
         const stub = sinon.stub(this.client, 'getPlugin')

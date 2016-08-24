@@ -68,6 +68,34 @@ function createSender (opts) {
   }
 
   /**
+   * Get a fixed source amount quote. This is primarily meant to be used in higher level protocols where the sender can request a payment request from the receiver for a specific amount.
+   * @param {String} destinationAddress ILP Address of the receiver
+   * @param {String|Number} sourceAmount Amount the sender wants to send
+   */
+  function quoteSourceAmount (destinationAddress, sourceAmount) {
+    if (!destinationAddress || typeof destinationAddress !== 'string') {
+      return Promise.reject(new Error('Must provide destination address'))
+    }
+    if (!sourceAmount) {
+      return Promise.reject(new Error('Must provide source amount'))
+    } 
+
+    return client.connect()
+      .then(() => client.waitForConnection())
+      .then(() => client.quote({
+        destinationAddress: destinationAddress,
+        sourceAmount: String(sourceAmount)
+      }))
+      .then((quote) => {
+        debug('got source amount quote response', quote)
+        if (!quote) {
+          throw new Error('Got empty quote response from the connector')
+        }
+        return String(quote.sourceAmount)
+      })
+  }
+
+  /**
    * Pay for a payment request
    * @param  {PaymentParams} paymentParams Respose from quoteRequest
    * @return {Promise.<String>} Resolves with the condition fulfillment
@@ -99,6 +127,7 @@ function createSender (opts) {
 
   return {
     quoteRequest,
+    quoteSourceAmount,
     payRequest
   }
 }

@@ -149,6 +149,66 @@ describe('Sender Module', function () {
       })
     })
 
+    describe('quoteSourceAmount', function () {
+      it('should reject if no address is given', function * () {
+        let error
+        try {
+          yield this.sender.quoteSourceAmount(10)
+        } catch (e) {
+          error = e
+        }
+        expect(error).to.be.ok
+        expect(error.message).to.equal('Must provide destination address')
+      })
+ 
+      it('should reject if no amount is given', function * () {
+        let error
+        try {
+          yield this.sender.quoteSourceAmount('ilpdemo.blue.bob')
+        } catch (e) {
+          error = e
+        }
+        expect(error).to.be.ok
+        expect(error.message).to.equal('Must provide source amount')
+      })
+
+      it('should reject if the there is an error with the quote', function * () {
+        const stub = sinon.stub(this.client, 'quote').rejects('Some error')
+        let error
+        try {
+          yield this.sender.quoteSourceAmount('ilpdemo.blue.bob', 10)
+        } catch (e) {
+          error = e
+        }
+        expect(error).to.be.ok
+        expect(error.message).to.equal('Some error')
+        stub.restore()
+      })
+
+      it('should reject if the quote response from the connector is empty', function * () {
+        const stub = sinon.stub(this.client, 'quote').resolves(null)
+        let error
+        try {
+          yield this.sender.quoteSourceAmount('ilpdemo.blue.bob', 10)
+        } catch (e) {
+          error = e
+        }
+        expect(error).to.be.ok
+        expect(error.message).to.equal('Got empty quote response from the connector')
+        stub.restore()
+      })
+    
+      it('should resolve to the destination amount', function * () {
+        const quoteStub = sinon.stub(this.client, 'quote')
+        quoteStub.withArgs({
+          destinationAddress: 'ilpdemo.blue.bob',
+          sourceAmount: '10'
+        }).resolves({ sourceAmount: '15.50' }) 
+        const destinationAmount = yield this.sender.quoteSourceAmount('ilpdemo.blue.bob', 10)
+        expect(destinationAmount).to.equal('15.50')
+      })
+    })
+
     describe('payRequest', function () {
       it('should accept the output of quoteRequest', function * () {
         const stub = sinon.stub(this.client, 'sendQuotedPayment')
