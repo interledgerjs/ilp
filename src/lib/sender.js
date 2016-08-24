@@ -91,7 +91,7 @@ function createSender (opts) {
         if (!quote) {
           throw new Error('Got empty quote response from the connector')
         }
-        return String(quote.sourceAmount)
+        return String(quote.destinationAmount)
       })
   }
 
