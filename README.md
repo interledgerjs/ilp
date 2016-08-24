@@ -225,9 +225,16 @@ of transfers paying for the payment requests created by the Receiver.
 
 
 * [~createReceiver(opts)](#module_Receiver..createReceiver) ⇒ <code>Receiver</code>
+    * [~getAddress()](#module_Receiver..createReceiver..getAddress) ⇒ <code>String</code>
     * [~createRequest()](#module_Receiver..createReceiver..createRequest) ⇒ <code>Object</code>
     * [~listen()](#module_Receiver..createReceiver..listen) ⇒ <code>Promise.&lt;null&gt;</code>
 
+<a name="module_Receiver..createReceiver..getAddress"></a>
+
+#### createReceiver~getAddress() ⇒ <code>String</code>
+Get ILP address
+
+**Kind**: inner method of <code>[createReceiver](#module_Receiver..createReceiver)</code>  
 <a name="module_Receiver..createReceiver..createRequest"></a>
 
 #### createReceiver~createRequest() ⇒ <code>Object</code>

@@ -42,6 +42,17 @@ function createReceiver (opts) {
   let account
 
   /**
+   * Get ILP address
+   *
+   * @return {String}
+   */
+  function getAddress () {
+    if (!client.getPlugin().isConnected()) {
+      throw new Error('receiver must be connected to get address')
+    }
+    return account
+  }
+  /**
    * Create a payment request
    *
    * @param  {String} params.amount Amount to request
@@ -181,6 +192,7 @@ function createReceiver (opts) {
   }
 
   return Object.assign(eventEmitter, {
+    getAddress,
     createRequest,
     listen
   })
