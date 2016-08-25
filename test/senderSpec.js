@@ -203,7 +203,7 @@ describe('Sender Module', function () {
         quoteStub.withArgs({
           destinationAddress: 'ilpdemo.blue.bob',
           sourceAmount: '10'
-        }).resolves({ sourceAmount: '15.50' }) 
+        }).resolves({ destinationAmount: '15.50' })
         const destinationAmount = yield this.sender.quoteSourceAmount('ilpdemo.blue.bob', 10)
         expect(destinationAmount).to.equal('15.50')
       })
