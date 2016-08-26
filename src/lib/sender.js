@@ -78,7 +78,7 @@ function createSender (opts) {
     }
     if (!sourceAmount) {
       return Promise.reject(new Error('Must provide source amount'))
-    } 
+    }
 
     return client.connect()
       .then(() => client.waitForConnection())
