@@ -3,8 +3,10 @@ machine:
     version: 5.11.1
 test:
   override:
-    # Run tests with coverage
+    - npm run lint
     - npm test --coverage
+    # Run integration test suite
+    - npm run integration
   post:
     # Upload code coverage data
     - bash <(curl -s https://codecov.io/bash) || echo "Codecov did not collect coverage reports"
