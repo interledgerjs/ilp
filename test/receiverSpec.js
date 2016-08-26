@@ -303,17 +303,17 @@ describe('Receiver Module', function () {
           expect(results).to.deep.equal(['sent'])
         })
 
-        it('should ignore transfers without packet.data', function * () {
-          delete this.transfer.data.ilp_header.data
+        it('should ignore transfers that don\'t match the original request', function * () {
           const request = this.receiver.createRequest({
             amount: 1,
             id: '22e315dc-3f99-4f89-9914-1987ceaa906d'
           })
+          delete this.transfer.data.ilp_header.data
           const results = yield this.client.emitAsync('incoming_prepare', this.transfer)
           expect(results).to.deep.equal(['condition-mismatch'])
         })
 
-        it('should fulfill conditions of transfers packet.data.expires_at but no packet.data.data', function * () {
+        it('should fulfill transfers corresponding to requests with no data included', function * () {
           const request = this.receiver.createRequest({
             amount: 1,
             id: '22e315dc-3f99-4f89-9914-1987ceaa906d',
