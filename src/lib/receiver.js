@@ -77,8 +77,11 @@ function createReceiver (opts) {
     const paymentRequest = {
       address: account + '.' + (params.id || uuid.v4()),
       amount: String(params.amount),
-      expires_at: params.expiresAt || moment().add(defaultRequestTimeout, 'seconds').toISOString(),
-      data: params.data
+      expires_at: params.expiresAt || moment().add(defaultRequestTimeout, 'seconds').toISOString()
+    }
+
+    if (params.data) {
+      paymentRequest.data = params.data
     }
 
     const conditionPreimage = generateConditionPreimage(hmacKey, paymentRequest)
@@ -118,10 +121,12 @@ function createReceiver (opts) {
     const paymentRequest = {
       address: packet.account,
       amount: packet.amount,
-      expires_at: packet.data.expires_at,
-      data: packet.data.data
+      expires_at: packet.data.expires_at
     }
 
+    if (packet.data && packet.data.data) {
+      paymentRequest.data = packet.data.data
+    }
 
     if ((new BigNumber(transfer.amount)).lessThan(packet.amount)) {
       debug('got notification of transfer where amount is less than expected (' + packet.amount + ')', transfer)
@@ -138,7 +143,7 @@ function createReceiver (opts) {
       return 'expired'
     }
 
-    const conditionPreimage = generateConditionPreimage(hmacKey, packet)
+    const conditionPreimage = generateConditionPreimage(hmacKey, paymentRequest)
 
     if (transfer.executionCondition !== toConditionUri(conditionPreimage)) {
       debug('got notification of transfer where executionCondition does not match the one we generate (' + toConditionUri(conditionPreimage) + ')', transfer)
