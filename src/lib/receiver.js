@@ -30,7 +30,9 @@ const BigNumber = require('bignumber.js')
 function createReceiver (opts) {
   const client = opts.client || new Client(opts)
 
-  const eventEmitter = new EventEmitter()
+  const eventEmitter = new EventEmitter({
+    wildcard: true
+  })
 
   if (opts.hmacKey && (!Buffer.isBuffer(opts.hmacKey) || opts.hmacKey.length < 32)) {
     throw new Error('hmacKey must be 32-byte Buffer if supplied')
@@ -155,8 +157,27 @@ function createReceiver (opts) {
     // returning the promise is only so the result is picked up by the tests' emitAsync
     return client.fulfillCondition(transfer.id, fulfillment)
       .then(() => {
-        debug('successfully submitted fulfillment ' + fulfillment + ' for transfer ' + transfer.id)
+        const requestId = paymentRequest.address.replace(account + '.', '')
+        debug('successfully submitted fulfillment ' + fulfillment + ' for request ' + requestId + ' (transfer ' + transfer.id + ')')
+
+        /**
+         * [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string
+         *
+         * @event incoming
+         * @type {object}
+         */
         eventEmitter.emit('incoming', transfer, fulfillment)
+
+        /**
+         * [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string for a specific request
+         *
+         * @event incoming:requestid
+         * @type {object}
+         */
+        // Allow listeners for specific requests and on wildcard events such that
+        // `incoming:appid.*` will match `incoming:appid:requestid`
+        eventEmitter.emit('incoming:' + requestId, transfer, fulfillment)
+
         return 'sent'
       })
       .catch((err) => {
@@ -170,17 +191,11 @@ function createReceiver (opts) {
    * receiver created.
    *
    * @fires incoming
+   * @fires incoming:requestid
    *
    * @return {Promise.<null>} Resolves when the receiver is connected
    */
   function listen () {
-    /**
-     * [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string
-     *
-     * @event incoming
-     * @type {object}
-     */
-
     // don't have multiple listeners even if listen is called more than once
     client.removeListener('incoming_prepare', autoFulfillConditions)
     client.on('incoming_prepare', autoFulfillConditions)

@@ -356,6 +356,35 @@ describe('Receiver Module', function () {
         yield this.client.emitAsync('incoming_prepare', this.transfer)
         expect(emitted).to.be.true
       })
+
+      it('should emit `incoming:<request id>` when a specific payment request is fulfilled', function * () {
+        let emitted = false
+        this.receiver.on('incoming:22e315dc-3f99-4f89-9914-1987ceaa906d', (transfer, fulfillment) => {
+          expect(transfer).to.be.a('object')
+          expect(fulfillment).to.be.a('string')
+          emitted = true
+        })
+        yield this.client.emitAsync('incoming_prepare', this.transfer)
+        expect(emitted).to.be.true
+      })
+
+      it('should allow wildcard events for multi-level request ids', function * () {
+        let emitted = false
+        this.receiver.on('incoming:someapp.*', (transfer, fulfillment) => {
+          expect(transfer).to.be.a('object')
+          expect(fulfillment).to.be.a('string')
+          emitted = true
+        })
+        yield this.client.emitAsync('incoming_prepare', _.merge(this.transfer, {
+          data: {
+            ilp_header: {
+              account: 'ilpdemo.blue.bob.someapp.requestid'
+            }
+          },
+          executionCondition: 'cc:0:3:JYlpv1MC5nAL-wTCLawUZJ34kGF8x5CyOxzfpDoXdEI:32'          
+        }))
+        expect(emitted).to.be.true
+      })
     })
   })
 })
