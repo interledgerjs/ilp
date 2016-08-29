@@ -164,7 +164,8 @@ Returns an ILP Sender to quote and pay for payment requests.
 
 * [~createSender(opts)](#module_Sender..createSender) ⇒ <code>Sender</code>
     * [~quoteRequest(paymentRequest)](#module_Sender..createSender..quoteRequest) ⇒ <code>Promise.&lt;PaymentParams&gt;</code>
-    * [~quoteSourceAmount(destinationAddress, sourceAmount)](#module_Sender..createSender..quoteSourceAmount)
+    * [~quoteSourceAmount(destinationAddress, sourceAmount)](#module_Sender..createSender..quoteSourceAmount) ⇒ <code>Promise.&lt;String&gt;</code>
+    * [~quoteDestinationAmount(destinationAddress, destinationAmount)](#module_Sender..createSender..quoteDestinationAmount) ⇒ <code>Promise.&lt;String&gt;</code>
     * [~payRequest(paymentParams)](#module_Sender..createSender..payRequest) ⇒ <code>Promise.&lt;String&gt;</code>
 
 <a name="module_Sender..createSender..quoteRequest"></a>
@@ -181,15 +182,29 @@ Quote a request from a receiver
 
 <a name="module_Sender..createSender..quoteSourceAmount"></a>
 
-#### createSender~quoteSourceAmount(destinationAddress, sourceAmount)
-Get a fixed source amount quote. This is primarily meant to be used in higher level protocols where the sender can request a payment request from the receiver for a specific amount.
+#### createSender~quoteSourceAmount(destinationAddress, sourceAmount) ⇒ <code>Promise.&lt;String&gt;</code>
+Get a fixed source amount quote
 
 **Kind**: inner method of <code>[createSender](#module_Sender..createSender)</code>  
+**Returns**: <code>Promise.&lt;String&gt;</code> - destinationAmount  
 
 | Param | Type | Description |
 | --- | --- | --- |
 | destinationAddress | <code>String</code> | ILP Address of the receiver |
 | sourceAmount | <code>String</code> &#124; <code>Number</code> | Amount the sender wants to send |
+
+<a name="module_Sender..createSender..quoteDestinationAmount"></a>
+
+#### createSender~quoteDestinationAmount(destinationAddress, destinationAmount) ⇒ <code>Promise.&lt;String&gt;</code>
+Get a fixed destination amount quote
+
+**Kind**: inner method of <code>[createSender](#module_Sender..createSender)</code>  
+**Returns**: <code>Promise.&lt;String&gt;</code> - sourceAmount  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| destinationAddress | <code>String</code> | ILP Address of the receiver |
+| destinationAmount | <code>String</code> | Amount the receiver should recieve |
 
 <a name="module_Sender..createSender..payRequest"></a>
 
