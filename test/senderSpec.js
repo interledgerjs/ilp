@@ -35,6 +35,8 @@ describe('Sender Module', function () {
       expect(sender).to.be.a('object')
       expect(sender.quoteRequest).to.be.a('function')
       expect(sender.payRequest).to.be.a('function')
+      expect(sender.quoteSourceAmount).to.be.a('function')
+      expect(sender.quoteDestinationAmount).to.be.a('function')
     })
 
     it('should instantiate a new ilp-core Client if one is not supplied', function () {
@@ -146,6 +148,66 @@ describe('Sender Module', function () {
         expect(error).to.be.ok
         expect(error.message).to.equal('Got empty quote response from the connector')
         stub.restore()
+      })
+    })
+
+    describe('quoteDestinationAmount', function () {
+      it('should reject if no address is given', function * () {
+        let error
+        try {
+          yield this.sender.quoteDestinationAmount(10)
+        } catch (e) {
+          error = e
+        }
+        expect(error).to.be.ok
+        expect(error.message).to.equal('Must provide destination address')
+      })
+
+      it('should reject if no amount is given', function * () {
+        let error
+        try {
+          yield this.sender.quoteDestinationAmount('ilpdemo.blue.bob')
+        } catch (e) {
+          error = e
+        }
+        expect(error).to.be.ok
+        expect(error.message).to.equal('Must provide destination amount')
+      })
+
+      it('should reject if the there is an error with the quote', function * () {
+        const stub = sinon.stub(this.client, 'quote').rejects('Some error')
+        let error
+        try {
+          yield this.sender.quoteDestinationAmount('ilpdemo.blue.bob', 10)
+        } catch (e) {
+          error = e
+        }
+        expect(error).to.be.ok
+        expect(error.message).to.equal('Some error')
+        stub.restore()
+      })
+
+      it('should reject if the quote response from the connector is empty', function * () {
+        const stub = sinon.stub(this.client, 'quote').resolves(null)
+        let error
+        try {
+          yield this.sender.quoteDestinationAmount('ilpdemo.blue.bob', 10)
+        } catch (e) {
+          error = e
+        }
+        expect(error).to.be.ok
+        expect(error.message).to.equal('Got empty quote response from the connector')
+        stub.restore()
+      })
+
+      it('should resolve to the source amount', function * () {
+        const quoteStub = sinon.stub(this.client, 'quote')
+        quoteStub.withArgs({
+          destinationAddress: 'ilpdemo.blue.bob',
+          destinationAmount: '10'
+        }).resolves({ sourceAmount: '15.50' })
+        const sourceAmount = yield this.sender.quoteDestinationAmount('ilpdemo.blue.bob', 10)
+        expect(sourceAmount).to.equal('15.50')
       })
     })
 
