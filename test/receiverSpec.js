@@ -341,6 +341,15 @@ describe('Receiver Module', function () {
       })
     })
 
+    describe('stopListening', function () {
+      it('should remove listeners and disconnect the client', function () {
+        const spy = sinon.spy(this.client, 'disconnect')
+        this.receiver.stopListening()
+        expect(this.client.listeners('incoming_prepare')).to.have.lengthOf(0)
+        expect(spy).to.have.been.calledOnce
+      })
+    })
+
     describe('events', function () {
       beforeEach(function * () {
         yield this.receiver.listen()
@@ -381,7 +390,7 @@ describe('Receiver Module', function () {
               account: 'ilpdemo.blue.bob.someapp.requestid'
             }
           },
-          executionCondition: 'cc:0:3:JYlpv1MC5nAL-wTCLawUZJ34kGF8x5CyOxzfpDoXdEI:32'          
+          executionCondition: 'cc:0:3:JYlpv1MC5nAL-wTCLawUZJ34kGF8x5CyOxzfpDoXdEI:32'
         }))
         expect(emitted).to.be.true
       })

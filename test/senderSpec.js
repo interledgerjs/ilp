@@ -222,7 +222,7 @@ describe('Sender Module', function () {
         expect(error).to.be.ok
         expect(error.message).to.equal('Must provide destination address')
       })
- 
+
       it('should reject if no amount is given', function * () {
         let error
         try {
@@ -259,7 +259,7 @@ describe('Sender Module', function () {
         expect(error.message).to.equal('Got empty quote response from the connector')
         stub.restore()
       })
-    
+
       it('should resolve to the destination amount', function * () {
         const quoteStub = sinon.stub(this.client, 'quote')
         quoteStub.withArgs({
@@ -314,6 +314,22 @@ describe('Sender Module', function () {
         }
       })
 
+      it('should remove the listener on the client if the transfer times out', function * () {
+        timekeeper.reset()
+        const clock = sinon.useFakeTimers(0)
+        const stub = sinon.stub(this.client, 'sendQuotedPayment')
+        stub.resolves(Promise.resolve().then(() => {
+          setImmediate(() => clock.tick(10000))
+        }))
+        // clock is restored before end because of https://github.com/sinonjs/sinon/issues/738
+        clock.restore()
+        try {
+          yield this.sender.payRequest(this.paymentParams)
+        } catch (e) {
+        }
+        expect(this.client.listeners('outgoing_fulfill')).to.have.lengthOf(0)
+      })
+
       it('should resolve only when the transfer with the right condition is fulfilled', function * () {
         const stub = sinon.stub(this.client, 'sendQuotedPayment')
         stub.resolves(new Promise((resolve) => {
@@ -332,6 +348,18 @@ describe('Sender Module', function () {
         const fulfillment = yield this.sender.payRequest(this.paymentParams)
         expect(fulfillment).to.equal('correct-fulfillment')
         expect(stub).to.be.calledOnce
+      })
+
+      it('should not leave listeners on the client once the fulfillment has been received', function * () {
+        const stub = sinon.stub(this.client, 'sendQuotedPayment')
+        stub.resolves(new Promise((resolve) => {
+          setImmediate(() => this.client.emit('outgoing_fulfill', {
+            executionCondition: this.paymentParams.executionCondition
+          }, 'fulfillment'))
+          resolve()
+        }))
+        yield this.sender.payRequest(this.paymentParams)
+        expect(this.client.listeners('outgoing_fulfill')).to.have.lengthOf(0)
       })
     })
   })

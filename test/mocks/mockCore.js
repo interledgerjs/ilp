@@ -19,6 +19,10 @@ class Client extends EventEmitter {
     return Promise.resolve()
   }
 
+  disconnect () {
+    return Promise.resolve()
+  }
+
   waitForConnection () {
     return Promise.resolve()
   }
