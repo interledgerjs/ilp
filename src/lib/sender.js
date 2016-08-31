@@ -147,9 +147,11 @@ function createSender (opts) {
             if (transfer.executionCondition === paymentParams.executionCondition) {
               debug('outgoing transfer fulfilled', fulfillment, transfer)
               clearTimeout(transferTimeout)
+              client.removeListener('outgoing_fulfill', fulfillmentListener)
               resolve(fulfillment)
             }
           }
+          // TODO disconnect from the client if there are no more listeners
           client.on('outgoing_fulfill', fulfillmentListener)
         })
       })

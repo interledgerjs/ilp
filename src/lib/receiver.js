@@ -223,10 +223,21 @@ function createReceiver (opts) {
     ])
   }
 
+  /**
+   * Disconnect from the ledger and stop listening for events.
+   *
+   * @return {Promise.<null>} Resolves when the receiver is disconnected.
+   */
+  function stopListening () {
+    client.removeListener('incoming_prepare', autoFulfillConditions)
+    return client.disconnect()
+  }
+
   return Object.assign(eventEmitter, {
     getAddress,
     createRequest,
-    listen
+    listen,
+    stopListening
   })
 }
 

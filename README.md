@@ -243,6 +243,7 @@ of transfers paying for the payment requests created by the Receiver.
     * [~getAddress()](#module_Receiver..createReceiver..getAddress) ⇒ <code>String</code>
     * [~createRequest()](#module_Receiver..createReceiver..createRequest) ⇒ <code>Object</code>
     * [~listen()](#module_Receiver..createReceiver..listen) ⇒ <code>Promise.&lt;null&gt;</code>
+    * [~stopListening()](#module_Receiver..createReceiver..stopListening) ⇒ <code>Promise.&lt;null&gt;</code>
 
 <a name="module_Receiver..createReceiver..getAddress"></a>
 
@@ -274,6 +275,13 @@ receiver created.
 **Kind**: inner method of <code>[createReceiver](#module_Receiver..createReceiver)</code>  
 **Returns**: <code>Promise.&lt;null&gt;</code> - Resolves when the receiver is connected  
 **Emits**: <code>[incoming](#event_incoming)</code>, <code>incoming:requestid</code>  
+<a name="module_Receiver..createReceiver..stopListening"></a>
+
+#### createReceiver~stopListening() ⇒ <code>Promise.&lt;null&gt;</code>
+Disconnect from the ledger and stop listening for events.
+
+**Kind**: inner method of <code>[createReceiver](#module_Receiver..createReceiver)</code>  
+**Returns**: <code>Promise.&lt;null&gt;</code> - Resolves when the receiver is disconnected.  
 <a name="event_incoming"></a>
 
 ### "incoming"
