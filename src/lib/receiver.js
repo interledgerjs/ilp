@@ -92,6 +92,18 @@ function createReceiver (opts) {
 
   /**
    * @private
+   * @param {String} transferId
+   * @param {String} rejectionMessage
+   * @returns {Promise<String>} the rejection message
+   */
+  function rejectIncomingTransfer (transferId, rejectionMessage) {
+    return client.getPlugin()
+      .rejectIncomingTransfer(transferId, rejectionMessage)
+      .then(() => rejectionMessage)
+  }
+
+  /**
+   * @private
    *
    * When we receive transfer notifications, check the transfers
    * and try to fulfill the conditions (which will only work if
@@ -102,12 +114,12 @@ function createReceiver (opts) {
   function autoFulfillConditions (transfer) {
     if (transfer.cancellationCondition) {
       debug('got notification of transfer with cancellationCondition', transfer)
-      return 'cancellation'
+      return rejectIncomingTransfer(transfer.id, 'cancellation')
     }
 
     if (!transfer.executionCondition) {
       debug('got notification of transfer without executionCondition ', transfer)
-      return 'no-execution'
+      return rejectIncomingTransfer(transfer.id, 'no-execution')
     }
 
     // The payment request is extracted from the ilp_header
@@ -115,7 +127,7 @@ function createReceiver (opts) {
 
     if (!packet) {
       debug('got notification of transfer with no packet attached')
-      return 'no-packet'
+      return rejectIncomingTransfer(transfer.id, 'no-packet')
     }
 
     const paymentRequest = {
@@ -130,24 +142,24 @@ function createReceiver (opts) {
 
     if ((new BigNumber(transfer.amount)).lessThan(packet.amount)) {
       debug('got notification of transfer where amount is less than expected (' + packet.amount + ')', transfer)
-      return 'insufficient'
+      return rejectIncomingTransfer(transfer.id, 'insufficient')
     }
 
     if (!allowOverPayment && (new BigNumber(transfer.amount)).greaterThan(packet.amount)) {
       debug('got notification of transfer where amount is greater than expected (' + packet.amount + ')', transfer)
-      return 'overpayment-disallowed'
+      return rejectIncomingTransfer(transfer.id, 'overpayment-disallowed')
     }
 
     if (paymentRequest.expires_at && moment().isAfter(paymentRequest.expires_at)) {
       debug('got notification of transfer with expired packet', transfer)
-      return 'expired'
+      return rejectIncomingTransfer(transfer.id, 'expired')
     }
 
     const conditionPreimage = generateConditionPreimage(hmacKey, paymentRequest)
 
     if (transfer.executionCondition !== toConditionUri(conditionPreimage)) {
       debug('got notification of transfer where executionCondition does not match the one we generate (' + toConditionUri(conditionPreimage) + ')', transfer)
-      return 'condition-mismatch'
+      return rejectIncomingTransfer(transfer.id, 'condition-mismatch')
     }
 
     const fulfillment = toFulfillmentUri(conditionPreimage)
