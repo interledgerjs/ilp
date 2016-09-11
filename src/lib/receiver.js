@@ -24,6 +24,7 @@ const BigNumber = require('bignumber.js')
  * @param  {Buffer} [opts.hmacKey=crypto.randomBytes(32)] 32-byte secret used for generating request conditions
  * @param  {Number} [opts.defaultRequestTimeout=30] Default time in seconds that requests will be valid for
  * @param  {Boolean} [opts.allowOverPayment=false] Allow transfers where the amount is greater than requested
+ * @param {String} [opts.roundingMode=null] Round request amounts with too many decimal places, possible values are "UP", "DOWN", "HALF_UP", "HALF_DOWN" as described in https://mikemcl.github.io/bignumber.js/#constructor-properties
  * @param  {Number} [opts.connectionTimeout=10] Time in seconds to wait for the ledger to connect
  * @return {Receiver}
  */
@@ -40,6 +41,7 @@ function createReceiver (opts) {
   const hmacKey = opts.hmacKey || crypto.randomBytes(32)
   const defaultRequestTimeout = opts.defaultRequestTimeout || 30
   const allowOverPayment = !!opts.allowOverPayment
+  const roundingMode = opts.roundingMode && opts.roundingMode.toUpperCase()
   const connectionTimeout = opts.connectionTimeout || 10
   // the following details are set on listen
   let account
@@ -64,6 +66,7 @@ function createReceiver (opts) {
    * @param  {String} [params.id=uuid.v4()] Unique ID for the request (used to ensure conditions are unique per request)
    * @param  {String} [params.expiresAt=30 seconds from now] Expiry of request
    * @param  {Object} [params.data=null] Additional data to include in the request
+   * @param {String} [params.roundingMode=receiver.roundingMode] Round request amounts with too many decimal places, possible values are "UP", "DOWN", "HALF_UP", "HALF_DOWN" as described in https://mikemcl.github.io/bignumber.js/#constructor-properties
    * @return {Object}
    */
   function createRequest (params) {
@@ -75,7 +78,22 @@ function createReceiver (opts) {
     if (!params.amount) {
       throw new Error('amount is required')
     }
-    const amount = new BigNumber(params.amount)
+    let amount = new BigNumber(params.amount)
+    const roundDirection = (params.roundingMode && params.roundingMode.toUpperCase()) || roundingMode
+    if (BigNumber.hasOwnProperty('ROUND_' + roundDirection)) {
+      debug('rounding amount', amount.toString(), roundDirection)
+      const roundedAmount = amount.round(scale, BigNumber['ROUND_' + roundDirection])
+
+      if (roundedAmount.equals(0)) {
+        throw new Error('rounding ' + amount.toString() + ' ' + roundDirection + ' would reduce it to zero')
+      }
+
+      if (amount.times(2).lessThan(roundedAmount)) {
+        throw new Error('rounding ' + amount.toString() + ' ' + roundDirection + ' would more than double it')
+      }
+
+      amount = roundedAmount
+    }
     if (amount.decimalPlaces() > scale) {
       throw new Error('request amount has more decimal places than the ledger supports (' + scale + ')')
     }

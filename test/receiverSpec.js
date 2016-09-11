@@ -218,6 +218,76 @@ describe('Receiver Module', function () {
         expect(request).to.not.have.keys('data')
       })
 
+      it('should round up request amounts with too many decimal places if receiver.roundingMode=UP', function * () {
+        const receiver = createReceiver({
+          client: this.client,
+          hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+          roundingMode: 'UP'
+        })
+        yield receiver.listen()
+        const request = receiver.createRequest({
+          amount: '10.001'
+        })
+        expect(request.amount).to.equal('10.01')
+      })
+
+      it('should round down request amounts with too many decimal places if receiver.roundRequestAmounts=DOWN', function * () {
+        const receiver = createReceiver({
+          client: this.client,
+          hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+          roundingMode: 'DOWN'
+        })
+        yield receiver.listen()
+        const request = receiver.createRequest({
+          amount: '10.001'
+        })
+        expect(request.amount).to.equal('10')
+      })
+
+      it('should round up request amounts with too many decimal places if roundingMode=UP for the payment request', function * () {
+        const request = this.receiver.createRequest({
+          amount: '10.001',
+          roundingMode: 'UP'
+        })
+        expect(request.amount).to.equal('10.01')
+      })
+
+      it('should round down request amounts with too many decimal places if roundingMode=DOWN for the payment request', function * () {
+        const request = this.receiver.createRequest({
+          amount: '10.001',
+          roundingMode: 'DOWN'
+        })
+        expect(request.amount).to.equal('10')
+      })
+
+      it('should give the roundingMode supplied in the createRequest params precedence over the one passed to createReceiver', function * () {
+        const receiver = createReceiver({
+          client: this.client,
+          hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+          roundingMode: 'DOWN'
+        })
+        yield receiver.listen()
+        const request = receiver.createRequest({
+          amount: '10.001',
+          roundingMode: 'UP'
+        })
+        expect(request.amount).to.equal('10.01')
+      })
+
+      it('should throw an error if rounding would more than double the amount', function * () {
+        expect(() => this.receiver.createRequest({
+          amount: '0.004',
+          roundingMode: 'UP'
+        })).to.throw('rounding 0.004 UP would more than double it')
+      })
+
+      it('should throw an error if rounding would reduce the amount to zero', function * () {
+        expect(() => this.receiver.createRequest({
+          amount: '0.004',
+          roundingMode: 'DOWN'
+        })).to.throw('rounding 0.004 DOWN would reduce it to zero')
+      })
+
       it.skip('should generate the condition from the request details', function () {
 
       })
@@ -436,3 +506,4 @@ describe('Receiver Module', function () {
     })
   })
 })
+
