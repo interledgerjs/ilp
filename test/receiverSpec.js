@@ -143,6 +143,22 @@ describe('Receiver Module', function () {
         }).to.throw('amount is required')
       })
 
+      it('should throw an error if the amount has more decimal places than the ledger supports', function () {
+        expect(() => {
+          this.receiver.createRequest({
+            amount: '10.001'
+          })
+        }).to.throw(/request amount has more decimal places than the ledger supports \(\d+\)/)
+      })
+
+      it('should throw an error if the amount has more significant digits than the ledger supports', function () {
+        expect(() => {
+          this.receiver.createRequest({
+            amount: '1000000000.1'
+          })
+        }).to.throw(/request amount has more significant digits than the ledger supports \(\d+\)/)
+      })
+
       it('should throw an error if expiresAt is invalid', function () {
         expect(() => {
           this.receiver.createRequest({

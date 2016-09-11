@@ -41,7 +41,10 @@ function createReceiver (opts) {
   const defaultRequestTimeout = opts.defaultRequestTimeout || 30
   const allowOverPayment = !!opts.allowOverPayment
   const connectionTimeout = opts.connectionTimeout || 10
+  // the following details are set on listen
   let account
+  let scale
+  let precision
 
   /**
    * Get ILP address
@@ -71,6 +74,13 @@ function createReceiver (opts) {
     if (!params.amount) {
       throw new Error('amount is required')
     }
+    const amount = new BigNumber(params.amount)
+    if (amount.decimalPlaces() > scale) {
+      throw new Error('request amount has more decimal places than the ledger supports (' + scale + ')')
+    }
+    if (amount.precision() > precision) {
+      throw new Error('request amount has more significant digits than the ledger supports (' + precision + ')')
+    }
 
     if (params.expiresAt && !moment(params.expiresAt, moment.ISO_8601).isValid()) {
       throw new Error('expiresAt must be an ISO 8601 timestamp')
@@ -78,7 +88,7 @@ function createReceiver (opts) {
 
     const paymentRequest = {
       address: account + '.' + (params.id || uuid.v4()),
-      amount: String(params.amount),
+      amount: amount.toString(),
       expires_at: params.expiresAt || moment().add(defaultRequestTimeout, 'seconds').toISOString()
     }
 
@@ -214,8 +224,16 @@ function createReceiver (opts) {
     return Promise.race([
       client.connect()
         .then(() => client.waitForConnection())
-        .then(() => client.getPlugin().getAccount())
-        .then((_account) => { account = _account })
+        .then(() => Promise.all([
+          client.getPlugin().getAccount(),
+          client.getPlugin().getInfo()
+        ]))
+        .then((details) => {
+          debug('account: ' + details[0] + ' ledger info: ', details[1])
+          account = details[0]
+          scale = details[1].scale
+          precision = details[1].precision
+        })
         .then(() => debug('receiver listening')),
       new Promise((resolve, reject) => {
         setTimeout(() => reject(new Error('Ledger connection timed out')), connectionTimeout * 1000)
