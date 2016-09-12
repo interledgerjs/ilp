@@ -60,13 +60,14 @@ function createReceiver (opts) {
   /**
    * Create a payment request
    *
-   * @param  {String} params.amount Amount to request
+   * @param  {String} params.amount Amount to request. It will throw an error if the amount has too many decimal places or significant digits, unless the receiver option roundRequestsAmounts is set
    * @param  {String} [params.id=uuid.v4()] Unique ID for the request (used to ensure conditions are unique per request)
    * @param  {String} [params.expiresAt=30 seconds from now] Expiry of request
    * @param  {Object} [params.data=null] Additional data to include in the request
    * @return {Object}
    */
   function createRequest (params) {
+    debug('creating request with params:', params)
     if (!client.getPlugin().isConnected()) {
       throw new Error('receiver must be connected to create requests')
     }
@@ -99,6 +100,7 @@ function createReceiver (opts) {
     const conditionPreimage = generateConditionPreimage(hmacKey, paymentRequest)
     paymentRequest.condition = toConditionUri(conditionPreimage)
 
+    debug('created payment request:', paymentRequest)
     return paymentRequest
   }
 
@@ -144,13 +146,15 @@ function createReceiver (opts) {
 
     const paymentRequest = {
       address: packet.account,
-      amount: packet.amount,
+      amount: (new BigNumber(packet.amount)).toString(),
       expires_at: packet.data && packet.data.expires_at
     }
 
     if (packet.data && packet.data.data) {
       paymentRequest.data = packet.data.data
     }
+
+    debug('parsed payment request from transfer:', paymentRequest)
 
     if ((new BigNumber(transfer.amount)).lessThan(packet.amount)) {
       debug('got notification of transfer where amount is less than expected (' + packet.amount + ')', transfer)

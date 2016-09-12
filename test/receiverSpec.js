@@ -361,6 +361,22 @@ describe('Receiver Module', function () {
           // because we're instantiating an extra receiver there will actually be two events
           expect(results).to.contain('sent')
         })
+
+        it('should handle trailing zeros in the packet amount', function * () {
+          const request = this.receiver.createRequest({
+            amount: 1,
+            id: '22e315dc-3f99-4f89-9914-1987ceaa906d',
+            expiresAt: this.transfer.data.ilp_header.data.expires_at
+          })
+          const results = yield this.client.emitAsync('incoming_prepare', _.merge(this.transfer, {
+            data: {
+              ilp_header: {
+                amount: '1.00'
+              }
+            }
+          }))
+          expect(results).to.contain('sent')
+        })
       })
     })
 
