@@ -6,10 +6,7 @@ class Client extends EventEmitter {
   constructor (opts) {
     super()
     this.account = opts.account
-  }
-
-  getPlugin () {
-    return {
+    this.plugin = {
       getAccount: () => Promise.resolve(this.account),
       getInfo: () => ({
         scale: 2,
@@ -21,6 +18,10 @@ class Client extends EventEmitter {
         return Promise.resolve()
       }
     }
+  }
+
+  getPlugin () {
+    return this.plugin
   }
 
   connect () {
