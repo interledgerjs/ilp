@@ -212,7 +212,9 @@ function createReceiver (opts) {
 
     if (transfer.executionCondition !== toConditionUri(conditionPreimage)) {
       debug('got notification of transfer where executionCondition does not match the one we generate (' + toConditionUri(conditionPreimage) + ')', transfer)
-      return rejectIncomingTransfer(transfer.id, 'condition-mismatch')
+      // Do not reject the incoming transfer here because it may have been created
+      // by another receiver with a different hmacKey listening on the same account
+      return 'condition-mismatch'
     }
 
     const fulfillment = toFulfillmentUri(conditionPreimage)
