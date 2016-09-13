@@ -262,6 +262,7 @@ Create a payment request
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
 | params.amount | <code>String</code> |  | Amount to request. It will throw an error if the amount has too many decimal places or significant digits, unless the receiver option roundRequestsAmounts is set |
+| [params.account] | <code>String</code> | <code>client.getAccount()</code> | Optionally specify an account other than the one the receiver would get from the connected plugin |
 | [params.id] | <code>String</code> | <code>uuid.v4()</code> | Unique ID for the request (used to ensure conditions are unique per request) |
 | [params.expiresAt] | <code>String</code> | <code>30 seconds from now</code> | Expiry of request |
 | [params.data] | <code>Object</code> | <code></code> | Additional data to include in the request |

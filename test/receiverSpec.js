@@ -181,6 +181,14 @@ describe('Receiver Module', function () {
         expect(request.address).to.match(/^ilpdemo\.blue\.bob/)
       })
 
+      it('should allow a different account to be specified', function () {
+        const request = this.receiver.createRequest({
+          amount: 10,
+          account: 'something.else'
+        })
+        expect(request.address).to.match(/^something\.else/)
+      })
+
       it('should create a request-specific address using the account and id', function () {
         const request = this.receiver.createRequest({
           amount: 10,

@@ -92,6 +92,7 @@ function createReceiver (opts) {
    * Create a payment request
    *
    * @param  {String} params.amount Amount to request. It will throw an error if the amount has too many decimal places or significant digits, unless the receiver option roundRequestsAmounts is set
+   * @param  {String} [params.account=client.getAccount()] Optionally specify an account other than the one the receiver would get from the connected plugin
    * @param  {String} [params.id=uuid.v4()] Unique ID for the request (used to ensure conditions are unique per request)
    * @param  {String} [params.expiresAt=30 seconds from now] Expiry of request
    * @param  {Object} [params.data=null] Additional data to include in the request
@@ -125,7 +126,7 @@ function createReceiver (opts) {
     }
 
     const paymentRequest = {
-      address: account + '.' + (params.id || uuid.v4()),
+      address: (params.account || account) + '.' + (params.id || uuid.v4()),
       amount: amount.toString(),
       expires_at: params.expiresAt || moment().add(defaultRequestTimeout, 'seconds').toISOString()
     }
