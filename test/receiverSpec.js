@@ -143,6 +143,22 @@ describe('Receiver Module', function () {
         }).to.throw('amount is required')
       })
 
+      it('should throw an error if the amount has more decimal places than the ledger supports', function () {
+        expect(() => {
+          this.receiver.createRequest({
+            amount: '10.001'
+          })
+        }).to.throw(/request amount has more decimal places than the ledger supports \(\d+\)/)
+      })
+
+      it('should throw an error if the amount has more significant digits than the ledger supports', function () {
+        expect(() => {
+          this.receiver.createRequest({
+            amount: '1000000000.1'
+          })
+        }).to.throw(/request amount has more significant digits than the ledger supports \(\d+\)/)
+      })
+
       it('should throw an error if expiresAt is invalid', function () {
         expect(() => {
           this.receiver.createRequest({
@@ -200,6 +216,76 @@ describe('Receiver Module', function () {
           amount: 10
         })
         expect(request).to.not.have.keys('data')
+      })
+
+      it('should round up request amounts with too many decimal places if receiver.roundingMode=UP', function * () {
+        const receiver = createReceiver({
+          client: this.client,
+          hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+          roundingMode: 'UP'
+        })
+        yield receiver.listen()
+        const request = receiver.createRequest({
+          amount: '10.001'
+        })
+        expect(request.amount).to.equal('10.01')
+      })
+
+      it('should round down request amounts with too many decimal places if receiver.roundRequestAmounts=DOWN', function * () {
+        const receiver = createReceiver({
+          client: this.client,
+          hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+          roundingMode: 'DOWN'
+        })
+        yield receiver.listen()
+        const request = receiver.createRequest({
+          amount: '10.001'
+        })
+        expect(request.amount).to.equal('10')
+      })
+
+      it('should round up request amounts with too many decimal places if roundingMode=UP for the payment request', function * () {
+        const request = this.receiver.createRequest({
+          amount: '10.001',
+          roundingMode: 'UP'
+        })
+        expect(request.amount).to.equal('10.01')
+      })
+
+      it('should round down request amounts with too many decimal places if roundingMode=DOWN for the payment request', function * () {
+        const request = this.receiver.createRequest({
+          amount: '10.001',
+          roundingMode: 'DOWN'
+        })
+        expect(request.amount).to.equal('10')
+      })
+
+      it('should give the roundingMode supplied in the createRequest params precedence over the one passed to createReceiver', function * () {
+        const receiver = createReceiver({
+          client: this.client,
+          hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+          roundingMode: 'DOWN'
+        })
+        yield receiver.listen()
+        const request = receiver.createRequest({
+          amount: '10.001',
+          roundingMode: 'UP'
+        })
+        expect(request.amount).to.equal('10.01')
+      })
+
+      it('should throw an error if rounding would more than double the amount', function * () {
+        expect(() => this.receiver.createRequest({
+          amount: '0.004',
+          roundingMode: 'UP'
+        })).to.throw('rounding 0.004 UP would more than double it')
+      })
+
+      it('should throw an error if rounding would reduce the amount to zero', function * () {
+        expect(() => this.receiver.createRequest({
+          amount: '0.004',
+          roundingMode: 'DOWN'
+        })).to.throw('rounding 0.004 DOWN would reduce it to zero')
       })
 
       it.skip('should generate the condition from the request details', function () {
@@ -345,6 +431,22 @@ describe('Receiver Module', function () {
           // because we're instantiating an extra receiver there will actually be two events
           expect(results).to.contain('sent')
         })
+
+        it('should handle trailing zeros in the packet amount', function * () {
+          const request = this.receiver.createRequest({
+            amount: 1,
+            id: '22e315dc-3f99-4f89-9914-1987ceaa906d',
+            expiresAt: this.transfer.data.ilp_header.data.expires_at
+          })
+          const results = yield this.client.emitAsync('incoming_prepare', _.merge(this.transfer, {
+            data: {
+              ilp_header: {
+                amount: '1.00'
+              }
+            }
+          }))
+          expect(results).to.contain('sent')
+        })
       })
     })
 
@@ -404,3 +506,4 @@ describe('Receiver Module', function () {
     })
   })
 })
+

@@ -236,6 +236,7 @@ of transfers paying for the payment requests created by the Receiver.
 | [opts.hmacKey] | <code>Buffer</code> | <code>crypto.randomBytes(32)</code> | 32-byte secret used for generating request conditions |
 | [opts.defaultRequestTimeout] | <code>Number</code> | <code>30</code> | Default time in seconds that requests will be valid for |
 | [opts.allowOverPayment] | <code>Boolean</code> | <code>false</code> | Allow transfers where the amount is greater than requested |
+| [opts.roundingMode] | <code>String</code> | <code></code> | Round request amounts with too many decimal places, possible values are "UP", "DOWN", "HALF_UP", "HALF_DOWN" as described in https://mikemcl.github.io/bignumber.js/#constructor-properties |
 | [opts.connectionTimeout] | <code>Number</code> | <code>10</code> | Time in seconds to wait for the ledger to connect |
 
 
@@ -260,10 +261,11 @@ Create a payment request
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
-| params.amount | <code>String</code> |  | Amount to request |
+| params.amount | <code>String</code> |  | Amount to request. It will throw an error if the amount has too many decimal places or significant digits, unless the receiver option roundRequestsAmounts is set |
 | [params.id] | <code>String</code> | <code>uuid.v4()</code> | Unique ID for the request (used to ensure conditions are unique per request) |
 | [params.expiresAt] | <code>String</code> | <code>30 seconds from now</code> | Expiry of request |
 | [params.data] | <code>Object</code> | <code></code> | Additional data to include in the request |
+| [params.roundingMode] | <code>String</code> | <code>receiver.roundingMode</code> | Round request amounts with too many decimal places, possible values are "UP", "DOWN", "HALF_UP", "HALF_DOWN" as described in https://mikemcl.github.io/bignumber.js/#constructor-properties |
 
 <a name="module_Receiver..createReceiver..listen"></a>
 

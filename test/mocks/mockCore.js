@@ -11,6 +11,10 @@ class Client extends EventEmitter {
   getPlugin () {
     return {
       getAccount: () => Promise.resolve(this.account),
+      getInfo: () => ({
+        scale: 2,
+        precision: 10
+      }),
       isConnected: () => true,
       rejectIncomingTransfer: () => {
         this.rejected = true

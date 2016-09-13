@@ -24,6 +24,7 @@ const BigNumber = require('bignumber.js')
  * @param  {Buffer} [opts.hmacKey=crypto.randomBytes(32)] 32-byte secret used for generating request conditions
  * @param  {Number} [opts.defaultRequestTimeout=30] Default time in seconds that requests will be valid for
  * @param  {Boolean} [opts.allowOverPayment=false] Allow transfers where the amount is greater than requested
+ * @param {String} [opts.roundingMode=null] Round request amounts with too many decimal places, possible values are "UP", "DOWN", "HALF_UP", "HALF_DOWN" as described in https://mikemcl.github.io/bignumber.js/#constructor-properties
  * @param  {Number} [opts.connectionTimeout=10] Time in seconds to wait for the ledger to connect
  * @return {Receiver}
  */
@@ -40,8 +41,12 @@ function createReceiver (opts) {
   const hmacKey = opts.hmacKey || crypto.randomBytes(32)
   const defaultRequestTimeout = opts.defaultRequestTimeout || 30
   const allowOverPayment = !!opts.allowOverPayment
+  const roundingMode = opts.roundingMode && opts.roundingMode.toUpperCase()
   const connectionTimeout = opts.connectionTimeout || 10
+  // the following details are set on listen
   let account
+  let scale
+  let precision
 
   /**
    * Get ILP address
@@ -54,16 +59,47 @@ function createReceiver (opts) {
     }
     return account
   }
+
+  /**
+   * @private
+   *
+   * Round the amount based on the rounding mode specified.
+   * Throws errors if rounding the amount would increase or decrease it too much.
+   */
+  function roundAmount (amount, scale, roundDirection) {
+    if (!roundDirection) {
+      return amount
+    }
+    const roundingMode = 'ROUND_' + roundDirection.toUpperCase()
+    if (!BigNumber.hasOwnProperty(roundingMode)) {
+      throw new Error('invalid rounding mode: ' + roundDirection)
+    }
+    const roundedAmount = amount.round(scale, BigNumber[roundingMode])
+    debug('rounded amount ' + amount.toString() + ' ' + roundDirection + ' to ' + roundedAmount.toString())
+
+    if (roundedAmount.equals(0)) {
+      throw new Error('rounding ' + amount.toString() + ' ' + roundDirection + ' would reduce it to zero')
+    }
+
+    if (amount.times(2).lessThan(roundedAmount)) {
+      throw new Error('rounding ' + amount.toString() + ' ' + roundDirection + ' would more than double it')
+    }
+
+    return roundedAmount
+  }
+
   /**
    * Create a payment request
    *
-   * @param  {String} params.amount Amount to request
+   * @param  {String} params.amount Amount to request. It will throw an error if the amount has too many decimal places or significant digits, unless the receiver option roundRequestsAmounts is set
    * @param  {String} [params.id=uuid.v4()] Unique ID for the request (used to ensure conditions are unique per request)
    * @param  {String} [params.expiresAt=30 seconds from now] Expiry of request
    * @param  {Object} [params.data=null] Additional data to include in the request
+   * @param {String} [params.roundingMode=receiver.roundingMode] Round request amounts with too many decimal places, possible values are "UP", "DOWN", "HALF_UP", "HALF_DOWN" as described in https://mikemcl.github.io/bignumber.js/#constructor-properties
    * @return {Object}
    */
   function createRequest (params) {
+    debug('creating request with params:', params)
     if (!client.getPlugin().isConnected()) {
       throw new Error('receiver must be connected to create requests')
     }
@@ -72,13 +108,25 @@ function createReceiver (opts) {
       throw new Error('amount is required')
     }
 
+    const amount = roundAmount(
+      new BigNumber(params.amount),
+      scale,
+      params.roundingMode || roundingMode
+    )
+    if (amount.decimalPlaces() > scale) {
+      throw new Error('request amount has more decimal places than the ledger supports (' + scale + ')')
+    }
+    if (amount.precision() > precision) {
+      throw new Error('request amount has more significant digits than the ledger supports (' + precision + ')')
+    }
+
     if (params.expiresAt && !moment(params.expiresAt, moment.ISO_8601).isValid()) {
       throw new Error('expiresAt must be an ISO 8601 timestamp')
     }
 
     const paymentRequest = {
       address: account + '.' + (params.id || uuid.v4()),
-      amount: String(params.amount),
+      amount: amount.toString(),
       expires_at: params.expiresAt || moment().add(defaultRequestTimeout, 'seconds').toISOString()
     }
 
@@ -89,6 +137,7 @@ function createReceiver (opts) {
     const conditionPreimage = generateConditionPreimage(hmacKey, paymentRequest)
     paymentRequest.condition = toConditionUri(conditionPreimage)
 
+    debug('created payment request:', paymentRequest)
     return paymentRequest
   }
 
@@ -134,13 +183,15 @@ function createReceiver (opts) {
 
     const paymentRequest = {
       address: packet.account,
-      amount: packet.amount,
+      amount: (new BigNumber(packet.amount)).toString(),
       expires_at: packet.data && packet.data.expires_at
     }
 
     if (packet.data && packet.data.data) {
       paymentRequest.data = packet.data.data
     }
+
+    debug('parsed payment request from transfer:', paymentRequest)
 
     if ((new BigNumber(transfer.amount)).lessThan(packet.amount)) {
       debug('got notification of transfer where amount is less than expected (' + packet.amount + ')', transfer)
@@ -214,8 +265,16 @@ function createReceiver (opts) {
     return Promise.race([
       client.connect()
         .then(() => client.waitForConnection())
-        .then(() => client.getPlugin().getAccount())
-        .then((_account) => { account = _account })
+        .then(() => Promise.all([
+          client.getPlugin().getAccount(),
+          client.getPlugin().getInfo()
+        ]))
+        .then((details) => {
+          debug('account: ' + details[0] + ' ledger info: ', details[1])
+          account = details[0]
+          scale = details[1].scale
+          precision = details[1].precision
+        })
         .then(() => debug('receiver listening')),
       new Promise((resolve, reject) => {
         setTimeout(() => reject(new Error('Ledger connection timed out')), connectionTimeout * 1000)
