@@ -41,8 +41,11 @@ function createReceiver (opts) {
   const hmacKey = opts.hmacKey || crypto.randomBytes(32)
   const defaultRequestTimeout = opts.defaultRequestTimeout || 30
   const allowOverPayment = !!opts.allowOverPayment
-  const roundingMode = opts.roundingMode && opts.roundingMode.toUpperCase()
   const connectionTimeout = opts.connectionTimeout || 10
+  const roundingMode = opts.roundingMode && opts.roundingMode.toUpperCase()
+  if (roundingMode && !BigNumber.hasOwnProperty('ROUND_' + roundingMode)) {
+    throw new Error('invalid roundingMode: ' + opts.roundingMode)
+  }
   // the following details are set on listen
   let account
   let scale
@@ -72,7 +75,7 @@ function createReceiver (opts) {
     }
     const roundingMode = 'ROUND_' + roundDirection.toUpperCase()
     if (!BigNumber.hasOwnProperty(roundingMode)) {
-      throw new Error('invalid rounding mode: ' + roundDirection)
+      throw new Error('invalid roundingMode: ' + roundDirection)
     }
     const roundedAmount = amount.round(scale, BigNumber[roundingMode])
     debug('rounded amount ' + amount.toString() + ' ' + roundDirection + ' to ' + roundedAmount.toString())

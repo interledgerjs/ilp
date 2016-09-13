@@ -49,6 +49,22 @@ describe('Receiver Module', function () {
       }).to.throw('hmacKey must be 32-byte Buffer if supplied')
     })
 
+    it('should throw an error if the roundingMode is invalid', function () {
+      expect(() => createReceiver({
+        client: this.client,
+        hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+        roundingMode: 'blah'
+      })).to.throw('invalid roundingMode: blah')
+    })
+
+    it('should accept lower case roundingMode', function () {
+      expect(() => createReceiver({
+        client: this.client,
+        hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+        roundingMode: 'up'
+      })).to.not.throw(/.*/)
+    })
+
     it('should return an object that is an EventEmitter with the `createRequest` and `listen` functions', function () {
       const receiver = createReceiver({
         client: this.client,
@@ -166,6 +182,15 @@ describe('Receiver Module', function () {
             expiresAt: 'blah'
           })
         }).to.throw('expiresAt must be an ISO 8601 timestamp')
+      })
+
+      it('should throw an error if the roundingMode is invalid', function () {
+        expect(() => {
+          this.receiver.createRequest({
+            amount: 10,
+            roundingMode: 'blah'
+          })
+        }).to.throw('invalid roundingMode: blah')
       })
 
       it('should return a JSON object', function () {

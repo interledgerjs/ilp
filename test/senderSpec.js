@@ -433,6 +433,25 @@ describe('Sender Module', function () {
         expect(fulfillmentStub).to.be.calledOnce
         expect(results).to.deep.equal(['fulfillment', 'fulfillment'])
       })
+
+      it('should reject if the payment is a duplicate but getting the fulfillment fails', function * () {
+        const DuplicateIdError = CustomError('DuplicateIdError', { message: 'Duplicate id' })
+
+        const stub = sinon.stub(this.client, 'sendQuotedPayment')
+        stub.rejects(DuplicateIdError('id has already been used'))
+        const fulfillmentStub = sinon.stub(this.client.plugin, 'getFulfillment')
+          .rejects(new Error('something bad happened'))
+
+        let error
+        try {
+          yield this.sender.payRequest(this.paymentParams)
+        } catch (e) {
+          error = e
+        }
+        expect(error.message).to.equal('something bad happened')
+        expect(stub).to.be.calledOnce
+        expect(fulfillmentStub).to.be.calledOnce
+      })
     })
   })
 })
