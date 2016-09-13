@@ -33,6 +33,7 @@
   },
   "homepage": "https://github.com/interledger/js-ilp#readme",
   "dependencies": {
+    "aguid": "^1.0.4",
     "bignumber.js": "^2.4.0",
     "canonical-json": "0.0.4",
     "debug": "^2.2.0",
@@ -45,6 +46,7 @@
     "chai": "^3.5.0",
     "chai-as-promised": "^5.3.0",
     "co-mocha": "^1.1.2",
+    "custom-error-instance": "^2.1.1",
     "cz-conventional-changelog": "^1.1.6",
     "eslint": "^3.1.1",
     "eslint-config-standard": "^5.3.5",

@@ -159,7 +159,8 @@ Returns an ILP Sender to quote and pay for payment requests.
 | opts._plugin | <code>LedgerPlugin</code> |  | Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
 | opts | <code>Objct</code> |  | Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
 | [opts.client] | <code>ilp-core.Client</code> | <code>create a new instance with the plugin and opts</code> | [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options |
-| [opts.maxHoldDuration] | <code>Buffer</code> | <code>10</code> | Maximum time in seconds to allow money to be held for |
+| [opts.maxHoldDuration] | <code>Number</code> | <code>10</code> | Maximum time in seconds to allow money to be held for |
+| [opts.uuidSeed] | <code>Buffer</code> | <code>crypto.randomBytes(32)</code> | Seed to use for generating transfer UUIDs |
 
 
 * [~createSender(opts)](#module_Sender..createSender) ⇒ <code>Sender</code>
@@ -209,7 +210,7 @@ Quote a request from a receiver
 <a name="module_Sender..createSender..payRequest"></a>
 
 #### createSender~payRequest(paymentParams) ⇒ <code>Promise.&lt;String&gt;</code>
-Pay for a payment request
+Pay for a payment request. Uses a determinstic transfer id so that paying is idempotent (as long as ledger plugins correctly reject multiple transfers with the same id)
 
 **Kind**: inner method of <code>[createSender](#module_Sender..createSender)</code>  
 **Returns**: <code>Promise.&lt;String&gt;</code> - Resolves with the condition fulfillment  

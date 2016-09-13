@@ -16,7 +16,8 @@ class Client extends EventEmitter {
       rejectIncomingTransfer: () => {
         this.rejected = true
         return Promise.resolve()
-      }
+      },
+      getFulfillment: () => 'cf:fulfillment'
     }
   }
 
