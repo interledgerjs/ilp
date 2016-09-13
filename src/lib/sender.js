@@ -3,6 +3,8 @@
 const moment = require('moment')
 const Client = require('ilp-core').Client
 const debug = require('debug')('ilp:sender')
+const deterministicUuid = require('aguid')
+const crypto = require('crypto')
 
 /**
  * @module Sender
@@ -14,13 +16,15 @@ const debug = require('debug')('ilp:sender')
  * @param  {LedgerPlugin} opts._plugin Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
  * @param  {Objct}  opts Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
  * @param  {ilp-core.Client} [opts.client=create a new instance with the plugin and opts] [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options
- * @param  {Buffer} [opts.maxHoldDuration=10] Maximum time in seconds to allow money to be held for
+ * @param  {Number} [opts.maxHoldDuration=10] Maximum time in seconds to allow money to be held for
+ * @param  {Buffer} [opts.uuidSeed=crypto.randomBytes(32)] Seed to use for generating transfer UUIDs
  * @return {Sender}
  */
 function createSender (opts) {
   const client = opts.client || new Client(opts)
 
   const maxHoldDuration = opts.maxHoldDuration || 10
+  const uuidSeed = (Buffer.isBuffer(opts.uuidSeed) ? opts.uuidSeed : crypto.randomBytes(32)).toString('hex')
 
   /**
    * Get a fixed source amount quote
@@ -126,25 +130,52 @@ function createSender (opts) {
   }
 
   /**
-   * Pay for a payment request
+   * Pay for a payment request. Uses a determinstic transfer id so that paying is idempotent (as long as ledger plugins correctly reject multiple transfers with the same id)
    * @param  {PaymentParams} paymentParams Respose from quoteRequest
    * @return {Promise.<String>} Resolves with the condition fulfillment
    */
   function payRequest (paymentParams) {
+    // Use a deterministic transfer id so that paying is idempotent
+    // Include the uuidSeed so that an attacker could not block our payments by squatting on the transfer id
+    const transferId = deterministicUuid(uuidSeed + paymentParams.executionCondition)
+    const payment = Object.assign(paymentParams, {
+      uuid: transferId
+    })
+    debug('sending payment:', payment)
     return client.waitForConnection()
-      .then(() => client.sendQuotedPayment(paymentParams))
-      .then(() => {
-        debug('payment sent', paymentParams)
+      .then(() => client.sendQuotedPayment(payment))
+      .catch((err) => {
+        if (err.name !== 'DuplicateIdError') {
+          throw err
+        }
+
+        // If it's a duplicate, try getting the fulfillment for that transfer
+        // TODO also get the fulfillment if a transfer is rejected because the condition has already been fulfilled by another transfer
+        return client.getPlugin().getFulfillment(transferId)
+          .catch((err) => {
+            // If the transfer hasn't yet been fulfilled we'll wait for the event in the next handler
+            if (err.name === 'MissingFulfillmentError') {
+              return null
+            }
+            throw err
+          })
+      })
+      .then((fulfillment) => {
+        if (fulfillment) {
+          debug('payment was already fulfilled: ' + fulfillment)
+          return fulfillment
+        }
+        debug('payment sent', payment)
         return new Promise((resolve, reject) => {
           // TODO just have one listener for the client
           const transferTimeout = setTimeout(() => {
             debug('transfer timed out')
             client.removeListener('outgoing_fulfill', fulfillmentListener)
             reject(new Error('Transfer expired, money returned'))
-          }, moment(paymentParams.expiresAt).diff(moment()))
+          }, moment(payment.expiresAt).diff(moment()))
 
           function fulfillmentListener (transfer, fulfillment) {
-            if (transfer.executionCondition === paymentParams.executionCondition) {
+            if (transfer.executionCondition === payment.executionCondition) {
               debug('outgoing transfer fulfilled', fulfillment, transfer)
               clearTimeout(transferTimeout)
               client.removeListener('outgoing_fulfill', fulfillmentListener)

@@ -11,6 +11,7 @@ const expect = chai.expect
 const timekeeper = require('timekeeper')
 const _ = require('lodash')
 const mockRequire = require('mock-require')
+const CustomError = require('custom-error-instance')
 
 const createSender = require('../src/lib/sender').createSender
 const MockClient = require('./mocks/mockCore').Client
@@ -30,7 +31,8 @@ describe('Sender Module', function () {
   describe('createSender', function () {
     it('should return an object with the `quoteRequest` and `payRequest` functions', function () {
       const sender = createSender({
-        client: this.client
+        client: this.client,
+        uuidSeed: Buffer.from('f73e2739c0f0ff4c9b7cac6678c89a59ee6cb8911b39d39afbf2fef9e77bc9c3', 'hex')
       })
       expect(sender).to.be.a('object')
       expect(sender.quoteRequest).to.be.a('function')
@@ -64,7 +66,8 @@ describe('Sender Module', function () {
     beforeEach(function () {
       this.paymentParams = _.cloneDeep(paymentParams)
       this.sender = createSender({
-        client: this.client
+        client: this.client,
+        uuidSeed: Buffer.from('f73e2739c0f0ff4c9b7cac6678c89a59ee6cb8911b39d39afbf2fef9e77bc9c3', 'hex')
       })
     })
 
@@ -314,6 +317,18 @@ describe('Sender Module', function () {
         }
       })
 
+      it('should reject if client.sendQuotedPayment rejects', function * () {
+        const stub = sinon.stub(this.client, 'sendQuotedPayment')
+        stub.rejects(new Error('something went wrong'))
+        let error
+        try {
+          yield this.sender.payRequest(this.paymentParams)
+        } catch (e) {
+          error = e
+        }
+        expect(error.message).to.equal('something went wrong')
+      })
+
       it('should remove the listener on the client if the transfer times out', function * () {
         timekeeper.reset()
         const clock = sinon.useFakeTimers(0)
@@ -361,6 +376,83 @@ describe('Sender Module', function () {
         yield this.sender.payRequest(this.paymentParams)
         expect(this.client.listeners('outgoing_fulfill')).to.have.lengthOf(0)
       })
+
+      it('should use a deterministic transfer id to make payment idempotent', function * () {
+        const spy = sinon.spy(this.client, 'sendQuotedPayment')
+        this.sender.payRequest(this.paymentParams)
+        this.sender.payRequest(this.paymentParams)
+        yield Promise.resolve()
+        expect(spy).to.have.always.been.calledWithMatch({
+          uuid: 'a3ef0628-2427-4ed2-839d-e34861932b22'
+        })
+      })
+
+      it('should return the fulfillment even when the payment is a duplicate but the original has not yet been fulfilled', function * () {
+        const DuplicateIdError = CustomError('DuplicateIdError', { message: 'Duplicate id' })
+        const MissingFulfillmentError = CustomError('MissingFulfillmentError', { message: 'Missing fulfillment' })
+
+        const stub = sinon.stub(this.client, 'sendQuotedPayment')
+        stub.onFirstCall().resolves(new Promise((resolve) => {
+            setImmediate(() => this.client.emit('outgoing_fulfill', {
+              executionCondition: this.paymentParams.executionCondition
+            }, 'fulfillment'))
+            resolve()
+          }))
+        stub.onSecondCall().rejects(DuplicateIdError('id has already been used'))
+        const fulfillmentStub = sinon.stub(this.client.plugin, 'getFulfillment')
+          .rejects(MissingFulfillmentError('not yet fulfilled'))
+
+        const results = yield Promise.all([
+          this.sender.payRequest(this.paymentParams),
+          this.sender.payRequest(this.paymentParams)
+        ])
+        expect(stub).to.be.calledTwice
+        expect(fulfillmentStub).to.be.calledOnce
+        expect(results).to.deep.equal(['fulfillment', 'fulfillment'])
+      })
+
+      it('should return the fulfillment even when the payment is a duplicate and the original has already been fulfilled', function * () {
+        const DuplicateIdError = CustomError('DuplicateIdError', { message: 'Duplicate id' })
+
+        const stub = sinon.stub(this.client, 'sendQuotedPayment')
+        stub.onFirstCall().resolves(new Promise((resolve) => {
+            setImmediate(() => this.client.emit('outgoing_fulfill', {
+              executionCondition: this.paymentParams.executionCondition
+            }, 'fulfillment'))
+            resolve()
+          }))
+        stub.onSecondCall().rejects(DuplicateIdError('id has already been used'))
+        const fulfillmentStub = sinon.stub(this.client.plugin, 'getFulfillment')
+          .resolves('fulfillment')
+
+        const results = yield Promise.all([
+          this.sender.payRequest(this.paymentParams),
+          this.sender.payRequest(this.paymentParams)
+        ])
+        expect(stub).to.be.calledTwice
+        expect(fulfillmentStub).to.be.calledOnce
+        expect(results).to.deep.equal(['fulfillment', 'fulfillment'])
+      })
+
+      it('should reject if the payment is a duplicate but getting the fulfillment fails', function * () {
+        const DuplicateIdError = CustomError('DuplicateIdError', { message: 'Duplicate id' })
+
+        const stub = sinon.stub(this.client, 'sendQuotedPayment')
+        stub.rejects(DuplicateIdError('id has already been used'))
+        const fulfillmentStub = sinon.stub(this.client.plugin, 'getFulfillment')
+          .rejects(new Error('something bad happened'))
+
+        let error
+        try {
+          yield this.sender.payRequest(this.paymentParams)
+        } catch (e) {
+          error = e
+        }
+        expect(error.message).to.equal('something bad happened')
+        expect(stub).to.be.calledOnce
+        expect(fulfillmentStub).to.be.calledOnce
+      })
     })
   })
 })
+
