@@ -59,6 +59,35 @@ function createReceiver (opts) {
     }
     return account
   }
+
+  /**
+   * @private
+   *
+   * Round the amount based on the rounding mode specified.
+   * Throws errors if rounding the amount would increase or decrease it too much.
+   */
+  function roundAmount (amount, scale, roundDirection) {
+    if (!roundDirection) {
+      return amount
+    }
+    const roundingMode = 'ROUND_' + roundDirection.toUpperCase()
+    if (!BigNumber.hasOwnProperty(roundingMode)) {
+      throw new Error('invalid rounding mode: ' + roundDirection)
+    }
+    const roundedAmount = amount.round(scale, BigNumber[roundingMode])
+    debug('rounded amount ' + amount.toString() + ' ' + roundDirection + ' to ' + roundedAmount.toString())
+
+    if (roundedAmount.equals(0)) {
+      throw new Error('rounding ' + amount.toString() + ' ' + roundDirection + ' would reduce it to zero')
+    }
+
+    if (amount.times(2).lessThan(roundedAmount)) {
+      throw new Error('rounding ' + amount.toString() + ' ' + roundDirection + ' would more than double it')
+    }
+
+    return roundedAmount
+  }
+
   /**
    * Create a payment request
    *
@@ -78,22 +107,12 @@ function createReceiver (opts) {
     if (!params.amount) {
       throw new Error('amount is required')
     }
-    let amount = new BigNumber(params.amount)
-    const roundDirection = (params.roundingMode && params.roundingMode.toUpperCase()) || roundingMode
-    if (BigNumber.hasOwnProperty('ROUND_' + roundDirection)) {
-      debug('rounding amount', amount.toString(), roundDirection)
-      const roundedAmount = amount.round(scale, BigNumber['ROUND_' + roundDirection])
 
-      if (roundedAmount.equals(0)) {
-        throw new Error('rounding ' + amount.toString() + ' ' + roundDirection + ' would reduce it to zero')
-      }
-
-      if (amount.times(2).lessThan(roundedAmount)) {
-        throw new Error('rounding ' + amount.toString() + ' ' + roundDirection + ' would more than double it')
-      }
-
-      amount = roundedAmount
-    }
+    const amount = roundAmount(
+      new BigNumber(params.amount),
+      scale,
+      params.roundingMode || roundingMode
+    )
     if (amount.decimalPlaces() > scale) {
       throw new Error('request amount has more decimal places than the ledger supports (' + scale + ')')
     }
