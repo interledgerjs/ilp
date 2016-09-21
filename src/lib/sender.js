@@ -191,11 +191,21 @@ function createSender (opts) {
       })
   }
 
+  /**
+   * Disconnect from the ledger and stop listening for events.
+   *
+   * @return {Promise.<null>} Resolves when the sender is disconnected.
+   */
+  function stopListening () {
+    return client.disconnect()
+  }
+
   return {
     quoteSourceAmount,
     quoteDestinationAmount,
     quoteRequest,
-    payRequest
+    payRequest,
+    stopListening
   }
 }
 
