@@ -37,7 +37,7 @@ This is a low-level interface to ILP, largely intended for building ILP into oth
 * Amount negotiation
 * Communication of requests from recipient to sender
 
-For a higher-level interface that includes the above features, see the [Wallet Client](https://github.com/interledger/five-bells-wallet-client).  
+For a higher-level interface that includes the above features, see the [Wallet Client](https://github.com/interledger/five-bells-wallet-client).
 
 
 ## Installation
@@ -161,6 +161,7 @@ Returns an ILP Sender to quote and pay for payment requests.
 | opts._plugin | <code>LedgerPlugin</code> |  | Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
 | opts | <code>Objct</code> |  | Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
 | [opts.client] | <code>ilp-core.Client</code> | <code>create a new instance with the plugin and opts</code> | [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options |
+| [opts.connectors] | <code>Array</code> | <code>[]</code> | Array of connectors to use. Some ledgers provide recommended connectors while others do not, in which case this would be required to send Interledger payments. |
 | [opts.maxHoldDuration] | <code>Number</code> | <code>10</code> | Maximum time in seconds to allow money to be held for |
 | [opts.uuidSeed] | <code>Buffer</code> | <code>crypto.randomBytes(32)</code> | Seed to use for generating transfer UUIDs |
 

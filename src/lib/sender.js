@@ -16,12 +16,15 @@ const crypto = require('crypto')
  * @param  {LedgerPlugin} opts._plugin Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
  * @param  {Objct}  opts Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
  * @param  {ilp-core.Client} [opts.client=create a new instance with the plugin and opts] [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options
+ * @param  {Array}  [opts.connectors=[]] Array of connectors to use. Some ledgers provide recommended connectors while others do not, in which case this would be required to send Interledger payments.
  * @param  {Number} [opts.maxHoldDuration=10] Maximum time in seconds to allow money to be held for
  * @param  {Buffer} [opts.uuidSeed=crypto.randomBytes(32)] Seed to use for generating transfer UUIDs
  * @return {Sender}
  */
 function createSender (opts) {
-  const client = opts.client || new Client(opts)
+  const client = opts.client || new Client(opts, {
+    connectors: opts.connectors
+  })
 
   const maxHoldDuration = opts.maxHoldDuration || 10
   const uuidSeed = (Buffer.isBuffer(opts.uuidSeed) ? opts.uuidSeed : crypto.randomBytes(32)).toString('hex')
