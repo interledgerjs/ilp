@@ -10,7 +10,7 @@ A low-level JS <a href="https://interledger.org">Interledger</a> sender/receiver
 
 <br>
 
-[![npm][npm-image]][npm-url] [![standard][standard-image]][standard-url] [![circle][circle-image]][circle-url] [![codecov][codecov-image]][codecov-url] [![snyk][snyk-image]][snyk-url]
+[![npm][npm-image]][npm-url] [![standard][standard-image]][standard-url] [![circle][circle-image]][circle-url] [![codecov][codecov-image]][codecov-url]
 
 [npm-image]: https://img.shields.io/npm/v/ilp.svg?style=flat
 [npm-url]: https://npmjs.org/package/ilp
@@ -20,8 +20,6 @@ A low-level JS <a href="https://interledger.org">Interledger</a> sender/receiver
 [circle-url]: https://circleci.com/gh/interledger/js-ilp
 [codecov-image]: https://img.shields.io/codecov/c/github/interledger/js-ilp.svg?style=flat
 [codecov-url]: https://codecov.io/gh/interledger/js-ilp
-[snyk-image]: https://snyk.io/test/npm/ilp/badge.svg
-[snyk-url]: https://snyk.io/test/npm/ilp
 
 This is a low-level interface to ILP, largely intended for building ILP into other [Application layer](https://github.com/interledger/rfcs/tree/master/0001-interledger-architecture) protocols.
 
@@ -171,6 +169,7 @@ Returns an ILP Sender to quote and pay for payment requests.
     * [~quoteDestinationAmount(destinationAddress, destinationAmount)](#module_Sender..createSender..quoteDestinationAmount) ⇒ <code>Promise.&lt;String&gt;</code>
     * [~quoteRequest(paymentRequest)](#module_Sender..createSender..quoteRequest) ⇒ <code>Promise.&lt;PaymentParams&gt;</code>
     * [~payRequest(paymentParams)](#module_Sender..createSender..payRequest) ⇒ <code>Promise.&lt;String&gt;</code>
+    * [~stopListening()](#module_Sender..createSender..stopListening) ⇒ <code>Promise.&lt;null&gt;</code>
 
 <a name="module_Sender..createSender..quoteSourceAmount"></a>
 
@@ -222,6 +221,13 @@ Pay for a payment request. Uses a determinstic transfer id so that paying is ide
 | --- | --- | --- |
 | paymentParams | <code>PaymentParams</code> | Respose from quoteRequest |
 
+<a name="module_Sender..createSender..stopListening"></a>
+
+#### createSender~stopListening() ⇒ <code>Promise.&lt;null&gt;</code>
+Disconnect from the ledger and stop listening for events.
+
+**Kind**: inner method of <code>[createSender](#module_Sender..createSender)</code>  
+**Returns**: <code>Promise.&lt;null&gt;</code> - Resolves when the sender is disconnected.  
 
 <a name="module_Receiver..createReceiver"></a>
 
