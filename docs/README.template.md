@@ -10,7 +10,7 @@ A low-level JS <a href="https://interledger.org">Interledger</a> sender/receiver
 
 <br>
 
-[![npm][npm-image]][npm-url] [![standard][standard-image]][standard-url] [![circle][circle-image]][circle-url] [![codecov][codecov-image]][codecov-url]
+[![npm][npm-image]][npm-url] [![standard][standard-image]][standard-url] [![circle][circle-image]][circle-url] [![codecov][codecov-image]][codecov-url] [![snyk][snyk-image]][snyk-url]
 
 [npm-image]: https://img.shields.io/npm/v/ilp.svg?style=flat
 [npm-url]: https://npmjs.org/package/ilp
@@ -20,6 +20,8 @@ A low-level JS <a href="https://interledger.org">Interledger</a> sender/receiver
 [circle-url]: https://circleci.com/gh/interledger/js-ilp
 [codecov-image]: https://img.shields.io/codecov/c/github/interledger/js-ilp.svg?style=flat
 [codecov-url]: https://codecov.io/gh/interledger/js-ilp
+[snyk-image]: https://snyk.io/test/npm/ilp/badge.svg
+[snyk-url]: https://snyk.io/test/npm/ilp
 
 This is a low-level interface to ILP, largely intended for building ILP into other [Application layer](https://github.com/interledger/rfcs/tree/master/0001-interledger-architecture) protocols.
 
@@ -35,7 +37,7 @@ This is a low-level interface to ILP, largely intended for building ILP into oth
 * Amount negotiation
 * Communication of requests from recipient to sender
 
-For a higher-level interface that includes the above features, see the [Wallet Client](https://github.com/interledger/five-bells-wallet-client).  
+For a higher-level interface that includes the above features, see the [Wallet Client](https://github.com/interledger/five-bells-wallet-client).
 
 
 ## Installation

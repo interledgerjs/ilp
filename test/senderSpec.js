@@ -60,6 +60,31 @@ describe('Sender Module', function () {
       })
       mockRequire.stop('ilp-core')
     })
+
+    it('should allow an array of connectors to be supplied', function () {
+      const connectors = [{
+        id: 'https://blue.ilpdemo.org/ledger/accounts/connie',
+        name: 'connie',
+        connector: 'https://someconnector.example',
+      }]
+      const stub = sinon.stub().returns({})
+      const fakePlugin = function () {}
+      mockRequire('ilp-core', {
+        Client: stub
+      })
+      const createSenderWithMock = mockRequire.reRequire('../src/lib/sender').createSender
+      createSenderWithMock({
+        hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+        plugin: fakePlugin,
+        auth: { some: 'auth' },
+        connectors: connectors
+      })
+      expect(stub).to.have.been.calledOnce
+      expect(stub).to.have.been.calledWithMatch({}, {
+        connectors: connectors
+      })
+      mockRequire.stop('ilp-core')
+    })
   })
 
   describe('Sender', function () {
