@@ -478,6 +478,14 @@ describe('Sender Module', function () {
         expect(fulfillmentStub).to.be.calledOnce
       })
     })
+
+    describe('stopListening', function () {
+      it('should disconnect the client', function () {
+        const spy = sinon.spy(this.client, 'disconnect')
+        this.sender.stopListening()
+        expect(spy).to.have.been.calledOnce
+      })
+    })
   })
 })
 
