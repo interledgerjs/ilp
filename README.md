@@ -87,7 +87,13 @@ const sender = ILP.createSender({
   _plugin: FiveBellsLedgerPlugin,
   prefix: 'ilpdemo.red.',
   account: 'https://red.ilpdemo.org/ledger/accounts/alice',
-  password: 'alice'
+  password: 'alice',
+  // 'connectors' is optional; see API reference
+  connectors: [
+    'https://a.example:4000',
+    'https://b.example:4040',
+    'https://c.example:5000'
+  ]
 })
 
 // XXX: user implements this
@@ -159,7 +165,7 @@ Returns an ILP Sender to quote and pay for payment requests.
 | opts._plugin | <code>LedgerPlugin</code> |  | Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
 | opts | <code>Objct</code> |  | Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
 | [opts.client] | <code>ilp-core.Client</code> | <code>create a new instance with the plugin and opts</code> | [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options |
-| [opts.connectors] | <code>Array</code> | <code>[]</code> | Array of connectors to use. Some ledgers provide recommended connectors while others do not, in which case this would be required to send Interledger payments. |
+| [opts.connectors] | <code>Array</code> | <code>[]</code> | Array of connectors to use. Some ledgers provide recommended connectors while others do not, in which case this would be required to send Interledger payments. The connectors should be in the form of http addresses, eg. `https://a.example:4000`. `ilp-core` will use known endpoints on the http address to find known endpoints and quote from them. |
 | [opts.maxHoldDuration] | <code>Number</code> | <code>10</code> | Maximum time in seconds to allow money to be held for |
 | [opts.uuidSeed] | <code>Buffer</code> | <code>crypto.randomBytes(32)</code> | Seed to use for generating transfer UUIDs |
 
