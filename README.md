@@ -16,10 +16,10 @@ A low-level JS <a href="https://interledger.org">Interledger</a> sender/receiver
 [npm-url]: https://npmjs.org/package/ilp
 [standard-image]: https://img.shields.io/badge/code%20style-standard-brightgreen.svg?style=flat
 [standard-url]: http://standardjs.com/
-[circle-image]: https://img.shields.io/circleci/project/interledger/js-ilp/master.svg?style=flat
-[circle-url]: https://circleci.com/gh/interledger/js-ilp
-[codecov-image]: https://img.shields.io/codecov/c/github/interledger/js-ilp.svg?style=flat
-[codecov-url]: https://codecov.io/gh/interledger/js-ilp
+[circle-image]: https://img.shields.io/circleci/project/interledgerjs/ilp/master.svg?style=flat
+[circle-url]: https://circleci.com/gh/interledgerjs/ilp
+[codecov-image]: https://img.shields.io/codecov/c/github/interledgerjs/ilp.svg?style=flat
+[codecov-url]: https://codecov.io/gh/interledgerjs/ilp
 
 This is a low-level interface to ILP, largely intended for building ILP into other [Application layer](https://github.com/interledger/rfcs/tree/master/0001-interledger-architecture) protocols.
 
@@ -27,7 +27,7 @@ This is a low-level interface to ILP, largely intended for building ILP into oth
 
 * Generate [Interledger Payment Requests](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md) on the receiving side, including handling [Crypto Condition](https://github.com/interledger/rfcs/tree/master/0002-crypto-conditions) generation and fulfillment)
 * Pay for payment requests on the sending side
-* Quote and send payments through multiple ledger types (using [`ilp-core`](https://github.com/interledger/js-ilp-core))
+* Quote and send payments through multiple ledger types (using [`ilp-core`](https://github.com/interledgerjs/ilp-core))
 
 #### The ILP Client does **not** handle:
 
@@ -162,9 +162,9 @@ Returns an ILP Sender to quote and pay for payment requests.
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
-| opts._plugin | <code>LedgerPlugin</code> |  | Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
-| opts | <code>Objct</code> |  | Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
-| [opts.client] | <code>ilp-core.Client</code> | <code>create a new instance with the plugin and opts</code> | [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options |
+| opts._plugin | <code>LedgerPlugin</code> |  | Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledgerjs/ilp-core) |
+| opts | <code>Objct</code> |  | Plugin parameters, passed to [ilp-core](https://github.com/interledgerjs/ilp-core) |
+| [opts.client] | <code>ilp-core.Client</code> | <code>create a new instance with the plugin and opts</code> | [ilp-core](https://github.com/interledgerjs/ilp-core) Client, which can optionally be supplied instead of the previous options |
 | [opts.connectors] | <code>Array</code> | <code>[]</code> | Array of connectors to use. Some ledgers provide recommended connectors while others do not, in which case this would be required to send Interledger payments. The connectors should be in the form of http addresses, eg. `https://a.example:4000`. `ilp-core` will use known endpoints on the http address to find known endpoints and quote from them. |
 | [opts.maxHoldDuration] | <code>Number</code> | <code>10</code> | Maximum time in seconds to allow money to be held for |
 | [opts.uuidSeed] | <code>Buffer</code> | <code>crypto.randomBytes(32)</code> | Seed to use for generating transfer UUIDs |
@@ -246,9 +246,9 @@ of transfers paying for the payment requests created by the Receiver.
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
-| opts._plugin | <code>LedgerPlugin</code> |  | Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
-| opts | <code>Object</code> |  | Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core) |
-| [opts.client] | <code>ilp-core.Client</code> | <code>create a new instance with the plugin and opts</code> | [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options |
+| opts._plugin | <code>LedgerPlugin</code> |  | Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledgerjs/ilp-core) |
+| opts | <code>Object</code> |  | Plugin parameters, passed to [ilp-core](https://github.com/interledgerjs/ilp-core) |
+| [opts.client] | <code>ilp-core.Client</code> | <code>create a new instance with the plugin and opts</code> | [ilp-core](https://github.com/interledgerjs/ilp-core) Client, which can optionally be supplied instead of the previous options |
 | [opts.hmacKey] | <code>Buffer</code> | <code>crypto.randomBytes(32)</code> | 32-byte secret used for generating request conditions |
 | [opts.defaultRequestTimeout] | <code>Number</code> | <code>30</code> | Default time in seconds that requests will be valid for |
 | [opts.allowOverPayment] | <code>Boolean</code> | <code>false</code> | Allow transfers where the amount is greater than requested |

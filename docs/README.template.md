@@ -16,10 +16,10 @@ A low-level JS <a href="https://interledger.org">Interledger</a> sender/receiver
 [npm-url]: https://npmjs.org/package/ilp
 [standard-image]: https://img.shields.io/badge/code%20style-standard-brightgreen.svg?style=flat
 [standard-url]: http://standardjs.com/
-[circle-image]: https://img.shields.io/circleci/project/interledger/js-ilp/master.svg?style=flat
-[circle-url]: https://circleci.com/gh/interledger/js-ilp
-[codecov-image]: https://img.shields.io/codecov/c/github/interledger/js-ilp.svg?style=flat
-[codecov-url]: https://codecov.io/gh/interledger/js-ilp
+[circle-image]: https://img.shields.io/circleci/project/interledgerjs/ilp/master.svg?style=flat
+[circle-url]: https://circleci.com/gh/interledgerjs/ilp
+[codecov-image]: https://img.shields.io/codecov/c/github/interledgerjs/ilp.svg?style=flat
+[codecov-url]: https://codecov.io/gh/interledgerjs/ilp
 [snyk-image]: https://snyk.io/test/npm/ilp/badge.svg
 [snyk-url]: https://snyk.io/test/npm/ilp
 
@@ -29,7 +29,7 @@ This is a low-level interface to ILP, largely intended for building ILP into oth
 
 * Generate [Interledger Payment Requests](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md) on the receiving side, including handling [Crypto Condition](https://github.com/interledger/rfcs/tree/master/0002-crypto-conditions) generation and fulfillment)
 * Pay for payment requests on the sending side
-* Quote and send payments through multiple ledger types (using [`ilp-core`](https://github.com/interledger/js-ilp-core))
+* Quote and send payments through multiple ledger types (using [`ilp-core`](https://github.com/interledgerjs/ilp-core))
 
 #### The ILP Client does **not** handle:
 

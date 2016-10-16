@@ -18,9 +18,9 @@ const BigNumber = require('bignumber.js')
  * listen for incoming transfers, and automatically fulfill conditions
  * of transfers paying for the payment requests created by the Receiver.
  *
- * @param  {LedgerPlugin} opts._plugin Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
- * @param  {Object}  opts Plugin parameters, passed to [ilp-core](https://github.com/interledger/js-ilp-core)
- * @param  {ilp-core.Client} [opts.client=create a new instance with the plugin and opts] [ilp-core](https://github.com/interledger/js-ilp-core) Client, which can optionally be supplied instead of the previous options
+ * @param  {LedgerPlugin} opts._plugin Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledgerjs/ilp-core)
+ * @param  {Object}  opts Plugin parameters, passed to [ilp-core](https://github.com/interledgerjs/ilp-core)
+ * @param  {ilp-core.Client} [opts.client=create a new instance with the plugin and opts] [ilp-core](https://github.com/interledgerjs/ilp-core) Client, which can optionally be supplied instead of the previous options
  * @param  {Buffer} [opts.hmacKey=crypto.randomBytes(32)] 32-byte secret used for generating request conditions
  * @param  {Number} [opts.defaultRequestTimeout=30] Default time in seconds that requests will be valid for
  * @param  {Boolean} [opts.allowOverPayment=false] Allow transfers where the amount is greater than requested
