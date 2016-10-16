@@ -35,7 +35,7 @@ This is a low-level interface to ILP, largely intended for building ILP into oth
 * Amount negotiation
 * Communication of requests from recipient to sender
 
-For a higher-level interface that includes the above features, see the [Wallet Client](https://github.com/interledger/five-bells-wallet-client).
+For a higher-level interface that includes the above features, see the [Wallet Client](https://github.com/interledgerjs/five-bells-wallet-client).
 
 
 ## Installation
