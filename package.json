@@ -11,6 +11,9 @@
     "docs": "npm run docs:api && npm run docs:toc",
     "integration": "integration all"
   },
+  "engines": {
+    "node": ">=6.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/interledgerjs/ilp.git"
