@@ -30,7 +30,7 @@
     "payments"
   ],
   "author": "Interledger Team <info@interledger.org>",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "bugs": {
     "url": "https://github.com/interledgerjs/ilp/issues"
   },
