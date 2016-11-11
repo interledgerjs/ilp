@@ -10,7 +10,7 @@ A low-level JS <a href="https://interledger.org">Interledger</a> sender/receiver
 
 <br>
 
-[![npm][npm-image]][npm-url] [![standard][standard-image]][standard-url] [![circle][circle-image]][circle-url] [![codecov][codecov-image]][codecov-url]
+[![npm][npm-image]][npm-url] [![standard][standard-image]][standard-url] [![circle][circle-image]][circle-url] [![codecov][codecov-image]][codecov-url] [![snyk][snyk-image]][snyk-url]
 
 [npm-image]: https://img.shields.io/npm/v/ilp.svg?style=flat
 [npm-url]: https://npmjs.org/package/ilp
@@ -20,6 +20,8 @@ A low-level JS <a href="https://interledger.org">Interledger</a> sender/receiver
 [circle-url]: https://circleci.com/gh/interledgerjs/ilp
 [codecov-image]: https://img.shields.io/codecov/c/github/interledgerjs/ilp.svg?style=flat
 [codecov-url]: https://codecov.io/gh/interledgerjs/ilp
+[snyk-image]: https://snyk.io/test/npm/ilp/badge.svg
+[snyk-url]: https://snyk.io/test/npm/ilp
 
 This is a low-level interface to ILP, largely intended for building ILP into other [Application layer](https://github.com/interledger/rfcs/tree/master/0001-interledger-architecture) protocols.
 
@@ -45,9 +47,11 @@ For a higher-level interface that includes the above features, see the [Wallet C
 *Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module*
 
 
-## ITP Request / Pay
+## Interledger Payment Request / Pay Flow
 
-The client uses recipient-generated [Interledger Payment Requests](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md), which include the condition for the payment. This means that the recipient must first generate a payment request, which the sender then fulfills. This client library handles the generation of such requests, but **not** the communication of the request details from the recipient to the sender.
+The client uses recipient-generated [Interledger Payment Requests](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md), which include the condition for the payment. This means that the recipient must first generate a payment request, which the sender then fulfills.
+
+This library handles the generation of payment requests, but **not the communication of the request details from the recipient to the sender**. In some cases, the sender and receiver might be HTTP servers, in which case HTTP would be used. In other cases, they might be using a different medium of communication.
 
 ### Requesting + Handling Incoming Payments
 
@@ -88,12 +92,7 @@ const sender = ILP.createSender({
   prefix: 'ilpdemo.red.',
   account: 'https://red.ilpdemo.org/ledger/accounts/alice',
   password: 'alice',
-  // 'connectors' is optional; see API reference
-  connectors: [
-    'https://a.example:4000',
-    'https://b.example:4040',
-    'https://c.example:5000'
-  ]
+  connectors: ['connie', 'otherconnectoronmyledger']
 })
 
 // XXX: user implements this
@@ -165,7 +164,7 @@ Returns an ILP Sender to quote and pay for payment requests.
 | opts._plugin | <code>LedgerPlugin</code> |  | Ledger plugin used to connect to the ledger, passed to [ilp-core](https://github.com/interledgerjs/ilp-core) |
 | opts | <code>Objct</code> |  | Plugin parameters, passed to [ilp-core](https://github.com/interledgerjs/ilp-core) |
 | [opts.client] | <code>ilp-core.Client</code> | <code>create a new instance with the plugin and opts</code> | [ilp-core](https://github.com/interledgerjs/ilp-core) Client, which can optionally be supplied instead of the previous options |
-| [opts.connectors] | <code>Array</code> | <code>[]</code> | Array of connectors to use. Some ledgers provide recommended connectors while others do not, in which case this would be required to send Interledger payments. The connectors should be in the form of http addresses, eg. `https://a.example:4000`. `ilp-core` will use known endpoints on the http address to find known endpoints and quote from them. |
+| [opts.connectors] | <code>Array</code> | <code>[]</code> | Array of connectors to use, specified by account name on the local ledger (e.g. "connie"). Some ledgers provide recommended connectors while others do not, in which case this would be required to send Interledger payments. |
 | [opts.maxHoldDuration] | <code>Number</code> | <code>10</code> | Maximum time in seconds to allow money to be held for |
 | [opts.uuidSeed] | <code>Buffer</code> | <code>crypto.randomBytes(32)</code> | Seed to use for generating transfer UUIDs |
 

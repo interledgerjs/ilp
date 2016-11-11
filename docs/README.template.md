@@ -47,9 +47,11 @@ For a higher-level interface that includes the above features, see the [Wallet C
 *Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module*
 
 
-## ITP Request / Pay
+## Interledger Payment Request / Pay Flow
 
-The client uses recipient-generated [Interledger Payment Requests](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md), which include the condition for the payment. This means that the recipient must first generate a payment request, which the sender then fulfills. This client library handles the generation of such requests, but **not** the communication of the request details from the recipient to the sender.
+The client uses recipient-generated [Interledger Payment Requests](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md), which include the condition for the payment. This means that the recipient must first generate a payment request, which the sender then fulfills.
+
+This library handles the generation of payment requests, but **not the communication of the request details from the recipient to the sender**. In some cases, the sender and receiver might be HTTP servers, in which case HTTP would be used. In other cases, they might be using a different medium of communication.
 
 ### Requesting + Handling Incoming Payments
 
@@ -89,7 +91,8 @@ const sender = ILP.createSender({
   _plugin: FiveBellsLedgerPlugin,
   prefix: 'ilpdemo.red.',
   account: 'https://red.ilpdemo.org/ledger/accounts/alice',
-  password: 'alice'
+  password: 'alice',
+  connectors: ['connie', 'otherconnectoronmyledger']
 })
 
 // XXX: user implements this
