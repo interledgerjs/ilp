@@ -1,7 +1,7 @@
 'use strict'
 
 const crypto = require('crypto')
-const uuid = require('node-uuid')
+const uuid = require('uuid')
 const moment = require('moment')
 const stringify = require('canonical-json')
 const Client = require('ilp-core').Client

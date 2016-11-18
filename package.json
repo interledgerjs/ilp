@@ -43,7 +43,7 @@
     "eventemitter2": "^2.0.0",
     "ilp-core": "^9.1.1",
     "moment": "^2.14.1",
-    "node-uuid": "^1.4.7"
+    "uuid": "^3.0.0"
   },
   "devDependencies": {
     "chai": "^3.5.0",
