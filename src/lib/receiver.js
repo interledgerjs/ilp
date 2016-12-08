@@ -270,7 +270,6 @@ function createReceiver (opts) {
     client.on('incoming_prepare', autoFulfillConditions)
     return Promise.race([
       client.connect()
-        .then(() => client.waitForConnection())
         .then(() => Promise.all([
           client.getPlugin().getAccount(),
           client.getPlugin().getInfo()

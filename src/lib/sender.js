@@ -44,7 +44,6 @@ function createSender (opts) {
     }
 
     return client.connect()
-      .then(() => client.waitForConnection())
       .then(() => client.quote({
         destinationAddress: destinationAddress,
         sourceAmount: String(sourceAmount)
@@ -73,7 +72,6 @@ function createSender (opts) {
     }
 
     return client.connect()
-      .then(() => client.waitForConnection())
       .then(() => client.quote({
         destinationAddress: destinationAddress,
         destinationAmount: String(destinationAmount)
@@ -104,7 +102,6 @@ function createSender (opts) {
     }
 
     return client.connect()
-      .then(() => client.waitForConnection())
       .then(() => client.quote({
         destinationAddress: request.address,
         destinationAmount: request.amount
@@ -145,7 +142,7 @@ function createSender (opts) {
       uuid: transferId
     })
     debug('sending payment:', payment)
-    return client.waitForConnection()
+    return client.connect()
       .then(() => client.sendQuotedPayment(payment))
       .catch((err) => {
         if (err.name !== 'DuplicateIdError') {
