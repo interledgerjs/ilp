@@ -41,7 +41,7 @@
     "canonical-json": "0.0.4",
     "debug": "^2.2.0",
     "eventemitter2": "^2.0.0",
-    "ilp-core": "^9.1.1",
+    "ilp-core": "^10.0.0",
     "moment": "^2.14.1",
     "uuid": "^3.0.0"
   },
