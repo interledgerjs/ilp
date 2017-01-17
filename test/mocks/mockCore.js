@@ -45,8 +45,12 @@ class Client extends EventEmitter {
     return Promise.resolve()
   }
 
-  quote () {
-    return Promise.resolve()
+  quote (req) {
+    return Promise.resolve({
+      connectorAccount: "example.connie",
+      sourceAmount: "10",
+      destinationAmount: "10"
+    })
   }
 
   sendQuotedPayment () {
