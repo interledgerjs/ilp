@@ -202,6 +202,11 @@ co(function * () {
 
 ## API Reference
 
+{{#module name="SPSP"~}}
+{{>body~}}
+{{>members~}}
+{{/module}}
+
 {{#module name="Sender"~}}
 {{>body~}}
 {{>members~}}
