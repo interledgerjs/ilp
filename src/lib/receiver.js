@@ -270,15 +270,12 @@ function createReceiver (opts) {
     client.on('incoming_prepare', autoFulfillConditions)
     return Promise.race([
       client.connect()
-        .then(() => Promise.all([
-          client.getPlugin().getAccount(),
-          client.getPlugin().getInfo()
-        ]))
-        .then((details) => {
-          debug('account: ' + details[0] + ' ledger info: ', details[1])
-          account = details[0]
-          scale = details[1].scale
-          precision = details[1].precision
+        .then(() => {
+          account = client.getPlugin().getAccount()
+          const info = client.getPlugin().getInfo()
+          debug('account: ' + account + ' ledger info: ', info)
+          scale = info.scale
+          precision = info.precision
         })
         .then(() => debug('receiver listening')),
       new Promise((resolve, reject) => {

@@ -7,7 +7,7 @@ class Client extends EventEmitter {
     super()
     this.account = opts.account
     this.plugin = {
-      getAccount: () => Promise.resolve(this.account),
+      getAccount: () => this.account,
       getInfo: () => ({
         scale: 2,
         precision: 10
