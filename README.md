@@ -178,6 +178,98 @@ co(function * () {
 
 ## API Reference
 
+<a name="module_SPSP..Client"></a>
+
+### SPSP~Client
+SPSP Client
+
+**Kind**: inner class of <code>[SPSP](#module_SPSP)</code>  
+
+* [~Client](#module_SPSP..Client)
+    * [new Client(opts)](#new_module_SPSP..Client_new)
+    * [.quoteSource](#module_SPSP..Client.Client+quoteSource) ⇒ <code>Promise.&lt;SPSPPayment&gt;</code>
+    * [.quoteDestination](#module_SPSP..Client.Client+quoteDestination) ⇒ <code>Promise.&lt;SPSPPayment&gt;</code>
+    * [.sendPayment](#module_SPSP..Client.Client+sendPayment) ⇒ <code>Promise.&lt;PaymentResult&gt;</code>
+    * [.query](#module_SPSP..Client.Client+query) ⇒ <code>Promise.&lt;Query&gt;</code>
+
+<a name="new_module_SPSP..Client_new"></a>
+
+#### new Client(opts)
+Create an SPSP client.
+
+
+| Param | Type | Description |
+| --- | --- | --- |
+| opts | <code>Object</code> | plugin options |
+| opts._plugin | <code>function</code> | (optional) plugin constructor. Defaults to PluginBells |
+
+<a name="module_SPSP..Client.Client+quoteSource"></a>
+
+#### client.quoteSource ⇒ <code>Promise.&lt;SPSPPayment&gt;</code>
+Get payment params via SPSP query and ILQP quote, based on source amount
+
+**Kind**: instance property of <code>[Client](#module_SPSP..Client)</code>  
+**Returns**: <code>Promise.&lt;SPSPPayment&gt;</code> - Resolves with the parameters that can be passed to sendPayment  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| receiver | <code>String</code> | webfinger identifier of receiver |
+| sourceAmount | <code>String</code> | Amount that you will send |
+
+<a name="module_SPSP..Client.Client+quoteDestination"></a>
+
+#### client.quoteDestination ⇒ <code>Promise.&lt;SPSPPayment&gt;</code>
+Get payment params via SPSP query and ILQP quote, based on destination amount
+
+**Kind**: instance property of <code>[Client](#module_SPSP..Client)</code>  
+**Returns**: <code>Promise.&lt;SPSPPayment&gt;</code> - Resolves with the parameters that can be passed to sendPayment  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| receiver | <code>String</code> | webfinger identifier of receiver |
+| destinationAmount | <code>String</code> | Amount that the receiver will get |
+
+<a name="module_SPSP..Client.Client+sendPayment"></a>
+
+#### client.sendPayment ⇒ <code>Promise.&lt;PaymentResult&gt;</code>
+Sends a payment using the PaymentParams
+
+**Kind**: instance property of <code>[Client](#module_SPSP..Client)</code>  
+**Returns**: <code>Promise.&lt;PaymentResult&gt;</code> - Returns payment result  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| payment | <code>SPSPPayment</code> | params, returned by quoteSource or quoteDestination |
+
+<a name="module_SPSP..Client.Client+query"></a>
+
+#### client.query ⇒ <code>Promise.&lt;Query&gt;</code>
+Performs SPSP query given a webfinger identifier
+
+**Kind**: instance property of <code>[Client](#module_SPSP..Client)</code>  
+**Returns**: <code>Promise.&lt;Query&gt;</code> - SPSP query result  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| receiver | <code>String</code> | webfinger identifier of receiver |
+
+<a name="module_SPSP..SPSPPayment"></a>
+
+### SPSP~SPSPPayment : <code>Object</code>
+Parameters for an SPSP payment
+
+**Kind**: inner typedef of <code>[SPSP](#module_SPSP)</code>  
+**Properties**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| sourceAmount | <code>string</code> | A decimal string, representing the amount that will be paid on the sender's ledger. |
+| destinationAmount | <code>string</code> | A decimal string, represending the amount that the receiver will get on their ledger. |
+| destinationAccount | <code>string</code> | The receiver's ILP address. |
+| connectorAccount | <code>string</code> | The connector's account on the sender's ledger. The initial transfer on the sender's ledger is made to this account. |
+| receiverEndpoint | <code>string</code> | The SPSP setup endpoint of the receiver. |
+
+
 <a name="module_Sender..createSender"></a>
 
 ### Sender~createSender(opts) ⇒ <code>Sender</code>
