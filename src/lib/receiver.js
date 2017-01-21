@@ -3,11 +3,13 @@
 const crypto = require('crypto')
 const uuid = require('uuid')
 const moment = require('moment')
-const stringify = require('canonical-json')
 const Client = require('ilp-core').Client
 const EventEmitter = require('eventemitter2')
 const debug = require('debug')('ilp:receiver')
 const BigNumber = require('bignumber.js')
+const createHmacHelper = require('../utils/hmac').createHmacHelper
+
+const RECEIVER_ID_PREFIX = '~ipr.'
 
 /**
  * @module Receiver
@@ -38,7 +40,11 @@ function createReceiver (opts) {
   if (opts.hmacKey && (!Buffer.isBuffer(opts.hmacKey) || opts.hmacKey.length < 32)) {
     throw new Error('hmacKey must be 32-byte Buffer if supplied')
   }
-  const hmacKey = opts.hmacKey || crypto.randomBytes(32)
+  const hmacHelper = createHmacHelper(opts.hmacKey)
+  const receiverIdBuffer = hmacHelper.getIprReceiverId()
+  const receiverId = RECEIVER_ID_PREFIX + toBase64Url(receiverIdBuffer.toString('base64'))
+  debug('receiver id: ' + receiverId)
+
   const defaultRequestTimeout = opts.defaultRequestTimeout || 30
   const allowOverPayment = !!opts.allowOverPayment
   const connectionTimeout = opts.connectionTimeout || 10
@@ -128,8 +134,10 @@ function createReceiver (opts) {
       throw new Error('expiresAt must be an ISO 8601 timestamp')
     }
 
+    const requestAddress = (params.account || account) + '.' + receiverId + '.' + (params.id || uuid.v4())
+
     const paymentRequest = {
-      address: (params.account || account) + '.' + (params.id || uuid.v4()),
+      address: requestAddress,
       amount: amount.toString(),
       expires_at: params.expiresAt || moment().add(defaultRequestTimeout, 'seconds').toISOString()
     }
@@ -138,7 +146,7 @@ function createReceiver (opts) {
       paymentRequest.data = params.data
     }
 
-    const conditionPreimage = generateConditionPreimage(hmacKey, paymentRequest)
+    const conditionPreimage = hmacHelper.hmacJsonForIprCondition(paymentRequest)
     paymentRequest.condition = toConditionUri(conditionPreimage)
 
     debug('created payment request:', paymentRequest)
@@ -185,6 +193,17 @@ function createReceiver (opts) {
       return rejectIncomingTransfer(transfer.id, 'no-packet')
     }
 
+    // check if the address contains "~ipr" + our receiver id
+    if (packet.account.indexOf(receiverId) === -1) {
+      debug('got notification of transfer for another receiver: ' + packet.account + ' my id is: ' + receiverId)
+      return 'not-my-packet'
+    }
+
+    if (!packet.amount) {
+      debug('got notification of transfer with packet that has no amount')
+      return rejectIncomingTransfer(transfer.id, 'no-amount-in-packet')
+    }
+
     const paymentRequest = {
       address: packet.account,
       amount: (new BigNumber(packet.amount)).toString(),
@@ -212,7 +231,7 @@ function createReceiver (opts) {
       return rejectIncomingTransfer(transfer.id, 'expired')
     }
 
-    const conditionPreimage = generateConditionPreimage(hmacKey, paymentRequest)
+    const conditionPreimage = hmacHelper.hmacJsonForIprCondition(paymentRequest)
 
     if (transfer.executionCondition !== toConditionUri(conditionPreimage)) {
       debug('got notification of transfer where executionCondition does not match the one we generate (' + toConditionUri(conditionPreimage) + ')', transfer)
@@ -226,7 +245,7 @@ function createReceiver (opts) {
     // returning the promise is only so the result is picked up by the tests' emitAsync
     return client.fulfillCondition(transfer.id, fulfillment)
       .then(() => {
-        const requestId = paymentRequest.address.replace(account + '.', '')
+        const requestId = paymentRequest.address.replace(account + '.' + receiverId + '.', '')
         debug('successfully submitted fulfillment ' + fulfillment + ' for request ' + requestId + ' (transfer ' + transfer.id + ')')
 
         /**
@@ -302,17 +321,8 @@ function createReceiver (opts) {
   })
 }
 
-function generateConditionPreimage (hmacKey, request) {
-  const hmac = crypto.createHmac('sha256', hmacKey)
-  const jsonString = stringify(request)
-  hmac.update(jsonString, 'utf8')
-  const hmacOutput = hmac.digest()
-
-  return hmacOutput
-}
-
 // base64url encoded without padding
-function toCryptoConditionBase64 (normalBase64) {
+function toBase64Url (normalBase64) {
   return normalBase64.replace(/=/g, '')
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
@@ -322,14 +332,13 @@ function toConditionUri (conditionPreimage) {
   const hash = crypto.createHash('sha256')
   hash.update(conditionPreimage)
   const condition = hash.digest('base64')
-  const conditionUri = 'cc:0:3:' + toCryptoConditionBase64(condition) + ':32'
-
+  const conditionUri = 'cc:0:3:' + toBase64Url(condition) + ':32'
   return conditionUri
 }
 
 function toFulfillmentUri (conditionPreimage) {
   const fulfillment = conditionPreimage.toString('base64')
-  const fulfillmentUri = 'cf:0:' + toCryptoConditionBase64(fulfillment)
+  const fulfillmentUri = 'cf:0:' + toBase64Url(fulfillment)
   return fulfillmentUri
 }
 

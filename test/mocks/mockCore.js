@@ -19,6 +19,7 @@ class Client extends EventEmitter {
       },
       getFulfillment: () => 'cf:fulfillment'
     }
+    this.rejected = false
   }
 
   getPlugin () {
