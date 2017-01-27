@@ -56,6 +56,7 @@ describe('SPSP Module', function () {
         destinationAccount: "example.alice",
         connectorAccount: "example.connie",
         sourceAmount: "10",
+        id: payment.id,
         destinationAmount: "10",
         receiverEndpoint: "https://example.com/receiver"
       })
@@ -116,6 +117,7 @@ describe('SPSP Module', function () {
         destinationAccount: "example.alice",
         connectorAccount: "example.connie",
         sourceAmount: "10",
+        id: payment.id,
         destinationAmount: "10",
         receiverEndpoint: "https://example.com/receiver"
       })

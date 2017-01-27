@@ -1,6 +1,7 @@
 'use strict'
 const co = require('co')
 const agent = require('superagent')
+const uuid = require('uuid/v4')
 
 const Sender = require('./sender')
 const IlpCore = require('ilp-core')
@@ -12,6 +13,7 @@ const PluginBells = require('ilp-plugin-bells')
 
 const _createPayment = (query, quote) => {
   return {
+    id: uuid(),
     sourceAmount: String(quote.sourceAmount),
     connectorAccount: quote.connectorAccount,
     destinationAmount: String(quote.destinationAmount),
@@ -84,6 +86,7 @@ const sendPayment = (plugin, payment) => {
   return co(function * () {
     if (!plugin) throw new Error('missing plugin')
     if (!payment) throw new Error('missing payment object')
+    if (!payment.id) throw new Error('missing payment.id')
     if (!payment.destinationAccount) throw new Error('missing payment.destinationAccount')
     if (!payment.destinationAmount) throw new Error('missing payment.destinationAmount')
     if (!payment.sourceAmount) throw new Error('missing payment.sourceAmount')
@@ -94,6 +97,7 @@ const sendPayment = (plugin, payment) => {
     const request = yield _setup(payment.receiverEndpoint, payment.destinationAmount)
     const sender = Sender.createSender({ client })
     const fulfillment = yield sender.payRequest({
+      uuid: payment.id,
       sourceAmount: String(payment.sourceAmount),
       connectorAccount: payment.connectorAccount,
       destinationAmount: String(payment.destinationAmount),
@@ -113,6 +117,7 @@ const sendPayment = (plugin, payment) => {
 /**
   * Parameters for an SPSP payment
   * @typedef {Object} SPSPPayment
+  * @property {id} id UUID to ensure idempotence between calls to sendPayment
   * @property {string} sourceAmount A decimal string, representing the amount that will be paid on the sender's ledger.
   * @property {string} destinationAmount A decimal string, represending the amount that the receiver will get on their ledger.
   * @property {string} destinationAccount The receiver's ILP address.
