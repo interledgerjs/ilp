@@ -144,7 +144,7 @@ function createSender (opts) {
   function payRequest (paymentParams) {
     // Use a deterministic transfer id so that paying is idempotent
     // Include the uuidSeed so that an attacker could not block our payments by squatting on the transfer id
-    const transferId = deterministicUuid(uuidSeed + paymentParams.executionCondition)
+    const transferId = paymentParams.uuid || deterministicUuid(uuidSeed + paymentParams.executionCondition)
     const payment = Object.assign(paymentParams, {
       uuid: transferId
     })
