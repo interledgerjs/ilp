@@ -150,6 +150,56 @@ co(function * () {
 
 ```
 
+### Shared Secret Example
+
+Sometimes it is desirable that the sender can choose the amount and generate the
+condition without communicating with the recipient. This is an example of a
+payment using the Shared Secret Protocol (SSP) which implements this type of
+flow.
+
+```js
+'use strict'
+
+const co = require('co')
+const ILP = require('.')
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
+
+const sender = ILP.createSender({
+  _plugin: FiveBellsLedgerPlugin,
+  account: 'https://localhost/ledger/accounts/alice',
+  password: 'alice'
+})
+
+const receiver = ILP.createReceiver({
+  _plugin: FiveBellsLedgerPlugin,
+  account: 'https://localhost/ledger/accounts/bob',
+  password: 'bobbob'
+})
+
+co(function * () {
+  yield receiver.listen()
+  receiver.on('incoming', (transfer, fulfillment) => {
+    console.log('received transfer:', transfer)
+    console.log('fulfilled transfer hold with fulfillment:', fulfillment)
+  })
+
+  const secret = receiver.generateSharedSecret()
+  console.log('secret:', secret)
+
+  const request = sender.createRequest(Object.assign({}, secret, {
+    destination_amount: '10'
+  }))
+  console.log('request:', request)
+  const paymentParams = yield sender.quoteRequest(request)
+  console.log('paymentParams', paymentParams)
+
+  const result = yield sender.payRequest(paymentParams)
+  console.log('sender result:', result)
+}).catch((err) => {
+  console.log(err)
+})
+```
+
 ## API Reference
 
 <a name="module_Sender..createSender"></a>
@@ -166,6 +216,7 @@ Returns an ILP Sender to quote and pay for payment requests.
 | [opts.client] | <code>ilp-core.Client</code> | <code>create a new instance with the plugin and opts</code> | [ilp-core](https://github.com/interledgerjs/ilp-core) Client, which can optionally be supplied instead of the previous options |
 | [opts.connectors] | <code>Array</code> | <code>[]</code> | Array of connectors to use, specified by account name on the local ledger (e.g. "connie"). Some ledgers provide recommended connectors while others do not, in which case this would be required to send Interledger payments. |
 | [opts.maxHoldDuration] | <code>Number</code> | <code>10</code> | Maximum time in seconds to allow money to be held for |
+| [opts.defaultRequestTimeout] | <code>Number</code> | <code>30</code> | Default time in seconds that requests will be valid for |
 | [opts.uuidSeed] | <code>Buffer</code> | <code>crypto.randomBytes(32)</code> | Seed to use for generating transfer UUIDs |
 
 
@@ -174,6 +225,7 @@ Returns an ILP Sender to quote and pay for payment requests.
     * [~quoteDestinationAmount(destinationAddress, destinationAmount)](#module_Sender..createSender..quoteDestinationAmount) ⇒ <code>Promise.&lt;String&gt;</code>
     * [~quoteRequest(paymentRequest)](#module_Sender..createSender..quoteRequest) ⇒ <code>Promise.&lt;PaymentParams&gt;</code>
     * [~payRequest(paymentParams)](#module_Sender..createSender..payRequest) ⇒ <code>Promise.&lt;String&gt;</code>
+    * [~createRequest(params)](#module_Sender..createSender..createRequest) ⇒ <code>Object</code>
     * [~stopListening()](#module_Sender..createSender..stopListening) ⇒ <code>Promise.&lt;null&gt;</code>
 
 <a name="module_Sender..createSender..quoteSourceAmount"></a>
@@ -226,6 +278,18 @@ Pay for a payment request. Uses a determinstic transfer id so that paying is ide
 | --- | --- | --- |
 | paymentParams | <code>PaymentParams</code> | Respose from quoteRequest |
 
+<a name="module_Sender..createSender..createRequest"></a>
+
+#### createSender~createRequest(params) ⇒ <code>Object</code>
+Create a payment request using an SSP shared secret.
+
+**Kind**: inner method of <code>[createSender](#module_Sender..createSender)</code>  
+**Returns**: <code>Object</code> - Payment request  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| params | <code>Object</code> | Parameters for creating payment request |
+
 <a name="module_Sender..createSender..stopListening"></a>
 
 #### createSender~stopListening() ⇒ <code>Promise.&lt;null&gt;</code>
@@ -258,6 +322,7 @@ of transfers paying for the payment requests created by the Receiver.
 * [~createReceiver(opts)](#module_Receiver..createReceiver) ⇒ <code>Receiver</code>
     * [~getAddress()](#module_Receiver..createReceiver..getAddress) ⇒ <code>String</code>
     * [~createRequest()](#module_Receiver..createReceiver..createRequest) ⇒ <code>Object</code>
+    * [~generateSharedSecret()](#module_Receiver..createReceiver..generateSharedSecret) ⇒ <code>Object</code>
     * [~listen()](#module_Receiver..createReceiver..listen) ⇒ <code>Promise.&lt;null&gt;</code>
     * [~stopListening()](#module_Receiver..createReceiver..stopListening) ⇒ <code>Promise.&lt;null&gt;</code>
 
@@ -283,6 +348,13 @@ Create a payment request
 | [params.data] | <code>Object</code> | <code></code> | Additional data to include in the request |
 | [params.roundingMode] | <code>String</code> | <code>receiver.roundingMode</code> | Round request amounts with too many decimal places, possible values are "UP", "DOWN", "HALF_UP", "HALF_DOWN" as described in https://mikemcl.github.io/bignumber.js/#constructor-properties |
 
+<a name="module_Receiver..createReceiver..generateSharedSecret"></a>
+
+#### createReceiver~generateSharedSecret() ⇒ <code>Object</code>
+Generate shared secret for Shared Secret Protocol (SSP).
+
+**Kind**: inner method of <code>[createReceiver](#module_Receiver..createReceiver)</code>  
+**Returns**: <code>Object</code> - Object containing destination address and shared secret  
 <a name="module_Receiver..createReceiver..listen"></a>
 
 #### createReceiver~listen() ⇒ <code>Promise.&lt;null&gt;</code>
@@ -292,7 +364,7 @@ receiver created.
 
 **Kind**: inner method of <code>[createReceiver](#module_Receiver..createReceiver)</code>  
 **Returns**: <code>Promise.&lt;null&gt;</code> - Resolves when the receiver is connected  
-**Emits**: <code>[incoming](#event_incoming)</code>, <code>incoming:requestid</code>  
+**Emits**: <code>[incoming](#event_incoming)</code>, <code>incoming:&lt;requestid&gt;</code>, <code>incoming:ssp:&lt;token&gt;</code>  
 <a name="module_Receiver..createReceiver..stopListening"></a>
 
 #### createReceiver~stopListening() ⇒ <code>Promise.&lt;null&gt;</code>
@@ -306,9 +378,15 @@ Disconnect from the ledger and stop listening for events.
 [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string
 
 **Kind**: event emitted by <code>[Receiver](#module_Receiver)</code>  
-<a name="module_Receiver..incoming_requestid"></a>
+<a name="module_Receiver..incoming_<requestid>"></a>
 
-### "incoming:requestid"
+### "incoming:<requestid>"
 [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string for a specific request
+
+**Kind**: event emitted by <code>[Receiver](#module_Receiver)</code>  
+<a name="module_Receiver..incoming_ssp_<token>"></a>
+
+### "incoming:ssp:<token>"
+[IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string for a specific token
 
 **Kind**: event emitted by <code>[Receiver](#module_Receiver)</code>

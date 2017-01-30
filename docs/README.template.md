@@ -150,6 +150,56 @@ co(function * () {
 
 ```
 
+### Shared Secret Example
+
+Sometimes it is desirable that the sender can choose the amount and generate the
+condition without communicating with the recipient. This is an example of a
+payment using the Shared Secret Protocol (SSP) which implements this type of
+flow.
+
+```js
+'use strict'
+
+const co = require('co')
+const ILP = require('.')
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
+
+const sender = ILP.createSender({
+  _plugin: FiveBellsLedgerPlugin,
+  account: 'https://localhost/ledger/accounts/alice',
+  password: 'alice'
+})
+
+const receiver = ILP.createReceiver({
+  _plugin: FiveBellsLedgerPlugin,
+  account: 'https://localhost/ledger/accounts/bob',
+  password: 'bobbob'
+})
+
+co(function * () {
+  yield receiver.listen()
+  receiver.on('incoming', (transfer, fulfillment) => {
+    console.log('received transfer:', transfer)
+    console.log('fulfilled transfer hold with fulfillment:', fulfillment)
+  })
+
+  const secret = receiver.generateSharedSecret()
+  console.log('secret:', secret)
+
+  const request = sender.createRequest(Object.assign({}, secret, {
+    destination_amount: '10'
+  }))
+  console.log('request:', request)
+  const paymentParams = yield sender.quoteRequest(request)
+  console.log('paymentParams', paymentParams)
+
+  const result = yield sender.payRequest(paymentParams)
+  console.log('sender result:', result)
+}).catch((err) => {
+  console.log(err)
+})
+```
+
 ## API Reference
 
 {{#module name="Sender"~}}

@@ -1,15 +1,17 @@
 'use strict'
 
-const crypto = require('crypto')
 const uuid = require('uuid')
 const moment = require('moment')
 const Client = require('ilp-core').Client
 const EventEmitter = require('eventemitter2')
+const base64url = require('../utils/base64url')
+const cc = require('../utils/condition')
 const debug = require('debug')('ilp:receiver')
 const BigNumber = require('bignumber.js')
 const createHmacHelper = require('../utils/hmac').createHmacHelper
 
-const RECEIVER_ID_PREFIX = '~ipr.'
+const IPR_RECEIVER_ID_PREFIX = '~ipr.'
+const SSP_RECEIVER_ID_PREFIX = '~ssp.'
 
 /**
  * @module Receiver
@@ -41,8 +43,10 @@ function createReceiver (opts) {
     throw new Error('hmacKey must be 32-byte Buffer if supplied')
   }
   const hmacHelper = createHmacHelper(opts.hmacKey)
-  const receiverIdBuffer = hmacHelper.getIprReceiverId()
-  const receiverId = RECEIVER_ID_PREFIX + toBase64Url(receiverIdBuffer.toString('base64'))
+  const receiverIdBuffer = hmacHelper.getReceiverId()
+  const receiverId = base64url(receiverIdBuffer)
+  const iprReceiverId = IPR_RECEIVER_ID_PREFIX + receiverId + '.'
+  const sspReceiverId = SSP_RECEIVER_ID_PREFIX + receiverId + '.'
   debug('receiver id: ' + receiverId)
 
   const defaultRequestTimeout = opts.defaultRequestTimeout || 30
@@ -134,7 +138,7 @@ function createReceiver (opts) {
       throw new Error('expiresAt must be an ISO 8601 timestamp')
     }
 
-    const requestAddress = (params.account || account) + '.' + receiverId + '.' + (params.id || uuid.v4())
+    const requestAddress = (params.account || account) + '.' + iprReceiverId + (params.id || uuid.v4())
 
     const paymentRequest = {
       address: requestAddress,
@@ -147,10 +151,23 @@ function createReceiver (opts) {
     }
 
     const conditionPreimage = hmacHelper.hmacJsonForIprCondition(paymentRequest)
-    paymentRequest.condition = toConditionUri(conditionPreimage)
+    paymentRequest.condition = cc.toConditionUri(conditionPreimage)
 
     debug('created payment request:', paymentRequest)
     return paymentRequest
+  }
+
+  /**
+   * Generate shared secret for Shared Secret Protocol (SSP).
+   *
+   * @return {Object} Object containing destination address and shared secret
+   */
+  function generateSharedSecret () {
+    const token = base64url(hmacHelper.getSspToken())
+    return {
+      destination_account: getAddress() + '.' + sspReceiverId + token,
+      shared_secret: base64url(hmacHelper.getSspSharedSecret(token))
+    }
   }
 
   /**
@@ -168,13 +185,13 @@ function createReceiver (opts) {
   /**
    * @private
    *
-   * When we receive transfer notifications, check the transfers
-   * and try to fulfill the conditions (which will only work if
-   * they correspond to requests we created)
+   * When we receive a transfer notification, check the transfer
+   * and try to fulfill the condition (which will only work if
+   * it corresponds to a request we created)
    *
    * Note return values are only for testing
    */
-  function autoFulfillConditions (transfer) {
+  function autoFulfillCondition (transfer) {
     if (transfer.cancellationCondition) {
       debug('got notification of transfer with cancellationCondition', transfer)
       return rejectIncomingTransfer(transfer.id, 'cancellation')
@@ -186,16 +203,31 @@ function createReceiver (opts) {
     }
 
     // The payment request is extracted from the ilp_header
-    let packet = transfer.data && transfer.data.ilp_header
+    const packet = transfer.data && transfer.data.ilp_header
 
     if (!packet) {
       debug('got notification of transfer with no packet attached')
       return rejectIncomingTransfer(transfer.id, 'no-packet')
     }
 
-    // check if the address contains "~ipr" + our receiver id
-    if (packet.account.indexOf(receiverId) === -1) {
-      debug('got notification of transfer for another receiver: ' + packet.account + ' my id is: ' + receiverId)
+    // check if the address starts with our address
+    if (packet.account.indexOf(getAddress()) !== 0) {
+      debug('got notification of transfer for another account account=' + packet.account + ' me=' + getAddress())
+      return 'not-my-packet'
+    }
+
+    // check if the address contains "~ipr"/"~ssp" + our receiver id
+    const localPart = packet.account.slice(getAddress().length + 1)
+    let protocol = null
+    let requestId = null
+    if (localPart.indexOf(iprReceiverId) === 0) {
+      protocol = 'ipr'
+      requestId = localPart.slice(iprReceiverId.length)
+    } else if (localPart.indexOf(sspReceiverId) === 0) {
+      protocol = 'ssp'
+      requestId = localPart.slice(sspReceiverId.length).split('.', 1)[0]
+    } else {
+      debug('got notification of transfer for another receiver local_part=' + localPart + ' me=' + receiverId)
       return 'not-my-packet'
     }
 
@@ -231,21 +263,28 @@ function createReceiver (opts) {
       return rejectIncomingTransfer(transfer.id, 'expired')
     }
 
-    const conditionPreimage = hmacHelper.hmacJsonForIprCondition(paymentRequest)
+    let conditionPreimage
+    if (protocol === 'ipr') {
+      conditionPreimage = hmacHelper.hmacJsonForIprCondition(paymentRequest)
+    } else if (protocol === 'ssp') {
+      const sharedSecret = hmacHelper.getSspSharedSecret(requestId)
+      conditionPreimage = hmacHelper.hmacJsonForSspCondition(paymentRequest, sharedSecret)
+    } else {
+      throw new Error('Invalid protocol')
+    }
 
-    if (transfer.executionCondition !== toConditionUri(conditionPreimage)) {
-      debug('got notification of transfer where executionCondition does not match the one we generate (' + toConditionUri(conditionPreimage) + ')', transfer)
+    if (transfer.executionCondition !== cc.toConditionUri(conditionPreimage)) {
+      debug('got notification of transfer where executionCondition does not match the one we generate (' + cc.toConditionUri(conditionPreimage) + ')', transfer)
       // Do not reject the incoming transfer here because it may have been created
       // by another receiver with a different hmacKey listening on the same account
       return 'condition-mismatch'
     }
 
-    const fulfillment = toFulfillmentUri(conditionPreimage)
+    const fulfillment = cc.toFulfillmentUri(conditionPreimage)
     debug('about to submit fulfillment: ' + fulfillment)
     // returning the promise is only so the result is picked up by the tests' emitAsync
     return client.fulfillCondition(transfer.id, fulfillment)
       .then(() => {
-        const requestId = paymentRequest.address.replace(account + '.' + receiverId + '.', '')
         debug('successfully submitted fulfillment ' + fulfillment + ' for request ' + requestId + ' (transfer ' + transfer.id + ')')
 
         /**
@@ -256,15 +295,25 @@ function createReceiver (opts) {
          */
         eventEmitter.emit('incoming', transfer, fulfillment)
 
-        /**
-         * [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string for a specific request
-         *
-         * @event incoming:requestid
-         * @type {object}
-         */
-        // Allow listeners for specific requests and on wildcard events such that
-        // `incoming:appid.*` will match `incoming:appid:requestid`
-        eventEmitter.emit('incoming:' + requestId, transfer, fulfillment)
+        if (protocol === 'ipr') {
+          /**
+           * [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string for a specific request
+           *
+           * @event incoming:<requestid>
+           * @type {object}
+           */
+          // Allow listeners for specific requests and on wildcard events such that
+          // `incoming:appid.*` will match `incoming:appid:requestid`
+          eventEmitter.emit('incoming:' + requestId, transfer, fulfillment)
+        } else if (protocol === 'ssp') {
+          /**
+           * [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string for a specific token
+           *
+           * @event incoming:ssp:<token>
+           * @type {object}
+           */
+          eventEmitter.emit('incoming:ssp:' + requestId, transfer, fulfillment)
+        }
 
         return 'sent'
       })
@@ -279,14 +328,15 @@ function createReceiver (opts) {
    * receiver created.
    *
    * @fires incoming
-   * @fires incoming:requestid
+   * @fires incoming:<requestid>
+   * @fires incoming:ssp:<token>
    *
    * @return {Promise.<null>} Resolves when the receiver is connected
    */
   function listen () {
     // don't have multiple listeners even if listen is called more than once
-    client.removeListener('incoming_prepare', autoFulfillConditions)
-    client.on('incoming_prepare', autoFulfillConditions)
+    client.removeListener('incoming_prepare', autoFulfillCondition)
+    client.on('incoming_prepare', autoFulfillCondition)
     return Promise.race([
       client.connect()
         .then(() => {
@@ -309,37 +359,17 @@ function createReceiver (opts) {
    * @return {Promise.<null>} Resolves when the receiver is disconnected.
    */
   function stopListening () {
-    client.removeListener('incoming_prepare', autoFulfillConditions)
+    client.removeListener('incoming_prepare', autoFulfillCondition)
     return client.disconnect()
   }
 
   return Object.assign(eventEmitter, {
     getAddress,
     createRequest,
+    generateSharedSecret,
     listen,
     stopListening
   })
-}
-
-// base64url encoded without padding
-function toBase64Url (normalBase64) {
-  return normalBase64.replace(/=/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-}
-
-function toConditionUri (conditionPreimage) {
-  const hash = crypto.createHash('sha256')
-  hash.update(conditionPreimage)
-  const condition = hash.digest('base64')
-  const conditionUri = 'cc:0:3:' + toBase64Url(condition) + ':32'
-  return conditionUri
-}
-
-function toFulfillmentUri (conditionPreimage) {
-  const fulfillment = conditionPreimage.toString('base64')
-  const fulfillmentUri = 'cf:0:' + toBase64Url(fulfillment)
-  return fulfillmentUri
 }
 
 exports.createReceiver = createReceiver
