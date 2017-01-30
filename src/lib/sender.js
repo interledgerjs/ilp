@@ -1,10 +1,13 @@
 'use strict'
 
+const uuid = require('uuid')
 const moment = require('moment')
 const Client = require('ilp-core').Client
 const debug = require('debug')('ilp:sender')
 const deterministicUuid = require('aguid')
 const crypto = require('crypto')
+const toConditionUri = require('../utils/condition').toConditionUri
+const createHmacHelper = require('../utils/hmac').createHmacHelper
 
 /**
  * @module Sender
@@ -18,6 +21,7 @@ const crypto = require('crypto')
  * @param  {ilp-core.Client} [opts.client=create a new instance with the plugin and opts] [ilp-core](https://github.com/interledgerjs/ilp-core) Client, which can optionally be supplied instead of the previous options
  * @param  {Array}  [opts.connectors=[]] Array of connectors to use, specified by account name on the local ledger (e.g. "connie"). Some ledgers provide recommended connectors while others do not, in which case this would be required to send Interledger payments.
  * @param  {Number} [opts.maxHoldDuration=10] Maximum time in seconds to allow money to be held for
+ * @param  {Number} [opts.defaultRequestTimeout=30] Default time in seconds that requests will be valid for
  * @param  {Buffer} [opts.uuidSeed=crypto.randomBytes(32)] Seed to use for generating transfer UUIDs
  * @return {Sender}
  */
@@ -27,7 +31,10 @@ function createSender (opts) {
   })
 
   const maxHoldDuration = opts.maxHoldDuration || 10
+  const defaultRequestTimeout = opts.defaultRequestTimeout || 30
   const uuidSeed = (Buffer.isBuffer(opts.uuidSeed) ? opts.uuidSeed : crypto.randomBytes(32)).toString('hex')
+
+  const hmacHelper = createHmacHelper(opts.uuidSeed)
 
   /**
    * Get a fixed source amount quote
@@ -194,6 +201,40 @@ function createSender (opts) {
   }
 
   /**
+   * Create a payment request using an SSP shared secret.
+   *
+   * @param {Object} params Parameters for creating payment request
+   * @param {String} params.destination_amount Amount that should arrive in the recipient's account
+   * @param {String} params.destination_account Target account's ILP address
+   * @param {String} [params.id=uuid.v4()] Unique ID for the request (used to ensure conditions are unique per request)
+   * @param {String} [params.expires_at=30 seconds from now] Expiry of request
+   * @param {Object} [params.data=null] Additional data to include in the request
+   *
+   * @return {Object} Payment request
+   */
+  function createRequest (params) {
+    const paymentRequest = {
+      address: params.destination_account,
+      amount: params.destination_amount,
+      expires_at: params.expires_at || moment().add(defaultRequestTimeout, 'seconds').toISOString()
+    }
+
+    if (params.data) {
+      paymentRequest.data = params.data
+    }
+
+    paymentRequest.address += '.' + (params.id || uuid.v4())
+
+    const sharedSecret = Buffer.from(params.shared_secret, 'base64')
+    const conditionPreimage = hmacHelper.hmacJsonForSspCondition(paymentRequest, sharedSecret)
+    const condition = toConditionUri(conditionPreimage)
+
+    return Object.assign({}, paymentRequest, {
+      condition
+    })
+  }
+
+  /**
    * Disconnect from the ledger and stop listening for events.
    *
    * @return {Promise.<null>} Resolves when the sender is disconnected.
@@ -207,6 +248,7 @@ function createSender (opts) {
     quoteDestinationAmount,
     quoteRequest,
     payRequest,
+    createRequest,
     stopListening
   }
 }
