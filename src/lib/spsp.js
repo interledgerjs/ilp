@@ -5,7 +5,6 @@ const uuid = require('uuid/v4')
 
 const Sender = require('./sender')
 const IlpCore = require('ilp-core')
-const PluginBells = require('ilp-plugin-bells')
 
 /**
  * @module SPSP
@@ -28,32 +27,36 @@ const _getSPSPFromReceiver = function * (receiver) {
 }
 
 const _querySPSP = function * (receiver) {
-  const endpoint = (receiver.indexOf('@') >= 0) ?
-    _getSPSPFromReceiver(receiver) :
-    receiver
+  const endpoint = (receiver.indexOf('@') >= 0)
+    ? (yield _getSPSPFromReceiver(receiver))
+    : receiver
 
   return (yield agent
     .get(endpoint)
     .set('Accept', 'application/json')).body
 }
 
+const query = co.wrap(_querySPSP)
+
 const _quote = function * (plugin, spsp, sourceAmount, destinationAmount) {
   if (!plugin) throw new Error('missing plugin')
-  if (!destinationAccount) throw new Error('missing receiver')
+  if (!spsp.destination_account) throw new Error('missing destination account')
+  if (!spsp.maximum_destination_amount) throw new Error('missing maximum destination amount')
+  if (!spsp.minimum_destination_amount) throw new Error('missing minimum destination amount')
 
   const client = new IlpCore.Client(plugin)
   const quote = yield client.quote({
-    destinationAccount: spsp.payment.destination_amount,
+    destinationAddress: spsp.destination_account,
     destinationAmount,
     sourceAmount
   })
 
-  if (quote.destinationAmount > spsp.payment.maximum_destination_amount ||
-      quote.destinationAmount < spsp.payment.minimum_destination_amount) {
+  if (+quote.destinationAmount > +spsp.maximum_destination_amount ||
+      +quote.destinationAmount < +spsp.minimum_destination_amount) {
     throw new Error('Destination amount (' +
       quote.destinationAmount +
       ') is outside of range [' +
-      spsp.payment.maximum_destination_amount +
+      spsp.maximum_destination_amount +
       ', ' +
       spsp.minimum_destination_amount +
       ']')
@@ -65,15 +68,15 @@ const _quote = function * (plugin, spsp, sourceAmount, destinationAmount) {
 const _createPayment = (spsp, quote) => {
   return {
     id: uuid(),
-    source_amount: quote.sourceAmount,
-    destination_amount: quote.destinationAmount,
-    destination_account: quote.destinationAccount,
-    connector_account: quote.connectorAccount,
+    sourceAmount: quote.sourceAmount,
+    destinationAmount: quote.destinationAmount,
+    destinationAccount: spsp.destination_account,
+    connectorAccount: quote.connectorAccount,
     spsp: spsp
   }
 }
 
-const quoteSource = (plugin, receiver, amount) {
+const quoteSource = (plugin, receiver, amount) => {
   return co(function * () {
     const spsp = yield _querySPSP(receiver)
     const quote = yield _quote(plugin, spsp, amount)
@@ -81,7 +84,7 @@ const quoteSource = (plugin, receiver, amount) {
   })
 }
 
-const quoteDestination = (plugin, receiver, amount) {
+const quoteDestination = (plugin, receiver, amount) => {
   return co(function * () {
     const spsp = yield _querySPSP(receiver)
     const quote = yield _quote(plugin, spsp, amount)
@@ -89,25 +92,38 @@ const quoteDestination = (plugin, receiver, amount) {
   })
 }
 
-const sendPayment = (plugin, payment) {
+const sendPayment = (plugin, payment, ilp) => {
   return co(function * () {
-    const sender = Sender.createSender({
+    if (!plugin) throw new Error('missing plugin')
+    if (!payment.spsp) throw new Error('missing SPSP response in payment')
+    if (!payment.spsp.shared_secret) throw new Error('missing SPSP shared_secret')
+    if (!payment.destinationAmount) throw new Error('missing destinationAmount')
+    if (!payment.sourceAmount) throw new Error('missing sourceAmount')
+    if (!payment.destinationAccount) throw new Error('missing destinationAccount')
+    if (!payment.id) throw new Error('payment must have an id')
+
+    const sender = Sender.createSender(Object.assign({
       client: (new IlpCore.Client(plugin))
-    })
+    }, ilp))
 
     const request = sender.createRequest({
       id: payment.id,
-      shared_secret: payment.spsp.payment.shared_secret,
-      destination_amount: payment.destination_amount,
-      destination_account: payment.destination_account,
+      sharedSecret: payment.spsp.shared_secret,
+      destinationAmount: payment.destination_amount,
+      destinationAccount: payment.spsp.destination_account,
+      data: payment.data
     })
 
     const fulfillment = yield sender.payRequest({
       uuid: payment.id,
-      sourceAmount: String(payment.source_amount),
-      connectorAccount: payment.connector_account,
-      destinationAmount: String(payment.destination_amount),
+      sourceAmount: String(payment.sourceAmount),
+      connectorAccount: payment.connectorAccount,
+      destinationAmount: String(payment.destinationAmount),
       destinationAccount: request.address,
+      destinationMemo: {
+        data: request.data,
+        expires_at: request.expires_at
+      },
       executionCondition: request.condition,
       expiresAt: request.expires_at
     })
@@ -118,13 +134,14 @@ const sendPayment = (plugin, payment) {
 
 /**
   * Parameters for an SPSP payment
-  * @typedef {Object} SPSPPayment
+  * @typedef {Object} SpspPayment
   * @property {id} id UUID to ensure idempotence between calls to sendPayment
   * @property {string} source_amount Decimal string, representing the amount that will be paid on the sender's ledger.
   * @property {string} destination_amount Decimal string, representing the amount that the receiver will be credited on their ledger.
   * @property {string} destination_account Receiver's ILP address.
   * @property {string} connector_account The connector's account on the sender's ledger. The initial transfer on the sender's ledger is made to this account.
   * @property {string} spsp SPSP response object, containing details to contruct transfers.
+  * @property {string} data extra data to attach to transfer.
   */
 
 /** SPSP Client */
@@ -136,15 +153,13 @@ class Client {
     */
   constructor (opts) {
     // use ILP Core Client constructor to turn opts into plugin
-    this.plugin = (new IlpCore.Client(Object.assign({
-      _plugin: PluginBells
-    }, opts))).getPlugin()
+    this.plugin = (new IlpCore.Client(Object.assign(opts))).getPlugin()
 
     /**
       * Get payment params via SPSP query and ILQP quote, based on source amount
       * @param {String} receiver webfinger identifier of receiver
       * @param {String} sourceAmount Amount that you will send
-      * @returns {Promise.<SPSPPayment>} Resolves with the parameters that can be passed to sendPayment
+      * @returns {Promise.<SpspPayment>} Resolves with the parameters that can be passed to sendPayment
       */
     this.quoteSource = quoteSource.bind(null, this.plugin)
 
@@ -152,16 +167,23 @@ class Client {
       * Get payment params via SPSP query and ILQP quote, based on destination amount
       * @param {String} receiver webfinger identifier of receiver
       * @param {String} destinationAmount Amount that the receiver will get
-      * @returns {Promise.<SPSPPayment>} Resolves with the parameters that can be passed to sendPayment
+      * @returns {Promise.<SpspPayment>} Resolves with the parameters that can be passed to sendPayment
       */
     this.quoteDestination = quoteDestination.bind(null, this.plugin)
 
     /**
       * Sends a payment using the PaymentParams
-      * @param {SPSPPayment} payment params, returned by quoteSource or quoteDestination
+      * @param {SpspPayment} payment params, returned by quoteSource or quoteDestination
       * @returns {Promise.<PaymentResult>} Returns payment result
       */
     this.sendPayment = sendPayment.bind(null, this.plugin)
+
+    /**
+      * Queries an SPSP endpoint
+      * @param {String} receiver A URL or an account
+      * @returns {Object} result Result from SPSP endpoint
+      */
+    this.query = query
   }
 }
 
@@ -169,5 +191,6 @@ module.exports = {
   Client,
   quoteSource,
   quoteDestination,
-  sendPayment
+  sendPayment,
+  query
 }
