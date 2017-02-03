@@ -20,18 +20,21 @@ const _getHref = (res, field) => {
 
 const _getSPSPFromReceiver = function * (receiver) {
   const host = receiver.split('@')[1]
+  console.log('querying host', host)
   const resource = (yield agent
     .get('https://' + host + '/.well-known/webfinger?resource=acct:' + receiver)
     .set('Accept', 'application/json')).body
 
+  console.log(resource)
   return _getHref(resource, 'https://interledger.org/rel/spsp/v1')
 }
 
 const _querySPSP = function * (receiver) {
   const endpoint = (receiver.indexOf('@') >= 0) ?
-    _getSPSPFromReceiver(receiver) :
+    (yield _getSPSPFromReceiver(receiver)) :
     receiver
 
+  console.log('querying', endpoint)
   return (yield agent
     .get(endpoint)
     .set('Accept', 'application/json')).body
@@ -39,21 +42,23 @@ const _querySPSP = function * (receiver) {
 
 const _quote = function * (plugin, spsp, sourceAmount, destinationAmount) {
   if (!plugin) throw new Error('missing plugin')
-  if (!destinationAccount) throw new Error('missing receiver')
+  if (!spsp.destination_account) throw new Error('missing destination account')
+  if (!spsp.maximum_destination_amount) throw new Error('missing maximum destination amount')
+  if (!spsp.minimum_destination_amount) throw new Error('missing minimum destination amount')
 
   const client = new IlpCore.Client(plugin)
   const quote = yield client.quote({
-    destinationAccount: spsp.payment.destination_amount,
+    destinationAddress: spsp.destination_account,
     destinationAmount,
     sourceAmount
   })
 
-  if (quote.destinationAmount > spsp.payment.maximum_destination_amount ||
-      quote.destinationAmount < spsp.payment.minimum_destination_amount) {
+  if (+quote.destinationAmount > +spsp.maximum_destination_amount ||
+      +quote.destinationAmount < +spsp.minimum_destination_amount) {
     throw new Error('Destination amount (' +
       quote.destinationAmount +
       ') is outside of range [' +
-      spsp.payment.maximum_destination_amount +
+      spsp.maximum_destination_amount +
       ', ' +
       spsp.minimum_destination_amount +
       ']')
@@ -67,13 +72,13 @@ const _createPayment = (spsp, quote) => {
     id: uuid(),
     source_amount: quote.sourceAmount,
     destination_amount: quote.destinationAmount,
-    destination_account: quote.destinationAccount,
+    destination_account: spsp.destination_account,
     connector_account: quote.connectorAccount,
     spsp: spsp
   }
 }
 
-const quoteSource = (plugin, receiver, amount) {
+const quoteSource = (plugin, receiver, amount) => {
   return co(function * () {
     const spsp = yield _querySPSP(receiver)
     const quote = yield _quote(plugin, spsp, amount)
@@ -81,7 +86,7 @@ const quoteSource = (plugin, receiver, amount) {
   })
 }
 
-const quoteDestination = (plugin, receiver, amount) {
+const quoteDestination = (plugin, receiver, amount) => {
   return co(function * () {
     const spsp = yield _querySPSP(receiver)
     const quote = yield _quote(plugin, spsp, amount)
@@ -89,17 +94,26 @@ const quoteDestination = (plugin, receiver, amount) {
   })
 }
 
-const sendPayment = (plugin, payment) {
+const sendPayment = (plugin, payment, ilp) => {
   return co(function * () {
-    const sender = Sender.createSender({
+    if (!plugin) throw new Error('missing plugin')
+    if (!payment.spsp) throw new Error('missing SPSP response in payment')
+    if (!payment.spsp.shared_secret) throw new Error('missing SPSP shared_secret')
+    if (!payment.destination_amount) throw new Error('missing destination_amount')
+    if (!payment.source_amount) throw new Error('missing source_amount')
+    if (!payment.destination_account) throw new Error('missing destination_account')
+    if (!payment.connector_account) throw new Error('missing connector_account')
+    if (!payment.id) throw new Error('payment must have an id')
+
+    const sender = Sender.createSender(Object.assign({
       client: (new IlpCore.Client(plugin))
-    })
+    }, ilp))
 
     const request = sender.createRequest({
       id: payment.id,
-      shared_secret: payment.spsp.payment.shared_secret,
+      shared_secret: payment.spsp.shared_secret,
       destination_amount: payment.destination_amount,
-      destination_account: payment.destination_account,
+      destination_account: payment.spsp.destination_account,
     })
 
     const fulfillment = yield sender.payRequest({
@@ -108,9 +122,15 @@ const sendPayment = (plugin, payment) {
       connectorAccount: payment.connector_account,
       destinationAmount: String(payment.destination_amount),
       destinationAccount: request.address,
+      destinationMemo: {
+        data: payment.data,
+        expires_at: request.expires_at
+      },
       executionCondition: request.condition,
       expiresAt: request.expires_at
     })
+
+    console.log('paid request')
 
     return { fulfillment }
   })
@@ -125,6 +145,7 @@ const sendPayment = (plugin, payment) {
   * @property {string} destination_account Receiver's ILP address.
   * @property {string} connector_account The connector's account on the sender's ledger. The initial transfer on the sender's ledger is made to this account.
   * @property {string} spsp SPSP response object, containing details to contruct transfers.
+  * @property {string} data extra data to attach to transfer.
   */
 
 /** SPSP Client */

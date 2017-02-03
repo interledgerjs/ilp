@@ -2,11 +2,13 @@
 
 const chai = require('chai')
 const chaiAsPromised = require('chai-as-promised')
+const sinon = require('sinon')
 chai.use(chaiAsPromised)
 const expect = chai.expect
 const assert = chai.assert
 const MockPlugin = require('ilp-core/test/mocks/mock-plugin')
 const nock = require('nock')
+const timekeeper = require('timekeeper')
 
 delete require.cache[require.resolve('../src/lib/spsp')]
 const mockRequire = require('mock-require')
@@ -20,17 +22,20 @@ const paymentRequest = require('./data/paymentRequest.json')
 const paymentParams = require('./data/paymentParams.json')
 const webfinger = {
   links: [{
-    rel: 'https://interledger.org/rel/receiver',
-    href: 'https://example.com/receiver' 
-  }, {
-    rel: 'https://interledger.org/rel/ilpAddress',
-    href: 'example.alice' 
+    rel: 'https://interledger.org/rel/spsp/v1',
+    href: 'https://example.com/spsp' 
   }]
+}
+const spspResponse = {
+  shared_secret: 'itsasecret',
+  destination_account: 'example.alice',
+  maximum_destination_amount: '20',
+  minimum_destination_amount: '10'
 }
 
 const SPSP = require('../src/lib/spsp')
 
-describe('SPSP Module', function () {
+describe.only('SPSP Module', function () {
   beforeEach(function () {
     this.quoteRequestCalled = false
     this.quoteSourceAmountCalled = false
@@ -48,21 +53,23 @@ describe('SPSP Module', function () {
         .reply(200, webfinger)
 
       nock('https://example.com')
-        .post('/receiver')
-        .reply(200, paymentRequest)
+        .get('/spsp')
+        .reply(200, spspResponse)
 
       const payment = yield SPSP.quoteDestination(this.plugin, 'alice@example.com', '10')
       assert.deepEqual(payment, {
-        destinationAccount: "example.alice",
-        connectorAccount: "example.connie",
-        sourceAmount: "10",
+        destination_account: "example.alice",
+        connector_account: "example.connie",
+        source_amount: "10",
         id: payment.id,
-        destinationAmount: "10",
-        receiverEndpoint: "https://example.com/receiver"
+        destination_amount: "10",
+        spsp: spspResponse
       })
 
-      yield SPSP.sendPayment(this.plugin, payment)
+      console.log('got the payment')
+      yield SPSP.sendPayment(this.plugin, payment, { defaultRequestTimeout: 1 })
         .catch((e) => {
+          console.log(e)
           if (e.message !== 'Transfer expired, money returned') throw e 
         })
     })
@@ -83,20 +90,6 @@ describe('SPSP Module', function () {
       yield expect(SPSP.quoteDestination(this.plugin, 'alice@example.com', '10')).to.eventually.be.rejected
     })
 
-    it('should return an error if receiver doesn\'t exist', function * () {
-      nock('https://example.com')
-        .get('/.well-known/webfinger?resource=acct:alice@example.com')
-        .reply(200, webfinger)
-      
-      const payment = yield SPSP.quoteDestination(this.plugin, 'alice@example.com', '10')
-      payment.receiver = undefined
-
-      yield expect(SPSP.sendPayment(this.plugin, payment)
-        .catch((e) => {
-          if (e.message !== 'Transfer expired, money returned') throw e 
-        })).to.eventually.be.rejected
-    })
-
     it('should fail without an amount', function * () {
       yield expect(SPSP.quoteDestination(this.plugin, 'alice@example.com')).to.eventually.be.rejected
     })
@@ -109,20 +102,20 @@ describe('SPSP Module', function () {
         .reply(200, webfinger)
 
       nock('https://example.com')
-        .post('/receiver')
-        .reply(200, paymentRequest)
+        .get('/spsp')
+        .reply(200, spspResponse)
 
       const payment = yield SPSP.quoteDestination(this.plugin, 'alice@example.com', '10')
       assert.deepEqual(payment, {
-        destinationAccount: "example.alice",
-        connectorAccount: "example.connie",
-        sourceAmount: "10",
+        destination_account: "example.alice",
+        connector_account: "example.connie",
+        source_amount: "10",
         id: payment.id,
-        destinationAmount: "10",
-        receiverEndpoint: "https://example.com/receiver"
+        destination_amount: "10",
+        spsp: spspResponse
       })
 
-      yield SPSP.sendPayment(this.plugin, payment)
+      yield SPSP.sendPayment(this.plugin, payment, { defaultRequestTimeout: 1 })
         .catch((e) => {
           if (e.message !== 'Transfer expired, money returned') throw e 
         })
@@ -147,6 +140,10 @@ describe('SPSP Module', function () {
         .get('/.well-known/webfinger?resource=acct:alice@example.com')
         .reply(200, webfinger)
 
+      nock('https://example.com')
+        .get('/spsp')
+        .reply(200, spspResponse)
+
       this.payment = yield SPSP.quoteDestination(this.plugin, 'alice@example.com', '10')
     })
 
@@ -159,27 +156,27 @@ describe('SPSP Module', function () {
     })
 
     it('should fail without destinationAccount', function * () {
-      delete this.payment.destinationAccount
+      delete this.payment.destination_account
       yield expect(SPSP.sendPayment(this.plugin, this.payment)).to.eventually.be.rejected
     })
 
     it('should fail without destinationAmount', function * () {
-      delete this.payment.destinationAmount
+      delete this.payment.destination_amount
       yield expect(SPSP.sendPayment(this.plugin, this.payment)).to.eventually.be.rejected
     })
 
     it('should fail without sourceAmount', function * () {
-      delete this.payment.sourceAmount
+      delete this.payment.source_amount
       yield expect(SPSP.sendPayment(this.plugin, this.payment)).to.eventually.be.rejected
     })
 
     it('should fail without connectorAccount', function * () {
-      delete this.payment.connectorAccount
+      delete this.payment.connector_account
       yield expect(SPSP.sendPayment(this.plugin, this.payment)).to.eventually.be.rejected
     })
 
-    it('should fail without receiver', function * () {
-      delete this.payment.receiver
+    it('should fail without spsp info', function * () {
+      delete this.payment.spsp
       yield expect(SPSP.sendPayment(this.plugin, this.payment)).to.eventually.be.rejected
     })
   })
