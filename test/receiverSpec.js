@@ -14,6 +14,7 @@ const EventEmitter = require('eventemitter2')
 const mockRequire = require('mock-require')
 
 const createReceiver = require('../src/lib/receiver').createReceiver
+const createSender = require('../src/lib/sender').createSender
 const MockClient = require('./mocks/mockCore').Client
 const transfer = require('./data/transferIncoming.json')
 
@@ -517,6 +518,53 @@ describe('Receiver Module', function () {
           yield otherReceiver.listen()
           const results = yield this.client.emitAsync('incoming_prepare', this.transfer)
           expect(spy).not.to.have.been.called
+        })
+
+        it('should not fulfill KEP payment without reviewPayment', function * () {
+          const sender = createSender({
+            client: new MockClient({}),
+            uuidSeed: Buffer.from('f73e2739c0f0ff4c9b7cac6678c89a59ee6cb8911b39d39afbf2fef9e77bc9c3', 'hex')
+          })
+
+          const kep = this.receiver.generateSharedSecret()
+          const request = sender.createRequest(Object.assign({}, kep, {
+            destination_amount: "1",
+          }))
+
+          this.transfer.account = request.address
+          this.transfer.executionCondition = request.condition
+          this.transfer.data.ilp_header.data.expires_at = request.expires_at
+          this.transfer.data.ilp_header.account = request.address
+          delete this.transfer.data.ilp_header.data.data
+
+          yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
+            .to.be.rejectedWith('opts.reviewPayment was not specified, so KEP is not supported on this receiver')
+        })
+
+        it('should not fulfill payment if reviewPayment callback rejects', function * () {
+          const client = new MockClient({
+            account: 'ilpdemo.blue.bob'
+          })
+
+          const receiver = createReceiver({
+            client: client,
+            hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+            reviewPayment: (paymentRequest) => {
+              return Promise.reject(new Error('rejected!'))
+            }
+          })
+          yield receiver.listen()
+
+          const request = receiver.createRequest({
+            amount: 1,
+            id: '22e315dc-3f99-4f89-9914-1987ceaa906d',
+            expiresAt: this.transfer.data.ilp_header.data.expires_at,
+            data: { for: 'that thing' }
+          })
+
+          this.transfer.executionCondition = request.condition
+          yield expect(client.emitAsync('incoming_prepare', this.transfer))
+            .to.be.rejectedWith('rejected!')
         })
       })
     })
