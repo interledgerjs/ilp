@@ -196,7 +196,7 @@ function createSender (opts) {
   }
 
   /**
-   * Create a payment request using an SSP shared secret.
+   * Create a payment request using a KEP shared secret.
    *
    * @param {Object} params Parameters for creating payment request
    * @param {String} params.destination_amount Amount that should arrive in the recipient's account
@@ -221,7 +221,7 @@ function createSender (opts) {
     paymentRequest.address += '.' + (params.id || uuid.v4())
 
     const sharedSecret = Buffer.from(params.shared_secret, 'base64')
-    const conditionPreimage = hmacHelper.hmacJsonForSspCondition(paymentRequest, sharedSecret)
+    const conditionPreimage = hmacHelper.hmacJsonForKepCondition(paymentRequest, sharedSecret)
     const condition = toConditionUri(conditionPreimage)
 
     return Object.assign({}, paymentRequest, {
