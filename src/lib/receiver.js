@@ -9,12 +9,20 @@ const cc = require('../utils/condition')
 const debug = require('debug')('ilp:receiver')
 const BigNumber = require('bignumber.js')
 const createHmacHelper = require('../utils/hmac').createHmacHelper
+const util = require('util')
 
 const IPR_RECEIVER_ID_PREFIX = '~ipr.'
-const SSP_RECEIVER_ID_PREFIX = '~ssp.'
+const KEP_RECEIVER_ID_PREFIX = '~kep.'
 
 /**
  * @module Receiver
+ */
+
+/**
+ * @callback reviewPaymentCallback
+ * @param {PaymentRequest} payment payment request object
+ * @param {Transfer} transfer transfer object for the payment being reviewed
+ * @return {Promise.<null>|null} cancels the payment if it rejects/throws an error.
  */
 
 /**
@@ -30,6 +38,7 @@ const SSP_RECEIVER_ID_PREFIX = '~ssp.'
  * @param  {Boolean} [opts.allowOverPayment=false] Allow transfers where the amount is greater than requested
  * @param {String} [opts.roundingMode=null] Round request amounts with too many decimal places, possible values are "UP", "DOWN", "HALF_UP", "HALF_DOWN" as described in https://mikemcl.github.io/bignumber.js/#constructor-properties
  * @param  {Number} [opts.connectionTimeout=10] Time in seconds to wait for the ledger to connect
+ * @param  {reviewPaymentCallback} [opts.reviewPayment] called before fulfilling any incoming payments. The receiver doesn't fulfill the payment if reviewPayment rejects.
  * @return {Receiver}
  */
 function createReceiver (opts) {
@@ -46,9 +55,10 @@ function createReceiver (opts) {
   const receiverIdBuffer = hmacHelper.getReceiverId()
   const receiverId = base64url(receiverIdBuffer)
   const iprReceiverId = IPR_RECEIVER_ID_PREFIX + receiverId + '.'
-  const sspReceiverId = SSP_RECEIVER_ID_PREFIX + receiverId + '.'
+  const kepReceiverId = KEP_RECEIVER_ID_PREFIX + receiverId + '.'
   debug('receiver id: ' + receiverId)
 
+  const reviewPayment = opts.reviewPayment
   const defaultRequestTimeout = opts.defaultRequestTimeout || 30
   const allowOverPayment = !!opts.allowOverPayment
   const connectionTimeout = opts.connectionTimeout || 10
@@ -158,15 +168,15 @@ function createReceiver (opts) {
   }
 
   /**
-   * Generate shared secret for Shared Secret Protocol (SSP).
+   * Generate shared secret for Shared Secret Protocol (KEP).
    *
    * @return {Object} Object containing destination address and shared secret
    */
   function generateSharedSecret () {
-    const token = base64url(hmacHelper.getSspToken())
+    const token = base64url(hmacHelper.getKepToken())
     return {
-      destination_account: getAddress() + '.' + sspReceiverId + token,
-      shared_secret: base64url(hmacHelper.getSspSharedSecret(token))
+      destination_account: getAddress() + '.' + kepReceiverId + token,
+      shared_secret: base64url(hmacHelper.getKepSharedSecret(token))
     }
   }
 
@@ -216,16 +226,16 @@ function createReceiver (opts) {
       return 'not-my-packet'
     }
 
-    // check if the address contains "~ipr"/"~ssp" + our receiver id
+    // check if the address contains "~ipr"/"~kep" + our receiver id
     const localPart = packet.account.slice(getAddress().length + 1)
     let protocol = null
     let requestId = null
     if (localPart.indexOf(iprReceiverId) === 0) {
       protocol = 'ipr'
       requestId = localPart.slice(iprReceiverId.length)
-    } else if (localPart.indexOf(sspReceiverId) === 0) {
-      protocol = 'ssp'
-      requestId = localPart.slice(sspReceiverId.length).split('.', 1)[0]
+    } else if (localPart.indexOf(kepReceiverId) === 0) {
+      protocol = 'kep'
+      requestId = localPart.slice(kepReceiverId.length).split('.', 1)[0]
     } else {
       debug('got notification of transfer for another receiver local_part=' + localPart + ' me=' + receiverId)
       return 'not-my-packet'
@@ -263,14 +273,19 @@ function createReceiver (opts) {
       return rejectIncomingTransfer(transfer.id, 'expired')
     }
 
+    if (protocol === 'kep' && !reviewPayment) {
+      debug('got KEP payment on non-KEP receiver')
+      return Promise.reject(new Error('opts.reviewPayment was not specified, so KEP is not supported on this receiver'))
+    }
+
     let conditionPreimage
     if (protocol === 'ipr') {
       conditionPreimage = hmacHelper.hmacJsonForIprCondition(paymentRequest)
-    } else if (protocol === 'ssp') {
-      const sharedSecret = hmacHelper.getSspSharedSecret(requestId)
-      conditionPreimage = hmacHelper.hmacJsonForSspCondition(paymentRequest, sharedSecret)
+    } else if (protocol === 'kep') {
+      const sharedSecret = hmacHelper.getKepSharedSecret(requestId)
+      conditionPreimage = hmacHelper.hmacJsonForKepCondition(paymentRequest, sharedSecret)
     } else {
-      throw new Error('Invalid protocol')
+      return Promise.reject(new Error('Invalid protocol'))
     }
 
     if (transfer.executionCondition !== cc.toConditionUri(conditionPreimage)) {
@@ -281,44 +296,61 @@ function createReceiver (opts) {
     }
 
     const fulfillment = cc.toFulfillmentUri(conditionPreimage)
-    debug('about to submit fulfillment: ' + fulfillment)
+    const reviewPromise = reviewPayment
+      ? Promise.resolve(reviewPayment(transfer, paymentRequest))
+      : Promise.resolve(null)
+
+    console.log(protocol)
+
     // returning the promise is only so the result is picked up by the tests' emitAsync
-    return client.fulfillCondition(transfer.id, fulfillment)
+    return reviewPromise
       .then(() => {
-        debug('successfully submitted fulfillment ' + fulfillment + ' for request ' + requestId + ' (transfer ' + transfer.id + ')')
+        debug('about to submit fulfillment: ' + fulfillment)
+        return client.fulfillCondition(transfer.id, fulfillment)
+          .then(() => {
+            debug('successfully submitted fulfillment ' + fulfillment + ' for request ' + requestId + ' (transfer ' + transfer.id + ')')
 
-        /**
-         * [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string
-         *
-         * @event incoming
-         * @type {object}
-         */
-        eventEmitter.emit('incoming', transfer, fulfillment)
+            /**
+            * [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string
+            *
+            * @event incoming
+            * @type {object}
+            */
+            eventEmitter.emit('incoming', transfer, fulfillment)
 
-        if (protocol === 'ipr') {
-          /**
-           * [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string for a specific request
-           *
-           * @event incoming:<requestid>
-           * @type {object}
-           */
-          // Allow listeners for specific requests and on wildcard events such that
-          // `incoming:appid.*` will match `incoming:appid:requestid`
-          eventEmitter.emit('incoming:' + requestId, transfer, fulfillment)
-        } else if (protocol === 'ssp') {
-          /**
-           * [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string for a specific token
-           *
-           * @event incoming:ssp:<token>
-           * @type {object}
-           */
-          eventEmitter.emit('incoming:ssp:' + requestId, transfer, fulfillment)
-        }
+            if (protocol === 'ipr') {
+              /**
+              * [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string for a specific request
+              *
+              * @event incoming:ipr:<requestid>
+              * @type {object}
+              */
+              // Allow listeners for specific requests and on wildcard events such that
+              // `incoming:appid.*` will match `incoming:appid:requestid`
 
-        return 'sent'
-      })
-      .catch((err) => {
-        debug('error submitting fulfillment', err)
+              eventEmitter.emit('incoming:ipr:' + requestId, transfer, fulfillment)
+
+              // alternate return this promise in order to deprecate event
+              return eventEmitter.emitAsync('incoming:' + requestId, transfer, fulfillment).then((res) => {
+                if (res.length) util.deprecate(() => {}, 'listen to "incoming:ipr:" instead of "incoming"')
+                return sent
+              })
+
+            } else if (protocol === 'kep') {
+              /**
+              * [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string for a specific token
+              *
+              * @event incoming:kep:<token>
+              * @type {object}
+              */
+              eventEmitter.emit('incoming:kep:' + requestId, transfer, fulfillment)
+            }
+
+            return 'sent'
+          })
+          .catch((err) => {
+            debug('error submitting fulfillment', err)
+          })
       })
   }
 
@@ -329,7 +361,7 @@ function createReceiver (opts) {
    *
    * @fires incoming
    * @fires incoming:<requestid>
-   * @fires incoming:ssp:<token>
+   * @fires incoming:kep:<token>
    *
    * @return {Promise.<null>} Resolves when the receiver is connected
    */

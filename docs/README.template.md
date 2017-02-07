@@ -154,7 +154,7 @@ co(function * () {
 
 Sometimes it is desirable that the sender can choose the amount and generate the
 condition without communicating with the recipient. This is an example of a
-payment using the Shared Secret Protocol (SSP) which implements this type of
+payment using the Key Exchange Protocol (KEP) which implements this type of
 flow.
 
 ```js
