@@ -28,6 +28,7 @@ This is a low-level interface to ILP, largely intended for building ILP into oth
 #### The ILP Client does:
 
 * Generate [Interledger Payment Requests](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md) on the receiving side, including handling [Crypto Condition](https://github.com/interledger/rfcs/tree/master/0002-crypto-conditions) generation and fulfillment)
+* Generate shared secrets for PSK transport, and then use the shared secret to generate and fulfill payments.
 * Pay for payment requests on the sending side
 * Quote and send payments through multiple ledger types (using [`ilp-core`](https://github.com/interledgerjs/ilp-core))
 
@@ -150,12 +151,28 @@ co(function * () {
 
 ```
 
-### Shared Secret Example
+### Shared Secret Example (Pre-Shared Key Transport Protocol)
 
 Sometimes it is desirable that the sender can choose the amount and generate the
 condition without communicating with the recipient. This is an example of a
-payment using the Key Exchange Protocol (KEP) which implements this type of
+payment using the Pre-Shared Key (PSK) transport protocol, which implements this type of
 flow.
+
+PSK works by using a pre-shared secret that the sender and receiver have. The pre-shared
+secret can be retrieved by the sender using SPSP, or any other method. In the example below,
+the pre-shared key is simply passed to the sender inside javascript.
+
+When sending a payment using PSK, the sender generates an HMAC key from the
+PSK, and HMACs the payment to get the fulfillment, which is hashed to get the
+condition. The sender also encrypts their optional extra data using AES. On
+receipt of the payment, the receiver decrypts the extra data, and HMACs the
+payment to get the fulfillment.
+
+In order to receive payments using PSK, the receiver must also register a
+`reviewPayment` handler. `reviewPayment` is a callback that returns either a
+promise or a value, and will prevent the receiver from fulfilling a payment if
+it throws an error. This callback is important, because it stops the receiver
+from getting unwanted funds.
 
 ```js
 'use strict'
@@ -173,32 +190,17 @@ const sender = ILP.createSender({
 const receiver = ILP.createReceiver({
   _plugin: FiveBellsLedgerPlugin,
   account: 'https://localhost/ledger/accounts/bob',
-  password: 'bobbob'
+  password: 'bobbob',
+  // A callback can be specified to review incoming payments.
+  // This is required when using PSK.
+  reviewPayment: (payment, transfer) => {
+    if (+transfer.amount > 100) {
+      throw new Error('payment is too big!')
+    }
+  }
 })
 
 co(function * () {
-  yield receiver.listen()
-  receiver.on('incoming', (transfer, fulfillment) => {
-    console.log('received transfer:', transfer)
-    console.log('fulfilled transfer hold with fulfillment:', fulfillment)
-  })
-
-  const secret = receiver.generateSharedSecret()
-  console.log('secret:', secret)
-
-  const request = sender.createRequest(Object.assign({}, secret, {
-    destination_amount: '10'
-  }))
-  console.log('request:', request)
-  const paymentParams = yield sender.quoteRequest(request)
-  console.log('paymentParams', paymentParams)
-
-  const result = yield sender.payRequest(paymentParams)
-  console.log('sender result:', result)
-}).catch((err) => {
-  console.log(err)
-})
-```
 
 ## API Reference
 
@@ -281,7 +283,7 @@ Pay for a payment request. Uses a determinstic transfer id so that paying is ide
 <a name="module_Sender..createSender..createRequest"></a>
 
 #### createSender~createRequest(params) ⇒ <code>Object</code>
-Create a payment request using a KEP shared secret.
+Create a payment request using a Pre-Shared Key (PSK).
 
 **Kind**: inner method of <code>[createSender](#module_Sender..createSender)</code>  
 **Returns**: <code>Object</code> - Payment request  
@@ -291,6 +293,7 @@ Create a payment request using a KEP shared secret.
 | params | <code>Object</code> |  | Parameters for creating payment request |
 | params.destination_amount | <code>String</code> |  | Amount that should arrive in the recipient's account |
 | params.destination_account | <code>String</code> |  | Target account's ILP address |
+| params.shared_secret | <code>String</code> |  | Shared secret for PSK protocol |
 | [params.id] | <code>String</code> | <code>uuid.v4()</code> | Unique ID for the request (used to ensure conditions are unique per request) |
 | [params.expires_at] | <code>String</code> | <code>30 seconds from now</code> | Expiry of request |
 | [params.data] | <code>Object</code> | <code></code> | Additional data to include in the request |
@@ -322,7 +325,7 @@ of transfers paying for the payment requests created by the Receiver.
 | [opts.allowOverPayment] | <code>Boolean</code> | <code>false</code> | Allow transfers where the amount is greater than requested |
 | [opts.roundingMode] | <code>String</code> | <code></code> | Round request amounts with too many decimal places, possible values are "UP", "DOWN", "HALF_UP", "HALF_DOWN" as described in https://mikemcl.github.io/bignumber.js/#constructor-properties |
 | [opts.connectionTimeout] | <code>Number</code> | <code>10</code> | Time in seconds to wait for the ledger to connect |
-| [opts.reviewPayment] | <code>reviewPaymentCallback</code> |  | called before fulfilling any incoming payments. The receiver doesn't fulfill the payment if reviewPayment rejects. |
+| [opts.reviewPayment] | <code>reviewPaymentCallback</code> |  | called before fulfilling any incoming payments. The receiver doesn't fulfill the payment if reviewPayment rejects. PSK will not be used if reviewPayment is not provided. |
 
 
 * [~createReceiver(opts)](#module_Receiver..createReceiver) ⇒ <code>Receiver</code>
@@ -357,7 +360,7 @@ Create a payment request
 <a name="module_Receiver..createReceiver..generateSharedSecret"></a>
 
 #### createReceiver~generateSharedSecret() ⇒ <code>Object</code>
-Generate shared secret for Shared Secret Protocol (KEP).
+Generate shared secret for Pre-Shared Key (PSK) transport protocol.
 
 **Kind**: inner method of <code>[createReceiver](#module_Receiver..createReceiver)</code>  
 **Returns**: <code>Object</code> - Object containing destination address and shared secret  
@@ -370,7 +373,7 @@ receiver created.
 
 **Kind**: inner method of <code>[createReceiver](#module_Receiver..createReceiver)</code>  
 **Returns**: <code>Promise.&lt;null&gt;</code> - Resolves when the receiver is connected  
-**Emits**: <code>[incoming](#event_incoming)</code>, <code>incoming:&lt;requestid&gt;</code>, <code>incoming:kep:&lt;token&gt;</code>  
+**Emits**: <code>[incoming](#event_incoming)</code>, <code>incoming:&lt;requestid&gt;</code>, <code>incoming:psk:&lt;token&gt;</code>  
 <a name="module_Receiver..createReceiver..stopListening"></a>
 
 #### createReceiver~stopListening() ⇒ <code>Promise.&lt;null&gt;</code>
@@ -390,9 +393,9 @@ Disconnect from the ledger and stop listening for events.
 [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string for a specific request
 
 **Kind**: event emitted by <code>[Receiver](#module_Receiver)</code>  
-<a name="module_Receiver..incoming_kep_<token>"></a>
+<a name="module_Receiver..incoming_psk_<token>"></a>
 
-### "incoming:kep:<token>"
+### "incoming:psk:<token>"
 [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string for a specific token
 
 **Kind**: event emitted by <code>[Receiver](#module_Receiver)</code>  

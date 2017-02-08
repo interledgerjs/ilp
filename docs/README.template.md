@@ -28,6 +28,7 @@ This is a low-level interface to ILP, largely intended for building ILP into oth
 #### The ILP Client does:
 
 * Generate [Interledger Payment Requests](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md) on the receiving side, including handling [Crypto Condition](https://github.com/interledger/rfcs/tree/master/0002-crypto-conditions) generation and fulfillment)
+* Generate shared secrets for PSK transport, and then use the shared secret to generate and fulfill payments.
 * Pay for payment requests on the sending side
 * Quote and send payments through multiple ledger types (using [`ilp-core`](https://github.com/interledgerjs/ilp-core))
 
@@ -150,12 +151,28 @@ co(function * () {
 
 ```
 
-### Shared Secret Example
+### Shared Secret Example (Pre-Shared Key Transport Protocol)
 
 Sometimes it is desirable that the sender can choose the amount and generate the
 condition without communicating with the recipient. This is an example of a
-payment using the Key Exchange Protocol (KEP) which implements this type of
+payment using the Pre-Shared Key (PSK) transport protocol, which implements this type of
 flow.
+
+PSK works by using a pre-shared secret that the sender and receiver have. The pre-shared
+secret can be retrieved by the sender using SPSP, or any other method. In the example below,
+the pre-shared key is simply passed to the sender inside javascript.
+
+When sending a payment using PSK, the sender generates an HMAC key from the
+PSK, and HMACs the payment to get the fulfillment, which is hashed to get the
+condition. The sender also encrypts their optional extra data using AES. On
+receipt of the payment, the receiver decrypts the extra data, and HMACs the
+payment to get the fulfillment.
+
+In order to receive payments using PSK, the receiver must also register a
+`reviewPayment` handler. `reviewPayment` is a callback that returns either a
+promise or a value, and will prevent the receiver from fulfilling a payment if
+it throws an error. This callback is important, because it stops the receiver
+from getting unwanted funds.
 
 ```js
 'use strict'
@@ -173,32 +190,17 @@ const sender = ILP.createSender({
 const receiver = ILP.createReceiver({
   _plugin: FiveBellsLedgerPlugin,
   account: 'https://localhost/ledger/accounts/bob',
-  password: 'bobbob'
+  password: 'bobbob',
+  // A callback can be specified to review incoming payments.
+  // This is required when using PSK.
+  reviewPayment: (payment, transfer) => {
+    if (+transfer.amount > 100) {
+      throw new Error('payment is too big!')
+    }
+  }
 })
 
 co(function * () {
-  yield receiver.listen()
-  receiver.on('incoming', (transfer, fulfillment) => {
-    console.log('received transfer:', transfer)
-    console.log('fulfilled transfer hold with fulfillment:', fulfillment)
-  })
-
-  const secret = receiver.generateSharedSecret()
-  console.log('secret:', secret)
-
-  const request = sender.createRequest(Object.assign({}, secret, {
-    destination_amount: '10'
-  }))
-  console.log('request:', request)
-  const paymentParams = yield sender.quoteRequest(request)
-  console.log('paymentParams', paymentParams)
-
-  const result = yield sender.payRequest(paymentParams)
-  console.log('sender result:', result)
-}).catch((err) => {
-  console.log(err)
-})
-```
 
 ## API Reference
 

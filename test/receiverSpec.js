@@ -83,7 +83,7 @@ describe('Receiver Module', function () {
         randomBytes: stub,
         createHmac: require('crypto').createHmac
       })
-      mockRequire.reRequire('../src/utils/hmac')
+      mockRequire.reRequire('../src/utils/crypto')
       const createReceiverWithMock = mockRequire.reRequire('../src/lib/receiver').createReceiver
       createReceiverWithMock({
         client: this.client
@@ -520,25 +520,108 @@ describe('Receiver Module', function () {
           expect(spy).not.to.have.been.called
         })
 
-        it('should not fulfill KEP payment without reviewPayment', function * () {
+        it('should reject PSK payment without reviewPayment', function * () {
           const sender = createSender({
             client: new MockClient({}),
             uuidSeed: Buffer.from('f73e2739c0f0ff4c9b7cac6678c89a59ee6cb8911b39d39afbf2fef9e77bc9c3', 'hex')
           })
 
-          const kep = this.receiver.generateSharedSecret()
-          const request = sender.createRequest(Object.assign({}, kep, {
+          const psk = this.receiver.generateSharedSecret()
+          const request = sender.createRequest(Object.assign({}, psk, {
             destination_amount: "1",
+            data: { for: 'that thing' }
           }))
 
           this.transfer.account = request.address
           this.transfer.executionCondition = request.condition
           this.transfer.data.ilp_header.data.expires_at = request.expires_at
           this.transfer.data.ilp_header.account = request.address
-          delete this.transfer.data.ilp_header.data.data
+          this.transfer.data.ilp_header.data.data = request.data
 
           yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
-            .to.be.rejectedWith('opts.reviewPayment was not specified, so KEP is not supported on this receiver')
+            .to.eventually.deep.equal(['psk-not-supported'])
+          expect(this.client.rejected).to.be.true
+        })
+
+        it('should not fulfill PSK payment with invalid ciphertext blob', function * () {
+          const sender = createSender({
+            client: new MockClient({}),
+            uuidSeed: Buffer.from('f73e2739c0f0ff4c9b7cac6678c89a59ee6cb8911b39d39afbf2fef9e77bc9c3', 'hex')
+          })
+
+          const psk = this.receiver.generateSharedSecret()
+          const request = sender.createRequest(Object.assign({}, psk, {
+            destination_amount: "1",
+            data: { for: 'that thing' }
+          }))
+
+          this.transfer.account = request.address
+          this.transfer.executionCondition = request.condition
+          this.transfer.data.ilp_header.data.expires_at = request.expires_at
+          this.transfer.data.ilp_header.account = request.address
+          this.transfer.data.ilp_header.data.data = {
+            blob: 'iouIWD_ANIF-NAWUifnawIUfnAIW__aiowna_UWnaw-AWdu'
+          }
+
+          yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
+            .to.be.rejectedWith(/Corrupted ciphertext:/)
+        })
+
+        it('should not fulfill PSK payment that has been tampered with', function * () {
+          const sender = createSender({
+            client: new MockClient({}),
+            uuidSeed: Buffer.from('f73e2739c0f0ff4c9b7cac6678c89a59ee6cb8911b39d39afbf2fef9e77bc9c3', 'hex')
+          })
+
+          this.receiver.stopListening()
+          const receiver = createReceiver({
+            client: this.client,
+            hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+            allowOverPayment: true,
+            reviewPayment: () => {}
+          })
+          yield receiver.listen()
+
+          const psk = receiver.generateSharedSecret()
+          const request = sender.createRequest(Object.assign({}, psk, {
+            destination_amount: "1",
+            data: { for: 'that thing' }
+          }))
+
+          this.transfer.amount = 0.5
+          this.transfer.data.ilp_header.amount = 0.5
+          this.transfer.account = request.address
+          this.transfer.executionCondition = request.condition
+          this.transfer.data.ilp_header.data.expires_at = request.expires_at
+          this.transfer.data.ilp_header.account = request.address
+          this.transfer.data.ilp_header.data.data = request.data
+
+          yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
+            .to.eventually.deep.equal(['condition-mismatch'])
+        })
+
+        it('should not fulfill PSK payment with unencrypted memo', function * () {
+          const sender = createSender({
+            client: new MockClient({}),
+            uuidSeed: Buffer.from('f73e2739c0f0ff4c9b7cac6678c89a59ee6cb8911b39d39afbf2fef9e77bc9c3', 'hex')
+          })
+
+          const psk = this.receiver.generateSharedSecret()
+          const request = sender.createRequest(Object.assign({}, psk, {
+            destination_amount: '1',
+            data: { for: 'that thing' }
+          }))
+
+          this.transfer.account = request.address
+          this.transfer.executionCondition = request.condition
+          this.transfer.data.ilp_header.data.expires_at = request.expires_at
+          this.transfer.data.ilp_header.account = request.address
+          this.transfer.data.ilp_header.data.data = {
+            data: { for: 'that thing' }
+          }
+
+          yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
+            .to.be.rejectedWith(/payment request data should only include encrypted blob/)
         })
 
         it('should not fulfill payment if reviewPayment callback rejects', function * () {

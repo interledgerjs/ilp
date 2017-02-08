@@ -7,7 +7,8 @@ const debug = require('debug')('ilp:sender')
 const deterministicUuid = require('aguid')
 const crypto = require('crypto')
 const toConditionUri = require('../utils/condition').toConditionUri
-const createHmacHelper = require('../utils/hmac').createHmacHelper
+const cryptoHelper = require('../utils/crypto')
+const base64url = require('../utils/base64url')
 
 /**
  * @module Sender
@@ -33,8 +34,6 @@ function createSender (opts) {
   const maxHoldDuration = opts.maxHoldDuration || 10
   const defaultRequestTimeout = opts.defaultRequestTimeout || 30
   const uuidSeed = (Buffer.isBuffer(opts.uuidSeed) ? opts.uuidSeed : crypto.randomBytes(32)).toString('hex')
-
-  const hmacHelper = createHmacHelper(opts.uuidSeed)
 
   /**
    * Get a fixed source amount quote
@@ -201,11 +200,12 @@ function createSender (opts) {
   }
 
   /**
-   * Create a payment request using a KEP shared secret.
+   * Create a payment request using a Pre-Shared Key (PSK).
    *
    * @param {Object} params Parameters for creating payment request
    * @param {String} params.destination_amount Amount that should arrive in the recipient's account
    * @param {String} params.destination_account Target account's ILP address
+   * @param {String} params.shared_secret Shared secret for PSK protocol
    * @param {String} [params.id=uuid.v4()] Unique ID for the request (used to ensure conditions are unique per request)
    * @param {String} [params.expires_at=30 seconds from now] Expiry of request
    * @param {Object} [params.data=null] Additional data to include in the request
@@ -219,15 +219,17 @@ function createSender (opts) {
       expires_at: params.expires_at || moment().add(defaultRequestTimeout, 'seconds').toISOString()
     }
 
-    if (params.data) {
-      paymentRequest.data = params.data
-    }
-
     paymentRequest.address += '.' + (params.id || uuid.v4())
 
     const sharedSecret = Buffer.from(params.shared_secret, 'base64')
-    const conditionPreimage = hmacHelper.hmacJsonForKepCondition(paymentRequest, sharedSecret)
+    const conditionPreimage = cryptoHelper.hmacJsonForPskCondition(paymentRequest, sharedSecret)
     const condition = toConditionUri(conditionPreimage)
+
+    if (params.data) {
+      paymentRequest.data = {
+        blob: base64url(cryptoHelper.aesEncryptObject(params.data, sharedSecret))
+      }
+    }
 
     return Object.assign({}, paymentRequest, {
       condition
