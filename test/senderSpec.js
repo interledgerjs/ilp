@@ -1,6 +1,7 @@
 'use strict'
 
 const chai = require('chai')
+const assert = chai.assert
 const sinon = require('sinon')
 const sinonChai = require('sinon-chai')
 require('sinon-as-promised')
@@ -17,6 +18,7 @@ const createSender = require('../src/lib/sender').createSender
 const MockClient = require('./mocks/mockCore').Client
 const paymentRequest = require('./data/paymentRequest.json')
 const paymentParams = require('./data/paymentParams.json')
+const cryptoHelper = require('../src/utils/crypto')
 
 describe('Sender Module', function () {
   beforeEach(function () {
@@ -26,6 +28,50 @@ describe('Sender Module', function () {
 
   afterEach(function () {
     timekeeper.reset()
+  })
+
+  describe('createRequest', function () {
+    beforeEach(function () {
+      this.sender = createSender({
+        client: this.client,
+        uuidSeed: Buffer.from('f73e2739c0f0ff4c9b7cac6678c89a59ee6cb8911b39d39afbf2fef9e77bc9c3', 'hex')
+      })
+      this.psk = {
+        destination_account: 'ilpdemo.blue.bob.~psk.ZfiUdFj-tVw.HHxfobwe-sscE5rKUrCksA',
+        shared_secret: '8qAZtXsrK8Lz_BTSv4D2zA'
+      }
+    })
+
+    it('should generate a payment request', function () {
+      const request = this.sender.createRequest(Object.assign({}, this.psk, {
+        destination_amount: '1'
+      }))
+
+      assert.match(request.address, new RegExp('^' + this.psk.destination_account))
+      assert.equal(request.amount, '1')
+      assert.equal(request.expires_at, '1970-01-01T00:00:30.000Z')
+    })
+
+    it('should encrypt the payment request data and store as a base64-encoded blob', function () {
+      const secretData = {
+        secret: {
+          secret1: 'secret',
+          secret2: 'secret too'
+        }
+      }
+
+      const request = this.sender.createRequest(Object.assign({}, this.psk, {
+        destination_amount: '1',
+        data: secretData
+      }))
+      
+      assert.deepEqual(
+        cryptoHelper.aesDecryptObject(
+          Buffer.from(request.data.blob, 'base64'),
+          Buffer.from(this.psk.shared_secret, 'base64')
+        ),
+        secretData)
+    })
   })
 
   describe('createSender', function () {
