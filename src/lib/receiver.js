@@ -8,11 +8,11 @@ const base64url = require('../utils/base64url')
 const cc = require('../utils/condition')
 const debug = require('debug')('ilp:receiver')
 const BigNumber = require('bignumber.js')
-const createHmacHelper = require('../utils/hmac').createHmacHelper
+const cryptoHelper = require('../utils/crypto')
 const util = require('util')
 
 const IPR_RECEIVER_ID_PREFIX = '~ipr.'
-const KEP_RECEIVER_ID_PREFIX = '~kep.'
+const PSK_RECEIVER_ID_PREFIX = '~psk.'
 
 /**
  * @module Receiver
@@ -38,7 +38,7 @@ const KEP_RECEIVER_ID_PREFIX = '~kep.'
  * @param  {Boolean} [opts.allowOverPayment=false] Allow transfers where the amount is greater than requested
  * @param {String} [opts.roundingMode=null] Round request amounts with too many decimal places, possible values are "UP", "DOWN", "HALF_UP", "HALF_DOWN" as described in https://mikemcl.github.io/bignumber.js/#constructor-properties
  * @param  {Number} [opts.connectionTimeout=10] Time in seconds to wait for the ledger to connect
- * @param  {reviewPaymentCallback} [opts.reviewPayment] called before fulfilling any incoming payments. The receiver doesn't fulfill the payment if reviewPayment rejects.
+ * @param  {reviewPaymentCallback} [opts.reviewPayment] called before fulfilling any incoming payments. The receiver doesn't fulfill the payment if reviewPayment rejects. PSK will not be used if reviewPayment is not provided.
  * @return {Receiver}
  */
 function createReceiver (opts) {
@@ -51,11 +51,11 @@ function createReceiver (opts) {
   if (opts.hmacKey && (!Buffer.isBuffer(opts.hmacKey) || opts.hmacKey.length < 32)) {
     throw new Error('hmacKey must be 32-byte Buffer if supplied')
   }
-  const hmacHelper = createHmacHelper(opts.hmacKey)
+  const hmacHelper = cryptoHelper.createHmacHelper(opts.hmacKey)
   const receiverIdBuffer = hmacHelper.getReceiverId()
   const receiverId = base64url(receiverIdBuffer)
   const iprReceiverId = IPR_RECEIVER_ID_PREFIX + receiverId + '.'
-  const kepReceiverId = KEP_RECEIVER_ID_PREFIX + receiverId + '.'
+  const pskReceiverId = PSK_RECEIVER_ID_PREFIX + receiverId + '.'
   debug('receiver id: ' + receiverId)
 
   const reviewPayment = opts.reviewPayment
@@ -168,15 +168,15 @@ function createReceiver (opts) {
   }
 
   /**
-   * Generate shared secret for Shared Secret Protocol (KEP).
+   * Generate shared secret for Pre-Shared Key (PSK) transport protocol.
    *
    * @return {Object} Object containing destination address and shared secret
    */
   function generateSharedSecret () {
-    const token = base64url(hmacHelper.getKepToken())
+    const token = base64url(hmacHelper.getPskToken())
     return {
-      destination_account: getAddress() + '.' + kepReceiverId + token,
-      shared_secret: base64url(hmacHelper.getKepSharedSecret(token))
+      destination_account: getAddress() + '.' + pskReceiverId + token,
+      shared_secret: base64url(hmacHelper.getPskSharedSecret(token))
     }
   }
 
@@ -226,16 +226,18 @@ function createReceiver (opts) {
       return 'not-my-packet'
     }
 
-    // check if the address contains "~ipr"/"~kep" + our receiver id
+    // check if the address contains "~ipr"/"~psk" + our receiver id
     const localPart = packet.account.slice(getAddress().length + 1)
     let protocol = null
     let requestId = null
+    let sharedSecret = null
     if (localPart.indexOf(iprReceiverId) === 0) {
       protocol = 'ipr'
       requestId = localPart.slice(iprReceiverId.length)
-    } else if (localPart.indexOf(kepReceiverId) === 0) {
-      protocol = 'kep'
-      requestId = localPart.slice(kepReceiverId.length).split('.', 1)[0]
+    } else if (localPart.indexOf(pskReceiverId) === 0) {
+      protocol = 'psk'
+      requestId = localPart.slice(pskReceiverId.length).split('.', 1)[0]
+      sharedSecret = hmacHelper.getPskSharedSecret(requestId)
     } else {
       debug('got notification of transfer for another receiver local_part=' + localPart + ' me=' + receiverId)
       return 'not-my-packet'
@@ -253,7 +255,22 @@ function createReceiver (opts) {
     }
 
     if (packet.data && packet.data.data) {
-      paymentRequest.data = packet.data.data
+      if (protocol === 'psk') {
+        if (Object.keys(packet.data.data).length > 1 || !packet.data.data.blob) {
+          return Promise.reject('payment request data should only include encrypted blob. got: ' +
+            JSON.stringify(packet.data.data))
+        }
+        try {
+          paymentRequest.data = cryptoHelper.aesDecryptObject(
+            Buffer.from(packet.data.data.blob, 'base64'),
+            sharedSecret)
+        } catch (e) {
+          // return errors as promises, in case of invalid data
+          return Promise.reject(e)
+        }
+      } else {
+        paymentRequest.data = packet.data.data
+      }
     }
 
     debug('parsed payment request from transfer:', paymentRequest)
@@ -273,19 +290,16 @@ function createReceiver (opts) {
       return rejectIncomingTransfer(transfer.id, 'expired')
     }
 
-    if (protocol === 'kep' && !reviewPayment) {
-      debug('got KEP payment on non-KEP receiver')
-      return Promise.reject(new Error('opts.reviewPayment was not specified, so KEP is not supported on this receiver'))
+    if (protocol === 'psk' && !reviewPayment) {
+      debug('got PSK payment on non-PSK receiver')
+      return rejectIncomingTransfer(transfer.id, 'psk-not-supported')
     }
 
     let conditionPreimage
     if (protocol === 'ipr') {
       conditionPreimage = hmacHelper.hmacJsonForIprCondition(paymentRequest)
-    } else if (protocol === 'kep') {
-      const sharedSecret = hmacHelper.getKepSharedSecret(requestId)
-      conditionPreimage = hmacHelper.hmacJsonForKepCondition(paymentRequest, sharedSecret)
-    } else {
-      return Promise.reject(new Error('Invalid protocol'))
+    } else if (protocol === 'psk') {
+      conditionPreimage = cryptoHelper.hmacJsonForPskCondition(paymentRequest, sharedSecret)
     }
 
     if (transfer.executionCondition !== cc.toConditionUri(conditionPreimage)) {
@@ -299,8 +313,6 @@ function createReceiver (opts) {
     const reviewPromise = reviewPayment
       ? Promise.resolve(reviewPayment(transfer, paymentRequest))
       : Promise.resolve(null)
-
-    console.log(protocol)
 
     // returning the promise is only so the result is picked up by the tests' emitAsync
     return reviewPromise
@@ -327,23 +339,21 @@ function createReceiver (opts) {
               */
               // Allow listeners for specific requests and on wildcard events such that
               // `incoming:appid.*` will match `incoming:appid:requestid`
-
               eventEmitter.emit('incoming:ipr:' + requestId, transfer, fulfillment)
 
               // alternate return this promise in order to deprecate event
               return eventEmitter.emitAsync('incoming:' + requestId, transfer, fulfillment).then((res) => {
                 if (res.length) util.deprecate(() => {}, 'listen to "incoming:ipr:" instead of "incoming"')
-                return sent
+                return 'sent'
               })
-
-            } else if (protocol === 'kep') {
+            } else if (protocol === 'psk') {
               /**
               * [IncomingTransfer](https://github.com/interledger/rfcs/blob/master/0004-ledger-plugin-interface/0004-ledger-plugin-interface.md#incomingtransfer) from the ledger plugin and the fulfillment string for a specific token
               *
-              * @event incoming:kep:<token>
+              * @event incoming:psk:<token>
               * @type {object}
               */
-              eventEmitter.emit('incoming:kep:' + requestId, transfer, fulfillment)
+              eventEmitter.emit('incoming:psk:' + requestId, transfer, fulfillment)
             }
 
             return 'sent'
@@ -361,7 +371,7 @@ function createReceiver (opts) {
    *
    * @fires incoming
    * @fires incoming:<requestid>
-   * @fires incoming:kep:<token>
+   * @fires incoming:psk:<token>
    *
    * @return {Promise.<null>} Resolves when the receiver is connected
    */
