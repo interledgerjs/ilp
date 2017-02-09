@@ -1,11 +1,14 @@
 'use strict'
 
 const EventEmitter = require('eventemitter2')
+const CustomError = require('custom-error-instance')
 
 class Client extends EventEmitter {
   constructor (opts) {
     super()
     this.account = opts.account
+
+    const MissingFulfillmentError = CustomError('MissingFulfillmentError', { message: 'Missing fulfillment' })
     this.plugin = {
       getAccount: () => this.account,
       getInfo: () => ({
@@ -17,7 +20,7 @@ class Client extends EventEmitter {
         this.rejected = true
         return Promise.resolve()
       },
-      getFulfillment: () => 'cf:fulfillment'
+      getFulfillment: () => { throw new MissingFulfillmentError('not yet fulfilled') }
     }
     this.rejected = false
   }

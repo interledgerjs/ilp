@@ -141,6 +141,8 @@ function createSender (opts) {
     const payment = Object.assign(paymentParams, {
       uuid: transferId
     })
+
+    let promiseFulfillmentListener
     debug('sending payment:', payment)
     return client.connect()
       .then(() => client.sendQuotedPayment(payment))
@@ -148,25 +150,9 @@ function createSender (opts) {
         if (err.name !== 'DuplicateIdError') {
           throw err
         }
-
-        // If it's a duplicate, try getting the fulfillment for that transfer
-        // TODO also get the fulfillment if a transfer is rejected because the condition has already been fulfilled by another transfer
-        return client.getPlugin().getFulfillment(transferId)
-          .catch((err) => {
-            // If the transfer hasn't yet been fulfilled we'll wait for the event in the next handler
-            if (err.name === 'MissingFulfillmentError') {
-              return null
-            }
-            throw err
-          })
       })
-      .then((fulfillment) => {
-        if (fulfillment) {
-          debug('payment was already fulfilled: ' + fulfillment)
-          return fulfillment
-        }
-        debug('payment sent', payment)
-        return new Promise((resolve, reject) => {
+      .then(() => {
+        promiseFulfillmentListener = new Promise((resolve, reject) => {
           // TODO just have one listener for the client
           const transferTimeout = setTimeout(() => {
             debug('transfer timed out')
@@ -185,6 +171,25 @@ function createSender (opts) {
           // TODO disconnect from the client if there are no more listeners
           client.on('outgoing_fulfill', fulfillmentListener)
         })
+
+        // If it's a duplicate, try getting the fulfillment for that transfer
+        // TODO also get the fulfillment if a transfer is rejected because the condition has already been fulfilled by another transfer
+        return Promise.resolve(client.getPlugin().getFulfillment(transferId))
+      })
+      .catch((err) => {
+        // If the transfer hasn't yet been fulfilled we'll wait for the event in the next handler
+        if (err.name === 'MissingFulfillmentError') {
+          return null
+        }
+        throw err
+      })
+      .then((fulfillment) => {
+        if (fulfillment) {
+          debug('payment was already fulfilled: ' + fulfillment)
+          return fulfillment
+        }
+        debug('payment sent', payment)
+        return promiseFulfillmentListener
       })
   }
 
