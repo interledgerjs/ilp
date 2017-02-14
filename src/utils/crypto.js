@@ -9,6 +9,8 @@ const PSK_GENERATION_STRING = 'ilp_psk_generation'
 const PSK_CONDITION_STRING = 'ilp_psk_condition'
 const PSK_ENCRYPTION_STRING = 'ilp_key_encryption'
 
+const PSK_DH_STRING = 'ilp_psk_diffie_hellman'
+
 function createHmacHelper (hmacKey) {
   if (!hmacKey) {
     hmacKey = crypto.randomBytes(32)
@@ -33,6 +35,20 @@ function createHmacHelper (hmacKey) {
     return hmac(generator, token).slice(0, 16)
   }
 
+  function getPskDhSharedSecret (publicKey, ourPrivateKey) {
+    const privateKey = ourPrivateKey || hmac(hmacKey, PSK_DH_STRING)
+    const dh = crypto.createECDH('secp256k1')
+    dh.setPrivateKey(privateKey)
+    return dh.computeSecret(publicKey)
+  }
+
+  function getPskDhPublicKey () {
+    const privateKey =  hmac(hmacKey, PSK_DH_STRING)
+    const dh = crypto.createECDH('secp256k1')
+    dh.setPrivateKey(privateKey)
+    return dh.getPublicKey()
+  }
+
   return {
     hmacJsonForIprCondition,
     getReceiverId,
@@ -40,7 +56,9 @@ function createHmacHelper (hmacKey) {
     getPskSharedSecret,
     hmacJsonForPskCondition,
     aesDecryptObject,
-    aesEncryptObject
+    aesEncryptObject,
+    getPskDhPublicKey,
+    getPskDhSharedSecret
   }
 }
 
@@ -51,6 +69,7 @@ function hmac (key, message) {
 }
 
 function hmacJsonForPskCondition (obj, sharedSecret) {
+  console.log('hmac', sharedSecret.toString('base64'), JSON.stringify(obj))
   const pskConditionKey = hmac(sharedSecret, PSK_CONDITION_STRING)
   const jsonString = stringify(obj)
   const hmacDigest = hmac(pskConditionKey, jsonString)

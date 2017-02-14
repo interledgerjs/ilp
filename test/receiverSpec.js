@@ -706,6 +706,45 @@ describe('Receiver Module', function () {
         expect(emitted).to.be.true
       })
     })
+
+    describe.only('PSK-DH', function () {
+      it('should fulfill a PSK-DH payment', function * () {
+        const sender = createSender({
+          client: new MockClient({}),
+          uuidSeed: Buffer.from('f73e2739c0f0ff4c9b7cac6678c89a59ee6cb8911b39d39afbf2fef9e77bc9c3', 'hex'),
+          cryptoSeed: Buffer.from('f73e2739c0f0ff4c9b7cac6678c89a59ee6cb8911b39d39afbf2fef9e77bc9c3', 'hex')
+        })
+
+        this.receiver.stopListening()
+        const receiver = createReceiver({
+          client: this.client,
+          hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+          allowOverPayment: true,
+          reviewPayment: () => {}
+        })
+        yield receiver.listen()
+
+        const pskDh = receiver.getPskDhParams()
+
+        const request = sender.createRequestDH(Object.assign({}, pskDh, {
+          destinationAmount: "1",
+          data: { for: 'that thing' }
+        }))
+
+        this.transfer.amount = 1
+        this.transfer.data.ilp_header.amount = 1
+        this.transfer.account = request.address
+        this.transfer.executionCondition = request.condition
+        this.transfer.data.ilp_header.data.expires_at = request.expires_at
+        this.transfer.data.ilp_header.account = request.address
+        this.transfer.data.ilp_header.data.data = request.data
+        this.transfer.data.ilp_header.data.publicKey = request.publicKey
+
+        yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
+          .to.eventually.deep.equal(['sent'])
+      })
+
+    })
   })
 })
 

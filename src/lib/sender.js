@@ -35,6 +35,9 @@ function createSender (opts) {
   const defaultRequestTimeout = opts.defaultRequestTimeout || 30
   const uuidSeed = (Buffer.isBuffer(opts.uuidSeed) ? opts.uuidSeed : crypto.randomBytes(32)).toString('hex')
 
+  const cryptoSeed = (opts.cryptoSeed ? Buffer.from(opts.cryptoSeed, 'base64') : crypto.randomBytes(32))
+  const hmacHelper = cryptoHelper.createHmacHelper(cryptoSeed)
+
   /**
    * Get a fixed source amount quote
    * @param {String} destinationAddress ILP Address of the receiver
@@ -124,7 +127,8 @@ function createSender (opts) {
           destinationAccount: request.address,
           destinationMemo: {
             data: request.data,
-            expires_at: request.expires_at
+            expires_at: request.expires_at,
+            publicKey: request.publicKey
           },
           expiresAt: moment.min([
             moment(request.expires_at),
@@ -194,6 +198,18 @@ function createSender (opts) {
       })
   }
 
+  // same as normal request + receiverPublicKey
+  function createRequestDH (params) {
+    debug('createRequestDH', params)
+    const secret = hmacHelper.getPskDhSharedSecret(Buffer.from(params.publicKey, 'base64'))
+    const paymentRequest = createRequest(Object.assign({}, params, {
+      receiverPublicKey: null,
+      sharedSecret: secret
+    }))
+    paymentRequest.publicKey = hmacHelper.getPskDhPublicKey().toString('base64')
+    return paymentRequest
+  }
+
   /**
    * Create a payment request using a Pre-Shared Key (PSK).
    *
@@ -211,10 +227,17 @@ function createSender (opts) {
     const paymentRequest = {
       address: params.destinationAccount,
       amount: params.destinationAmount,
-      expires_at: params.expiresAt || moment().add(defaultRequestTimeout, 'seconds').toISOString()
+      expires_at: params.expiresAt || moment().add(defaultRequestTimeout, 'seconds').toISOString(),
     }
 
     paymentRequest.address += '.' + (params.id || uuid.v4())
+
+
+    // Including the plaintext for the HMAC
+    // TODO switch to encrypt-then-mac
+    if (params.data) {
+      paymentRequest.data = params.data
+    }
 
     const sharedSecret = Buffer.from(params.sharedSecret, 'base64')
     const conditionPreimage = cryptoHelper.hmacJsonForPskCondition(paymentRequest, sharedSecret)
@@ -222,13 +245,18 @@ function createSender (opts) {
 
     if (params.data) {
       paymentRequest.data = {
+        // Including the plaintext for the HMAC
+        // TODO switch to encrypt-then-mac
         blob: base64url(cryptoHelper.aesEncryptObject(params.data, sharedSecret))
       }
     }
 
-    return Object.assign({}, paymentRequest, {
+
+    const request = Object.assign({}, paymentRequest, {
       condition
     })
+    debug('created payment request', request)
+    return request
   }
 
   /**
@@ -246,6 +274,7 @@ function createSender (opts) {
     quoteRequest,
     payRequest,
     createRequest,
+    createRequestDH,
     stopListening
   }
 }

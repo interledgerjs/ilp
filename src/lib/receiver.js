@@ -13,6 +13,7 @@ const util = require('util')
 
 const IPR_RECEIVER_ID_PREFIX = '~ipr.'
 const PSK_RECEIVER_ID_PREFIX = '~psk.'
+const PSK_DH_RECEIVER_ID_PREFIX = '~psk-dh'
 
 /**
  * @module Receiver
@@ -62,6 +63,11 @@ function createReceiver (opts) {
   const receiverId = base64url(receiverIdBuffer)
   const iprReceiverId = IPR_RECEIVER_ID_PREFIX + receiverId + '.'
   const pskReceiverId = PSK_RECEIVER_ID_PREFIX + receiverId + '.'
+
+  // Right now there's no receiver ID for PSK-DH so we can generate the
+  // address on the sending side just from the public key
+  const pskDhReceiverId = PSK_DH_RECEIVER_ID_PREFIX
+  const dhPrivateKey = opts.privateKey
   debug('receiver id: ' + receiverId)
 
   const reviewPayment = opts.reviewPayment
@@ -186,6 +192,13 @@ function createReceiver (opts) {
     }
   }
 
+  function getPskDhParams () {
+    return {
+      publicKey: hmacHelper.getPskDhPublicKey(),
+      destinationAccount: getAddress() + '.' + pskDhReceiverId,
+    }
+  }
+
   /**
    * @private
    * @param {String} transferId
@@ -245,6 +258,13 @@ function createReceiver (opts) {
       protocol = 'psk'
       requestId = localPart.slice(pskReceiverId.length).split('.', 1)[0]
       sharedSecret = hmacHelper.getPskSharedSecret(requestId)
+    } else if (localPart.indexOf(pskDhReceiverId) === 0) {
+      if (!packet.data.publicKey) {
+        return rejectIncomingTransfer(transfer.id, 'psk-dh-no-public-key')
+      }
+      protocol = 'psk'
+      requestId = localPart.slice(pskReceiverId.length).split('.', 1)[0]
+      sharedSecret = hmacHelper.getPskDhSharedSecret(Buffer.from(packet.data.publicKey, 'base64'), dhPrivateKey)
     } else {
       debug('got notification of transfer for another receiver local_part=' + localPart + ' me=' + receiverId)
       return 'not-my-packet'
@@ -417,7 +437,8 @@ function createReceiver (opts) {
     createRequest,
     generateSharedSecret,
     listen,
-    stopListening
+    stopListening,
+    getPskDhParams
   })
 }
 
