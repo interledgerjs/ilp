@@ -303,7 +303,7 @@ of transfers paying for the payment requests created by the Receiver.
 * [~createReceiver(opts)](#module_Receiver..createReceiver) ⇒ <code>Receiver</code>
     * [~getAddress()](#module_Receiver..createReceiver..getAddress) ⇒ <code>String</code>
     * [~createRequest()](#module_Receiver..createReceiver..createRequest) ⇒ <code>Object</code>
-    * [~generateSharedSecret()](#module_Receiver..createReceiver..generateSharedSecret) ⇒ <code>PSKParams</code>
+    * [~generateSharedSecret()](#module_Receiver..createReceiver..generateSharedSecret) ⇒ <code>PskParams</code>
     * [~listen()](#module_Receiver..createReceiver..listen) ⇒ <code>Promise.&lt;null&gt;</code>
     * [~stopListening()](#module_Receiver..createReceiver..stopListening) ⇒ <code>Promise.&lt;null&gt;</code>
 
@@ -331,7 +331,7 @@ Create a payment request
 
 <a name="module_Receiver..createReceiver..generateSharedSecret"></a>
 
-#### createReceiver~generateSharedSecret() ⇒ <code>PSKParams</code>
+#### createReceiver~generateSharedSecret() ⇒ <code>PskParams</code>
 Generate shared secret for Pre-Shared Key (PSK) transport protocol.
 
 **Kind**: inner method of <code>[createReceiver](#module_Receiver..createReceiver)</code>  
@@ -381,9 +381,9 @@ Disconnect from the ledger and stop listening for events.
 | payment | <code>PaymentRequest</code> | payment request object |
 | transfer | <code>Transfer</code> | transfer object for the payment being reviewed |
 
-<a name="module_Receiver..PSKParams"></a>
+<a name="module_Receiver..PskParams"></a>
 
-### Receiver~PSKParams : <code>Object</code>
+### Receiver~PskParams : <code>Object</code>
 **Kind**: inner typedef of <code>[Receiver](#module_Receiver)</code>  
 **Properties**
 
