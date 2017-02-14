@@ -25,21 +25,17 @@ A low-level JS <a href="https://interledger.org">Interledger</a> sender/receiver
 
 This is a low-level interface to ILP, largely intended for building ILP into other [Application layer](https://github.com/interledger/rfcs/tree/master/0001-interledger-architecture) protocols.
 
-#### The ILP Client does:
+#### The ILP Client includes:
 
-* Generate [Interledger Payment Requests](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md) on the receiving side, including handling [Crypto Condition](https://github.com/interledger/rfcs/tree/master/0002-crypto-conditions) generation and fulfillment)
-* Generate shared secrets for PSK transport, and then use the shared secret to generate and fulfill payments.
-* Pay for payment requests on the sending side
-* Quote and send payments through multiple ledger types (using [`ilp-core`](https://github.com/interledgerjs/ilp-core))
+* [Interledger Payment Request (IPR)](#interledger-payment-request-ipr-transport-protocol) Transport Protocol, an interactive protocol in which the receiver specifies the payment details, including the condition
+* [Pre-Shared Key (PSK)](#pre-shared-key-psk-transport-protocol) Transport Protocol, a non-interactive protocol in which the sender creates the payment details and uses a shared secret to generate the conditions
+* Interledger Quoting and the ability to send through multiple ledger types using [Ledger Plugins](https://github.com/interledgerjs?utf8=✓&q=ilp-plugin)
 
 #### The ILP Client does **not** handle:
 
 * Account discovery
 * Amount negotiation
 * Communication of requests from recipient to sender
-
-For a higher-level interface that includes the above features, see the [Wallet Client](https://github.com/interledgerjs/five-bells-wallet-client).
-
 
 ## Installation
 
@@ -48,64 +44,13 @@ For a higher-level interface that includes the above features, see the [Wallet C
 *Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module*
 
 
-## Interledger Payment Request / Pay Flow
+## Interledger Payment Request (IPR) Transport Protocol
 
-The client uses recipient-generated [Interledger Payment Requests](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md), which include the condition for the payment. This means that the recipient must first generate a payment request, which the sender then fulfills.
+This protocol uses recipient-generated [Interledger Payment Requests](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md), which include the condition for the payment. This means that the recipient must first generate a payment request, which the sender then fulfills.
 
 This library handles the generation of payment requests, but **not the communication of the request details from the recipient to the sender**. In some cases, the sender and receiver might be HTTP servers, in which case HTTP would be used. In other cases, they might be using a different medium of communication.
 
-### Requesting + Handling Incoming Payments
-
-```js
-'use strict'
-
-const ILP = require('ilp')
-const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
-const receiver = ILP.createReceiver({
-  _plugin: FiveBellsLedgerPlugin,
-  prefix: 'ilpdemo.blue.',
-  account: 'https://blue.ilpdemo.org/ledger/accounts/receiver',
-  password: 'receiver'
-})
-receiver.listen()
-
-const paymentRequest = receiver.createRequest({
-  amount: 10
-})
-
-// XXX: user implements this
-sendRequestToPayer(paymentRequest)
-
-// This automatically checks the incoming transfer and fulfills the condition
-receiver.on('incoming', (transfer, fulfillment) => {
-  console.log('Got paid ' + paymentRequest.destinationAmount + ' for ' + paymentRequest.destinationMemo.thisIsFor)
-})
-```
-
-### Paying
-```js
-'use strict'
-
-const ILP = require('ilp')
-const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
-const sender = ILP.createSender({
-  _plugin: FiveBellsLedgerPlugin,
-  prefix: 'ilpdemo.red.',
-  account: 'https://red.ilpdemo.org/ledger/accounts/alice',
-  password: 'alice',
-  connectors: ['connie', 'otherconnectoronmyledger']
-})
-
-// XXX: user implements this
-const paymentRequest = { /* request from recipient */ }
-
-sender.quoteRequest(paymentRequest)
-  .then((paymentParams) => {
-    return sender.payRequest(paymentParams)
-  })
-```
-
-### Combined Example
+### IPR Sending and Receiving Example
 
 ```js
 'use strict'
@@ -114,7 +59,7 @@ const co = require('co')
 const ILP = require('ilp')
 const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 
-const sender = ILP.createSender({
+const sender = ILP.createSender(i
   _plugin: FiveBellsLedgerPlugin,
   prefix: 'ilpdemo.red.',
   account: 'https://red.ilpdemo.org/ledger/accounts/alice',
@@ -140,6 +85,8 @@ co(function * () {
   })
   console.log('request:', request)
 
+  // Note the user of this module must implement the method for
+  // communicating payment requests from the recipient to the sender
   const paymentParams = yield sender.quoteRequest(request)
   console.log('paymentParams', paymentParams)
 
@@ -151,15 +98,14 @@ co(function * () {
 
 ```
 
-### Shared Secret Example (Pre-Shared Key Transport Protocol)
+### Pre-Shared Key (PSK) Transport Protocol
 
-Sometimes it is desirable that the sender can choose the amount and generate the
-condition without communicating with the recipient. This is an example of a
-payment using the Pre-Shared Key (PSK) transport protocol, which implements this type of
-flow.
+This is a non-interactive protocol in which the sender chooses the payment
+amount and generates the condition without communicating with the recipient.
 
-PSK works by using a pre-shared secret that the sender and receiver have. The pre-shared
-secret can be retrieved by the sender using SPSP, or any other method. In the example below,
+PSK uses a secret shared between the sender and receiver. The key can be
+generated by the receiver and retrieved by the sender using a higher-level
+protocol such as SPSP, or any other method. In the example below,
 the pre-shared key is simply passed to the sender inside javascript.
 
 When sending a payment using PSK, the sender generates an HMAC key from the
@@ -173,6 +119,8 @@ In order to receive payments using PSK, the receiver must also register a
 promise or a value, and will prevent the receiver from fulfilling a payment if
 it throws an error. This callback is important, because it stops the receiver
 from getting unwanted funds.
+
+### PSK Sending and Receiving Example
 
 ```js
 'use strict'
@@ -201,6 +149,30 @@ const receiver = ILP.createReceiver({
 })
 
 co(function * () {
+  yield receiver.listen()
+  receiver.on('incoming', (transfer, fulfillment) => {
+    console.log('received transfer:', transfer)
+    console.log('fulfilled transfer hold with fulfillment:', fulfillment)
+  })
+  const sharedSecret = receiver.generateSharedSecret()
+
+  // Note the payment is created by the sender
+  const request = sender.createRequest({
+    destinationAmount: '10',
+    destinationAccount: 'example.ilp.address.for.bob',
+    sharedSecret: sharedSecret
+  })
+  console.log('request:', request)
+
+  const paymentParams = yield sender.quoteRequest(request)
+  console.log('paymentParams', paymentParams)
+
+  const result = yield sender.payRequest(paymentParams)
+  console.log('sender result:', result)
+}).catch((err) => {
+  console.log(err)
+})
+```
 
 ## API Reference
 
