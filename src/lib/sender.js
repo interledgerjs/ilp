@@ -213,6 +213,7 @@ function createSender (opts) {
    * @return {Object} Payment request
    */
   function createRequest (params) {
+    const sharedSecret = Buffer.from(params.sharedSecret, 'base64')
     const paymentRequest = {
       address: params.destinationAccount,
       amount: params.destinationAmount,
@@ -221,15 +222,16 @@ function createSender (opts) {
 
     paymentRequest.address += '.' + (params.id || uuid.v4())
 
-    const sharedSecret = Buffer.from(params.sharedSecret, 'base64')
-    const conditionPreimage = cryptoHelper.hmacJsonForPskCondition(paymentRequest, sharedSecret)
-    const condition = toConditionUri(conditionPreimage)
-
     if (params.data) {
       paymentRequest.data = {
         blob: base64url(cryptoHelper.aesEncryptObject(params.data, sharedSecret))
       }
     }
+
+    // Note we are computing the HMAC on the encrypted payload
+    // because it is considered preferable to encrypt-then-MAC
+    const conditionPreimage = cryptoHelper.hmacJsonForPskCondition(paymentRequest, sharedSecret)
+    const condition = toConditionUri(conditionPreimage)
 
     return Object.assign({}, paymentRequest, {
       condition
