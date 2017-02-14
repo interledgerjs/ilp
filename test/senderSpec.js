@@ -37,17 +37,17 @@ describe('Sender Module', function () {
         uuidSeed: Buffer.from('f73e2739c0f0ff4c9b7cac6678c89a59ee6cb8911b39d39afbf2fef9e77bc9c3', 'hex')
       })
       this.psk = {
-        destination_account: 'ilpdemo.blue.bob.~psk.ZfiUdFj-tVw.HHxfobwe-sscE5rKUrCksA',
-        shared_secret: '8qAZtXsrK8Lz_BTSv4D2zA'
+        destinationAccount: 'ilpdemo.blue.bob.~psk.ZfiUdFj-tVw.HHxfobwe-sscE5rKUrCksA',
+        sharedSecret: '8qAZtXsrK8Lz_BTSv4D2zA'
       }
     })
 
     it('should generate a payment request', function () {
       const request = this.sender.createRequest(Object.assign({}, this.psk, {
-        destination_amount: '1'
+        destinationAmount: '1'
       }))
 
-      assert.match(request.address, new RegExp('^' + this.psk.destination_account))
+      assert.match(request.address, new RegExp('^' + this.psk.destinationAccount))
       assert.equal(request.amount, '1')
       assert.equal(request.expires_at, '1970-01-01T00:00:30.000Z')
     })
@@ -61,14 +61,14 @@ describe('Sender Module', function () {
       }
 
       const request = this.sender.createRequest(Object.assign({}, this.psk, {
-        destination_amount: '1',
+        destinationAmount: '1',
         data: secretData
       }))
-      
+
       assert.deepEqual(
         cryptoHelper.aesDecryptObject(
           Buffer.from(request.data.blob, 'base64'),
-          Buffer.from(this.psk.shared_secret, 'base64')
+          Buffer.from(this.psk.sharedSecret, 'base64')
         ),
         secretData)
     })

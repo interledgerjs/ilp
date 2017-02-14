@@ -198,25 +198,25 @@ function createSender (opts) {
    * Create a payment request using a Pre-Shared Key (PSK).
    *
    * @param {Object} params Parameters for creating payment request
-   * @param {String} params.destination_amount Amount that should arrive in the recipient's account
-   * @param {String} params.destination_account Target account's ILP address
-   * @param {String} params.shared_secret Shared secret for PSK protocol
+   * @param {String} params.destinationAmount Amount that should arrive in the recipient's account
+   * @param {String} params.destinationAccount Target account's ILP address
+   * @param {String} params.sharedSecret Shared secret for PSK protocol
    * @param {String} [params.id=uuid.v4()] Unique ID for the request (used to ensure conditions are unique per request)
-   * @param {String} [params.expires_at=30 seconds from now] Expiry of request
+   * @param {String} [params.expiresAt=30 seconds from now] Expiry of request
    * @param {Object} [params.data=null] Additional data to include in the request
    *
    * @return {Object} Payment request
    */
   function createRequest (params) {
     const paymentRequest = {
-      address: params.destination_account,
-      amount: params.destination_amount,
-      expires_at: params.expires_at || moment().add(defaultRequestTimeout, 'seconds').toISOString()
+      address: params.destinationAccount,
+      amount: params.destinationAmount,
+      expires_at: params.expiresAt || moment().add(defaultRequestTimeout, 'seconds').toISOString()
     }
 
     paymentRequest.address += '.' + (params.id || uuid.v4())
 
-    const sharedSecret = Buffer.from(params.shared_secret, 'base64')
+    const sharedSecret = Buffer.from(params.sharedSecret, 'base64')
     const conditionPreimage = cryptoHelper.hmacJsonForPskCondition(paymentRequest, sharedSecret)
     const condition = toConditionUri(conditionPreimage)
 
