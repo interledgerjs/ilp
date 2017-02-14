@@ -26,7 +26,7 @@ const PSK_RECEIVER_ID_PREFIX = '~psk.'
  */
 
 /**
- * @typedef {Object} PSKParams
+ * @typedef {Object} PskParams
  * @property {string} destinationAccount Receiver's ILP address
  * @property {string} sharedSecret Base64Url-encoded shared secret
  */
@@ -176,7 +176,7 @@ function createReceiver (opts) {
   /**
    * Generate shared secret for Pre-Shared Key (PSK) transport protocol.
    *
-   * @return {PSKParams}
+   * @return {PskParams}
    */
   function generateSharedSecret () {
     const token = base64url(hmacHelper.getPskToken())
@@ -262,22 +262,7 @@ function createReceiver (opts) {
     }
 
     if (packet.data && packet.data.data) {
-      if (protocol === 'psk') {
-        if (Object.keys(packet.data.data).length > 1 || !packet.data.data.blob) {
-          return Promise.reject('payment request data should only include encrypted blob. got: ' +
-            JSON.stringify(packet.data.data))
-        }
-        try {
-          paymentRequest.data = cryptoHelper.aesDecryptObject(
-            Buffer.from(packet.data.data.blob, 'base64'),
-            sharedSecret)
-        } catch (e) {
-          // return errors as promises, in case of invalid data
-          return Promise.reject(e)
-        }
-      } else {
-        paymentRequest.data = packet.data.data
-      }
+      paymentRequest.data = packet.data.data
     }
 
     debug('parsed payment request from transfer:', paymentRequest)
@@ -316,14 +301,50 @@ function createReceiver (opts) {
       return 'condition-mismatch'
     }
 
+    // Decrypt the memo before submitting it for review
+    // Note we only decrypt the memo after regenerating the fulfillment
+    // because the sender should encrypt-then-MAC
+    if (protocol === 'psk' && paymentRequest.data) {
+      if (Object.keys(paymentRequest.data).length > 1 || !paymentRequest.data.blob) {
+        debug('got PSK payment where the data is not encrypted', paymentRequest)
+        return rejectIncomingTransfer(transfer.id, 'psk-data-must-be-encrypted-blob')
+      }
+      try {
+        paymentRequest.data = cryptoHelper.aesDecryptObject(
+          Buffer.from(paymentRequest.data.blob, 'base64'),
+          sharedSecret)
+        debug('decrypted payment request data:', paymentRequest.data)
+      } catch (e) {
+        // return errors as promises, in case of invalid data
+        debug('got corrupted data', e, paymentRequest.data)
+        return rejectIncomingTransfer(transfer.id, 'psk-corrupted-data')
+      }
+    }
+
     const fulfillment = cc.toFulfillmentUri(conditionPreimage)
-    const reviewPromise = reviewPayment
-      ? Promise.resolve(reviewPayment(transfer, paymentRequest))
-      : Promise.resolve(null)
+    // reviewPromise will resolve to null if we should go ahead and
+    // to the rejection message if the payment has been rejected
+    const reviewPromise = Promise.resolve()
+      .then(() => {
+        if (typeof reviewPayment === 'function') {
+          return reviewPayment(transfer, paymentRequest)
+        } else {
+          return null
+        }
+      })
+      .then(() => null)
+      .catch((err) => {
+        debug('reviewPayment got error', err)
+        return rejectIncomingTransfer(transfer.id, 'rejected-by-receiver: ' + err.name + ': ' + err.message)
+      })
 
     // returning the promise is only so the result is picked up by the tests' emitAsync
     return reviewPromise
-      .then(() => {
+      .then((rejectionMessage) => {
+        if (rejectionMessage) {
+          return rejectionMessage
+        }
+
         debug('about to submit fulfillment: ' + fulfillment)
         return client.fulfillCondition(transfer.id, fulfillment)
           .then(() => {
