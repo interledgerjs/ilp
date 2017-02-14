@@ -35,15 +35,15 @@ function createHmacHelper (hmacKey) {
     return hmac(generator, token).slice(0, 16)
   }
 
-  function getPskDhSharedSecret (publicKey, ourPrivateKey) {
-    const privateKey = ourPrivateKey || hmac(hmacKey, PSK_DH_STRING)
+  function getPskDhSharedSecret (publicKey, suppliedPrivateKey) {
+    const privateKey = suppliedPrivateKey || hmac(hmacKey, PSK_DH_STRING)
     const dh = crypto.createECDH('secp256k1')
     dh.setPrivateKey(privateKey)
     return dh.computeSecret(publicKey)
   }
 
-  function getPskDhPublicKey () {
-    const privateKey =  hmac(hmacKey, PSK_DH_STRING)
+  function getPskDhPublicKey (suppliedPrivateKey) {
+    const privateKey = suppliedPrivateKey || hmac(hmacKey, PSK_DH_STRING)
     const dh = crypto.createECDH('secp256k1')
     dh.setPrivateKey(privateKey)
     return dh.getPublicKey()

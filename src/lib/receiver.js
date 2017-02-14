@@ -194,7 +194,7 @@ function createReceiver (opts) {
 
   function getPskDhParams () {
     return {
-      publicKey: hmacHelper.getPskDhPublicKey(),
+      publicKey: hmacHelper.getPskDhPublicKey(dhPrivateKey),
       destinationAccount: getAddress() + '.' + pskDhReceiverId,
     }
   }
