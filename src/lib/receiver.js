@@ -26,6 +26,12 @@ const PSK_RECEIVER_ID_PREFIX = '~psk.'
  */
 
 /**
+ * @typedef {Object} PSKParams
+ * @property {string} destinationAccount Receiver's ILP address
+ * @property {string} sharedSecret Base64Url-encoded shared secret
+ */
+
+/**
  * Returns an ILP Receiver to create payment requests,
  * listen for incoming transfers, and automatically fulfill conditions
  * of transfers paying for the payment requests created by the Receiver.
@@ -170,13 +176,13 @@ function createReceiver (opts) {
   /**
    * Generate shared secret for Pre-Shared Key (PSK) transport protocol.
    *
-   * @return {Object} Object containing destination address and shared secret
+   * @return {PSKParams}
    */
   function generateSharedSecret () {
     const token = base64url(hmacHelper.getPskToken())
     return {
-      destination_account: getAddress() + '.' + pskReceiverId + token,
-      shared_secret: base64url(hmacHelper.getPskSharedSecret(token))
+      destinationAccount: getAddress() + '.' + pskReceiverId + token,
+      sharedSecret: base64url(hmacHelper.getPskSharedSecret(token))
     }
   }
 

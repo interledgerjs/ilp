@@ -528,7 +528,7 @@ describe('Receiver Module', function () {
 
           const psk = this.receiver.generateSharedSecret()
           const request = sender.createRequest(Object.assign({}, psk, {
-            destination_amount: "1",
+            destinationAmount: "1",
             data: { for: 'that thing' }
           }))
 
@@ -551,7 +551,7 @@ describe('Receiver Module', function () {
 
           const psk = this.receiver.generateSharedSecret()
           const request = sender.createRequest(Object.assign({}, psk, {
-            destination_amount: "1",
+            destinationAmount: "1",
             data: { for: 'that thing' }
           }))
 
@@ -584,7 +584,7 @@ describe('Receiver Module', function () {
 
           const psk = receiver.generateSharedSecret()
           const request = sender.createRequest(Object.assign({}, psk, {
-            destination_amount: "1",
+            destinationAmount: "1",
             data: { for: 'that thing' }
           }))
 
@@ -608,7 +608,7 @@ describe('Receiver Module', function () {
 
           const psk = this.receiver.generateSharedSecret()
           const request = sender.createRequest(Object.assign({}, psk, {
-            destination_amount: '1',
+            destinationAmount: '1',
             data: { for: 'that thing' }
           }))
 
