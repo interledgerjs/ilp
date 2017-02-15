@@ -178,7 +178,7 @@ function createReceiver (opts) {
    *
    * @return {PskParams}
    */
-  function generateSharedSecret () {
+  function generatePskParams () {
     const token = base64url(hmacHelper.getPskToken())
     return {
       destinationAccount: getAddress() + '.' + pskReceiverId + token,
@@ -436,7 +436,7 @@ function createReceiver (opts) {
   return Object.assign(eventEmitter, {
     getAddress,
     createRequest,
-    generateSharedSecret,
+    generatePskParams,
     listen,
     stopListening
   })

@@ -143,7 +143,7 @@ const receiver = ILP.createReceiver({
   // This is required when using PSK.
   reviewPayment: (payment, transfer) => {
     if (+transfer.amount > 100) {
-      throw new Error('payment is too big!')
+      return Promise.reject(new Error('payment is too big!'))
     }
   }
 })
@@ -154,13 +154,15 @@ co(function * () {
     console.log('received transfer:', transfer)
     console.log('fulfilled transfer hold with fulfillment:', fulfillment)
   })
-  const sharedSecret = receiver.generateSharedSecret()
+  // The user of this module is responsible for communicating the
+  // PSK parameters from the recipient to the sender
+  const pskParams = receiver.generatePskParams()
 
   // Note the payment is created by the sender
   const request = sender.createRequest({
     destinationAmount: '10',
-    destinationAccount: 'example.ilp.address.for.bob',
-    sharedSecret: sharedSecret
+    destinationAccount: pskParams.destinationAccount,
+    sharedSecret: pskParams.sharedSecret
   })
   console.log('request:', request)
 
@@ -303,7 +305,7 @@ of transfers paying for the payment requests created by the Receiver.
 * [~createReceiver(opts)](#module_Receiver..createReceiver) ⇒ <code>Receiver</code>
     * [~getAddress()](#module_Receiver..createReceiver..getAddress) ⇒ <code>String</code>
     * [~createRequest()](#module_Receiver..createReceiver..createRequest) ⇒ <code>Object</code>
-    * [~generateSharedSecret()](#module_Receiver..createReceiver..generateSharedSecret) ⇒ <code>PskParams</code>
+    * [~generatePskParams()](#module_Receiver..createReceiver..generatePskParams) ⇒ <code>PskParams</code>
     * [~listen()](#module_Receiver..createReceiver..listen) ⇒ <code>Promise.&lt;null&gt;</code>
     * [~stopListening()](#module_Receiver..createReceiver..stopListening) ⇒ <code>Promise.&lt;null&gt;</code>
 
@@ -329,9 +331,9 @@ Create a payment request
 | [params.data] | <code>Object</code> | <code></code> | Additional data to include in the request |
 | [params.roundingMode] | <code>String</code> | <code>receiver.roundingMode</code> | Round request amounts with too many decimal places, possible values are "UP", "DOWN", "HALF_UP", "HALF_DOWN" as described in https://mikemcl.github.io/bignumber.js/#constructor-properties |
 
-<a name="module_Receiver..createReceiver..generateSharedSecret"></a>
+<a name="module_Receiver..createReceiver..generatePskParams"></a>
 
-#### createReceiver~generateSharedSecret() ⇒ <code>PskParams</code>
+#### createReceiver~generatePskParams() ⇒ <code>PskParams</code>
 Generate shared secret for Pre-Shared Key (PSK) transport protocol.
 
 **Kind**: inner method of <code>[createReceiver](#module_Receiver..createReceiver)</code>  
