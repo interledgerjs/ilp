@@ -59,7 +59,7 @@ const co = require('co')
 const ILP = require('ilp')
 const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 
-const sender = ILP.createSender(i
+const sender = ILP.createSender({
   _plugin: FiveBellsLedgerPlugin,
   prefix: 'ilpdemo.red.',
   account: 'https://red.ilpdemo.org/ledger/accounts/alice',
