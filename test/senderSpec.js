@@ -359,7 +359,17 @@ describe('Sender Module', function () {
         expect(stub).to.have.been.calledWith(this.paymentParams)
       })
 
-      it('should resolve to the transfer\'s condition fulfillment', function * () {
+      it('should resolve to the transfer\'s condition fulfillment when the fulfillment is ready immediately', function * () {
+        const stub = sinon.stub(this.client, 'sendQuotedPayment', (transfer) => Promise.resolve(transfer))
+        const stub2 = sinon.stub(this.client.getPlugin(), 'getFulfillment')
+        stub2.resolves('fulfillment')
+        const fulfillment = yield this.sender.payRequest(this.paymentParams)
+        expect(fulfillment).to.equal('fulfillment')
+        expect(stub).to.be.calledOnce
+        expect(stub2).to.be.calledOnce
+      })
+
+      it('should resolve to the transfer\'s condition fulfillment when the fulfillment is emitted as an event', function * () {
         const stub = sinon.stub(this.client, 'sendQuotedPayment')
         stub.resolves(new Promise((resolve) => {
           setImmediate(() => this.client.emit('outgoing_fulfill', {
@@ -478,7 +488,7 @@ describe('Sender Module', function () {
           this.sender.payRequest(this.paymentParams)
         ])
         expect(stub).to.be.calledTwice
-        expect(fulfillmentStub).to.be.calledOnce
+        expect(fulfillmentStub).to.be.calledTwice
         expect(results).to.deep.equal(['fulfillment', 'fulfillment'])
       })
 
@@ -501,7 +511,7 @@ describe('Sender Module', function () {
           this.sender.payRequest(this.paymentParams)
         ])
         expect(stub).to.be.calledTwice
-        expect(fulfillmentStub).to.be.calledOnce
+        expect(fulfillmentStub).to.be.calledTwice
         expect(results).to.deep.equal(['fulfillment', 'fulfillment'])
       })
 
@@ -534,4 +544,3 @@ describe('Sender Module', function () {
     })
   })
 })
-
