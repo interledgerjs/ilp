@@ -143,7 +143,7 @@ const receiver = ILP.createReceiver({
   // This is required when using PSK.
   reviewPayment: (payment, transfer) => {
     if (+transfer.amount > 100) {
-      throw new Error('payment is too big!')
+      return Promise.reject(new Error('payment is too big!'))
     }
   }
 })
@@ -154,13 +154,15 @@ co(function * () {
     console.log('received transfer:', transfer)
     console.log('fulfilled transfer hold with fulfillment:', fulfillment)
   })
-  const sharedSecret = receiver.generateSharedSecret()
+  // The user of this module is responsible for communicating the
+  // PSK parameters from the recipient to the sender
+  const pskParams = receiver.generatePskParams()
 
   // Note the payment is created by the sender
   const request = sender.createRequest({
     destinationAmount: '10',
-    destinationAccount: 'example.ilp.address.for.bob',
-    sharedSecret: sharedSecret
+    destinationAccount: pskParams.destinationAccount,
+    sharedSecret: pskParams.sharedSecret
   })
   console.log('request:', request)
 

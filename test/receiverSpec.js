@@ -582,7 +582,7 @@ describe('Receiver Module', function () {
             hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64')
           })
           yield receiver.listen()
-          const psk = receiver.generateSharedSecret()
+          const psk = receiver.generatePskParams()
           const request = sender.createRequest(Object.assign({}, psk, {
             destinationAmount: "1",
             data: { for: 'that thing' }
@@ -634,7 +634,7 @@ describe('Receiver Module', function () {
 
           yield this.receiver.listen()
 
-          const psk = this.receiver.generateSharedSecret()
+          const psk = this.receiver.generatePskParams()
           const request = sender.createRequest(Object.assign({}, psk, {
             destinationAmount: "1",
             data: { for: 'that thing' }
@@ -693,7 +693,7 @@ describe('Receiver Module', function () {
           })
           yield receiver.listen()
 
-          const psk = receiver.generateSharedSecret()
+          const psk = receiver.generatePskParams()
           const request = sender.createRequest(Object.assign({}, psk, {
             destinationAmount: "1",
             data: { for: 'that thing' }
@@ -723,7 +723,7 @@ describe('Receiver Module', function () {
           })
           yield receiver.listen()
 
-          const psk = receiver.generateSharedSecret()
+          const psk = receiver.generatePskParams()
           const request = sender.createRequest(Object.assign({}, psk, {
             destinationAmount: "1",
             data: { for: 'that thing' }
@@ -746,7 +746,7 @@ describe('Receiver Module', function () {
 
           yield this.receiver.listen()
 
-          const psk = this.receiver.generateSharedSecret()
+          const psk = this.receiver.generatePskParams()
           const request = sender.createRequest(Object.assign({}, psk, {
             destinationAmount: "1",
             data: { for: 'that thing' }
@@ -770,7 +770,7 @@ describe('Receiver Module', function () {
 
           yield this.receiver.listen()
 
-          const psk = this.receiver.generateSharedSecret()
+          const psk = this.receiver.generatePskParams()
           const request = sender.createRequest(Object.assign({}, psk, {
             destinationAmount: "1"
           }))
