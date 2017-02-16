@@ -356,7 +356,7 @@ function createReceiver (opts) {
             * @event incoming
             * @type {object}
             */
-            eventEmitter.emit('incoming', transfer, fulfillment)
+            eventEmitter.emit('incoming', transfer, fulfillment, paymentRequest)
 
             if (protocol === 'ipr') {
               /**
@@ -367,10 +367,10 @@ function createReceiver (opts) {
               */
               // Allow listeners for specific requests and on wildcard events such that
               // `incoming:appid.*` will match `incoming:appid:requestid`
-              eventEmitter.emit('incoming:ipr:' + requestId, transfer, fulfillment)
+              eventEmitter.emit('incoming:ipr:' + requestId, transfer, fulfillment, paymentRequest)
 
               // alternate return this promise in order to deprecate event
-              return eventEmitter.emitAsync('incoming:' + requestId, transfer, fulfillment).then((res) => {
+              return eventEmitter.emitAsync('incoming:' + requestId, transfer, fulfillment, paymentRequest).then((res) => {
                 if (res.length) util.deprecate(() => {}, 'listen to "incoming:ipr:" instead of "incoming"')
                 return 'sent'
               })
@@ -381,7 +381,7 @@ function createReceiver (opts) {
               * @event incoming:psk:<token>
               * @type {object}
               */
-              eventEmitter.emit('incoming:psk:' + requestId, transfer, fulfillment)
+              eventEmitter.emit('incoming:psk:' + requestId, transfer, fulfillment, paymentRequest)
             }
 
             return 'sent'
