@@ -95,6 +95,7 @@ const quoteDestination = (plugin, receiver, amount) => {
 const sendPayment = (plugin, payment, ilp) => {
   return co(function * () {
     if (!plugin) throw new Error('missing plugin')
+    if (!payment) throw new Error('missing payment')
     if (!payment.spsp) throw new Error('missing SPSP response in payment')
     if (!payment.spsp.shared_secret) throw new Error('missing SPSP shared_secret')
     if (!payment.destinationAmount) throw new Error('missing destinationAmount')
@@ -109,7 +110,7 @@ const sendPayment = (plugin, payment, ilp) => {
     const request = sender.createRequest({
       id: payment.id,
       sharedSecret: payment.spsp.shared_secret,
-      destinationAmount: payment.destination_amount,
+      destinationAmount: payment.destinationAmount,
       destinationAccount: payment.spsp.destination_account,
       data: payment.data
     })

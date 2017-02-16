@@ -160,41 +160,61 @@ describe('SPSP Module', function () {
       this.payment = yield SPSP.quoteDestination(this.plugin, 'alice@example.com', '10')
     })
 
-    it.skip('should successfuly send a payment', function * () {
+    it('should successfuly send a payment', function * () {
+      let payment
+      const client = new MockClient({})
 
+      client.sendQuotedPayment = (paymentParams) => (new Promise((resolve) => {
+        payment = paymentParams
+        setImmediate(() => client.emit('outgoing_fulfill', {
+          executionCondition: paymentParams.executionCondition
+        }, 'fulfillment'))
+        resolve()
+      }))
+
+      const result = yield SPSP.sendPayment(this.plugin, this.payment, { client })
+      expect(result).to.deep.equal({ fulfillment: 'fulfillment' })
+
+      expect(payment).to.be.ok
+      expect(payment.destinationAmount).to.equal(this.payment.destinationAmount)
+      expect(payment.sourceAmount).to.equal(this.payment.sourceAmount)
+      expect(payment.uuid).to.equal(this.payment.id)
+      // payment destinationAccount will have extra PSK identifiers
+      expect(payment.destinationAccount.startsWith(this.payment.destinationAccount)).to.be.ok
     })
 
-    it('should fail without client', function * () {
-      yield expect(SPSP.sendPayment(undefined, this.payment)).to.eventually.be.rejected
+    it('should fail without plugin', function * () {
+      yield expect(SPSP.sendPayment(undefined, this.payment))
+        .to.eventually.be.rejectedWith(/missing plugin/)
     })
 
     it('should fail without payment', function * () {
-      yield expect(SPSP.sendPayment(this.plugin, undefined)).to.eventually.be.rejected
+      yield expect(SPSP.sendPayment(this.plugin, undefined))
+        .to.eventually.be.rejectedWith(/missing payment/)
     })
 
     it('should fail without destinationAccount', function * () {
-      delete this.payment.destination_account
-      yield expect(SPSP.sendPayment(this.plugin, this.payment)).to.eventually.be.rejected
+      delete this.payment.destinationAccount
+      yield expect(SPSP.sendPayment(this.plugin, this.payment))
+        .to.eventually.be.rejectedWith(/missing destinationAccount/)
     })
 
     it('should fail without destinationAmount', function * () {
-      delete this.payment.destination_amount
-      yield expect(SPSP.sendPayment(this.plugin, this.payment)).to.eventually.be.rejected
+      delete this.payment.destinationAmount
+      yield expect(SPSP.sendPayment(this.plugin, this.payment))
+        .to.eventually.be.rejectedWith(/missing destinationAmount/)
     })
 
     it('should fail without sourceAmount', function * () {
-      delete this.payment.source_amount
-      yield expect(SPSP.sendPayment(this.plugin, this.payment)).to.eventually.be.rejected
-    })
-
-    it('should fail without connectorAccount', function * () {
-      delete this.payment.connector_account
-      yield expect(SPSP.sendPayment(this.plugin, this.payment)).to.eventually.be.rejected
+      delete this.payment.sourceAmount
+      yield expect(SPSP.sendPayment(this.plugin, this.payment))
+        .to.eventually.be.rejectedWith(/missing sourceAmount/)
     })
 
     it('should fail without spsp info', function * () {
       delete this.payment.spsp
-      yield expect(SPSP.sendPayment(this.plugin, this.payment)).to.eventually.be.rejected
+      yield expect(SPSP.sendPayment(this.plugin, this.payment))
+        .to.eventually.be.rejectedWith(/missing SPSP response/)
     })
   })
 
