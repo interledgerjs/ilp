@@ -368,11 +368,15 @@ describe('Receiver Module', function () {
           expect(results).to.deep.equal([])
         })
 
-        it('should ignore transfers with cancellation conditions', function * () {
+        it('should reject transfers with cancellation conditions', function * () {
           const results = yield this.client.emitAsync('incoming_prepare', _.assign(this.transfer, {
             cancellationCondition: 'uzoYx3K6u-Nt6kZjbN6KmH0yARfhkj9e17eQfpSeB7U'
           }))
-          expect(results).to.deep.equal(['cancellation'])
+          expect(results).to.deep.equal([{
+            code: 'S00',
+            name: 'Bad Request',
+            message: 'got notification of transfer with cancellationCondition'
+          }])
           expect(this.client.rejected).to.be.true
         })
 
@@ -380,7 +384,11 @@ describe('Receiver Module', function () {
           const results = yield this.client.emitAsync('incoming_prepare', _.assign(this.transfer, {
             executionCondition: null
           }))
-          expect(results).to.deep.equal(['no-execution'])
+          expect(results).to.deep.equal([{
+            code: 'S00',
+            name: 'Bad Request',
+            message: 'got notification of transfer without executionCondition'
+          }])
           expect(this.client.rejected).to.be.true
         })
 
@@ -388,7 +396,11 @@ describe('Receiver Module', function () {
           const results = yield this.client.emitAsync('incoming_prepare', _.assign(this.transfer, {
             data: { not: 'a packet' }
           }))
-          expect(results).to.deep.equal(['no-packet'])
+          expect(results).to.deep.equal([{
+            code: 'S01',
+            name: 'Invalid Packet',
+            message: 'got notification of transfer with no packet attached'
+          }])
           expect(this.client.rejected).to.be.true
         })
 
@@ -427,7 +439,11 @@ describe('Receiver Module', function () {
               }
             }
           }))
-          expect(results).to.deep.equal(['expired'])
+          expect(results).to.deep.equal([{
+            code: 'R01',
+            name: 'Transfer Timed Out',
+            message: 'got notification of transfer with expired packet'
+          }])
           expect(this.client.rejected).to.be.true
         })
 
@@ -435,7 +451,11 @@ describe('Receiver Module', function () {
           const results = yield this.client.emitAsync('incoming_prepare', _.merge(this.transfer, {
             amount: '0.999999999'
           }))
-          expect(results).to.deep.equal(['insufficient'])
+          expect(results).to.deep.equal([{
+            code: 'S04',
+            name: 'Insufficient Destination Amount',
+            message: 'got notification of transfer where amount is less than expected'
+          }])
           expect(this.client.rejected).to.be.true
         })
 
@@ -443,7 +463,11 @@ describe('Receiver Module', function () {
           const results = yield this.client.emitAsync('incoming_prepare', _.merge(this.transfer, {
             amount: '1.0000000001'
           }))
-          expect(results).to.deep.equal(['overpayment-disallowed'])
+          expect(results).to.deep.equal([{
+            code: 'S03',
+            name: 'Invalid Amount',
+            message: 'got notification of transfer where amount is greater than expected'
+          }])
           expect(this.client.rejected).to.be.true
         })
 
