@@ -464,7 +464,7 @@ describe('Sender Module', function () {
         this.sender.payRequest(this.paymentParams)
         yield Promise.resolve()
         expect(spy).to.have.always.been.calledWithMatch({
-          uuid: 'a3ef0628-2427-4ed2-839d-e34861932b22'
+          uuid: '821203d4-1334-4052-8404-b974edd9e83b'
         })
       })
 

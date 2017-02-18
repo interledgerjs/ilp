@@ -9,6 +9,6 @@
       "for": "that thing"
     }
   },
-  "executionCondition": "cc:0:3:hd5x8kpaDDLQu-KqMyCrlsg5QJ9g9qaFr9ytTwqyCsw:32",
+  "executionCondition": "ni:///sha-256;hd5x8kpaDDLQu-KqMyCrlsg5QJ9g9qaFr9ytTwqyCsw?fpt=preimage-sha-256&cost=32",
   "expiresAt": "1970-01-01T00:00:10.000Z"
 }
