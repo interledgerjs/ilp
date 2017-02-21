@@ -573,7 +573,11 @@ describe('Receiver Module', function () {
 
           this.transfer.executionCondition = request.condition
           yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
-            .to.eventually.deep.equal(['rejected-by-receiver: Error: rejected!'])
+            .to.eventually.deep.equal([{
+              code: 'S00',
+              name: 'Bad Request',
+              message: 'rejected-by-receiver: Error: rejected!'
+            }])
           expect(this.client.rejected).to.be.true
         })
 
@@ -619,7 +623,11 @@ describe('Receiver Module', function () {
           this.transfer.data.ilp_header.data.data = request.data
 
           yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
-            .to.eventually.deep.equal(['psk-not-supported'])
+            .to.eventually.deep.equal([{
+              code: 'S00',
+              name: 'Bad Request',
+              message: 'got PSK payment on non-PSK receiver'
+            }])
           expect(this.client.rejected).to.be.true
         })
 
@@ -646,7 +654,11 @@ describe('Receiver Module', function () {
           this.transfer.data.ilp_header.data.data = request.data
 
           yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
-            .to.eventually.deep.equal(['psk-corrupted-data'])
+            .to.eventually.deep.equal([{
+              code: 'S00',
+              name: 'Bad Request',
+              message: 'got corrupted data'
+            }])
           expect(this.client.rejected).to.be.true
         })
 
@@ -699,7 +711,11 @@ describe('Receiver Module', function () {
           this.transfer.data.ilp_header.data.data = request.data
 
           yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
-            .to.eventually.deep.equal(['psk-data-must-be-encrypted-blob'])
+            .to.eventually.deep.equal([{
+              code: 'S00',
+              name: 'Bad Request',
+              message: 'got PSK payment where the data is not encrypted'
+            }])
           expect(this.client.rejected).to.be.true
         })
 
@@ -730,7 +746,11 @@ describe('Receiver Module', function () {
           this.transfer.data.ilp_header.data.data = request.data
 
           yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
-            .to.eventually.be.deep.equal(['rejected-by-receiver: Error: uh oh!'])
+            .to.eventually.be.deep.equal([{
+              code: 'S00',
+              name: 'Bad Request',
+              message: 'rejected-by-receiver: Error: uh oh!'
+            }])
         })
 
         it('should reject payments if reviewPayment rejects', function * () {
@@ -760,7 +780,11 @@ describe('Receiver Module', function () {
           this.transfer.data.ilp_header.data.data = request.data
 
           yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
-            .to.eventually.be.deep.equal(['rejected-by-receiver: Error: uh oh!'])
+            .to.eventually.be.deep.equal([{
+              code: 'S00',
+              name: 'Bad Request',
+              message: 'rejected-by-receiver: Error: uh oh!'
+            }])
         })
         it('should fulfill PSK payments', function * () {
           const sender = createSender({
