@@ -316,7 +316,11 @@ function createReceiver (opts) {
 
     if (protocol === 'psk' && !reviewPayment) {
       debug('got PSK payment on non-PSK receiver')
-      return rejectIncomingTransfer(transfer.id, 'psk-not-supported')
+      return rejectIncomingTransfer(transfer.id, {
+        code: 'S00',
+        name: 'Bad Request',
+        message: 'got PSK payment on non-PSK receiver'
+      })
     }
 
     let conditionPreimage
@@ -339,7 +343,11 @@ function createReceiver (opts) {
     if (protocol === 'psk' && paymentRequest.data) {
       if (Object.keys(paymentRequest.data).length > 1 || !paymentRequest.data.blob) {
         debug('got PSK payment where the data is not encrypted', paymentRequest)
-        return rejectIncomingTransfer(transfer.id, 'psk-data-must-be-encrypted-blob')
+        return rejectIncomingTransfer(transfer.id, {
+          code: 'S00',
+          name: 'Bad Request',
+          message: 'got PSK payment where the data is not encrypted'
+        })
       }
       try {
         paymentRequest.data = cryptoHelper.aesDecryptObject(
@@ -349,7 +357,11 @@ function createReceiver (opts) {
       } catch (e) {
         // return errors as promises, in case of invalid data
         debug('got corrupted data', e, paymentRequest.data)
-        return rejectIncomingTransfer(transfer.id, 'psk-corrupted-data')
+        return rejectIncomingTransfer(transfer.id, {
+          code: 'S00',
+          name: 'Bad Request',
+          message: 'got corrupted data'
+        })
       }
     }
 
@@ -375,7 +387,11 @@ function createReceiver (opts) {
         } else {
           errorMessage = 'reason not specified'
         }
-        return rejectIncomingTransfer(transfer.id, 'rejected-by-receiver: ' + errorMessage)
+        return rejectIncomingTransfer(transfer.id, {
+          code: 'S00',
+          name: 'Bad Request',
+          message: 'rejected-by-receiver: ' + errorMessage
+        })
       })
 
     // returning the promise is only so the result is picked up by the tests' emitAsync
