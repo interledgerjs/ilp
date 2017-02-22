@@ -71,13 +71,13 @@ describe('SPSP Module', function () {
         .get('/spsp')
         .reply(200, spspResponse)
 
-      const payment = yield SPSP.quoteDestination(this.plugin, 'alice@example.com', '10')
+      const payment = yield SPSP.quoteDestination(this.plugin, 'alice@example.com', '12')
       assert.deepEqual(payment, {
         destinationAccount: "example.alice",
         connectorAccount: "example.connie",
         sourceAmount: "10",
         id: payment.id,
-        destinationAmount: "10",
+        destinationAmount: "12",
         spsp: spspResponse
       })
 
@@ -118,11 +118,11 @@ describe('SPSP Module', function () {
         .get('/spsp')
         .reply(200, spspResponse)
 
-      const payment = yield SPSP.quoteDestination(this.plugin, 'alice@example.com', '10')
+      const payment = yield SPSP.quoteSource(this.plugin, 'alice@example.com', '12')
       assert.deepEqual(payment, {
         destinationAccount: "example.alice",
         connectorAccount: "example.connie",
-        sourceAmount: "10",
+        sourceAmount: "12",
         id: payment.id,
         destinationAmount: "10",
         spsp: spspResponse

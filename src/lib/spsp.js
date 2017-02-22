@@ -38,7 +38,7 @@ const _querySPSP = function * (receiver) {
 
 const query = co.wrap(_querySPSP)
 
-const _quote = function * (plugin, spsp, sourceAmount, destinationAmount) {
+const _quote = function * ({ plugin, spsp, sourceAmount, destinationAmount }) {
   if (!plugin) throw new Error('missing plugin')
   if (!spsp.destination_account) throw new Error('missing destination account')
   if (!spsp.maximum_destination_amount) throw new Error('missing maximum destination amount')
@@ -50,6 +50,12 @@ const _quote = function * (plugin, spsp, sourceAmount, destinationAmount) {
     destinationAmount,
     sourceAmount
   })
+
+  if (!quote) {
+    throw new Error('unable to get quote to destinationAddress ' +
+      spsp.destination_account + ' with spsp parameters: ' +
+      JSON.stringify(spsp))
+  }
 
   if (+quote.destinationAmount > +spsp.maximum_destination_amount ||
       +quote.destinationAmount < +spsp.minimum_destination_amount) {
@@ -79,7 +85,8 @@ const _createPayment = (spsp, quote) => {
 const quoteSource = (plugin, receiver, amount) => {
   return co(function * () {
     const spsp = yield _querySPSP(receiver)
-    const quote = yield _quote(plugin, spsp, amount)
+    // quote by the source amount, leaving destination amount unspecified
+    const quote = yield _quote({ plugin, spsp, sourceAmount: amount })
     return _createPayment(spsp, quote)
   })
 }
@@ -87,7 +94,8 @@ const quoteSource = (plugin, receiver, amount) => {
 const quoteDestination = (plugin, receiver, amount) => {
   return co(function * () {
     const spsp = yield _querySPSP(receiver)
-    const quote = yield _quote(plugin, spsp, amount)
+    // quote by the destination amount, leaving source amount unspecified
+    const quote = yield _quote({ plugin, spsp, destinationAmount: amount })
     return _createPayment(spsp, quote)
   })
 }
