@@ -15,6 +15,6 @@
       }
     }
   },
-  "executionCondition": "ni:///sha-256;GfBQTUUGKZZ0919wqrH_IrBoFYlwhfcvfentOmtMR1k?fpt=preimage-sha-256&cost=32",
+  "executionCondition": "GfBQTUUGKZZ0919wqrH_IrBoFYlwhfcvfentOmtMR1k",
   "expiresAt": "1970-01-01T00:00:10.000Z"
 }

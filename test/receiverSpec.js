@@ -370,7 +370,7 @@ describe('Receiver Module', function () {
 
         it('should ignore transfers with cancellation conditions', function * () {
           const results = yield this.client.emitAsync('incoming_prepare', _.assign(this.transfer, {
-            cancellationCondition: 'ni:///sha-256;47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU?fpt=preimage-sha-256&cost=0'
+            cancellationCondition: 'uzoYx3K6u-Nt6kZjbN6KmH0yARfhkj9e17eQfpSeB7U'
           }))
           expect(results).to.deep.equal(['cancellation'])
           expect(this.client.rejected).to.be.true
@@ -449,7 +449,7 @@ describe('Receiver Module', function () {
 
         it('should ignore transfers where the executionCondition does not match the generated condition', function * () {
           const results = yield this.client.emitAsync('incoming_prepare', _.assign(this.transfer, {
-            executionCondition: 'ni:///sha-256;47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU?fpt=preimage-sha-256&cost=0'
+            executionCondition: 'uzoYx3K6u-Nt6kZjbN6KmH0yARfhkj9e17eQfpSeB7U'
           }))
           expect(results).to.deep.equal(['condition-mismatch'])
         })
@@ -610,7 +610,7 @@ describe('Receiver Module', function () {
             amount: '1',
             expires_at: '1970-01-01T00:00:30.000Z',
             data: { blob: 'invalid' },
-            condition: 'ni:///sha-256;QXcyj2zzwg4rbokeaPl2gduahxCVeSkFf_yLRvsDBMs?fpt=preimage-sha-256&cost=32'
+            condition: 'QXcyj2zzwg4rbokeaPl2gduahxCVeSkFf_yLRvsDBMs'
           }
 
           yield this.receiver.listen()
@@ -665,7 +665,7 @@ describe('Receiver Module', function () {
             amount: '1',
             expires_at: '1970-01-01T00:00:30.000Z',
             data: { for: 'that thing' },
-            condition: 'ni:///sha-256;apu2Eku6790mNC8ZQ4lYxbkR93VO3rNSMNO5gZYh0po?fpt=preimage-sha-256&cost=32'
+            condition: 'apu2Eku6790mNC8ZQ4lYxbkR93VO3rNSMNO5gZYh0po'
           }
 
           this.transfer.account = request.address
@@ -836,7 +836,7 @@ describe('Receiver Module', function () {
               account: 'ilpdemo.blue.bob.~ipr.ZfiUdFj-tVw.someapp.requestid'
             }
           },
-          executionCondition: 'ni:///sha-256;fRifMsPe8L0xpCQSuv51QNj0ZO1H5t0-Aer4ZhLYFEE?fpt=preimage-sha-256&cost=32'
+          executionCondition: 'fRifMsPe8L0xpCQSuv51QNj0ZO1H5t0-Aer4ZhLYFEE'
         }))
         expect(emitted).to.be.true
       })

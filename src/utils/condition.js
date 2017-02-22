@@ -10,19 +10,15 @@ function toConditionUri (conditionPreimage) {
   const hash = crypto.createHash('sha256')
   hash.update(conditionPreimage)
   const condition = hash.digest()
-  const conditionUri = 'ni:///sha-256;' + base64url(condition) + '?fpt=preimage-sha-256&cost=32'
+  const conditionUri = base64url(condition)
   return conditionUri
 }
 
-// DER encoding prefix (specific to 32-byte preimages)
-const PREIMAGE_32BYTE_PREAMBLE = Buffer.from([0xa0, 0x22, 0x80, 0x20])
 function toFulfillmentUri (conditionPreimage) {
   if (conditionPreimage.length !== 32) {
     throw new Error('Condition preimage must be 32 bytes')
   }
-  const fulfillment = Buffer.concat([PREIMAGE_32BYTE_PREAMBLE, conditionPreimage])
-  const fulfillmentUri = base64url(fulfillment)
-  return fulfillmentUri
+  return base64url(conditionPreimage)
 }
 
 Object.assign(exports, {

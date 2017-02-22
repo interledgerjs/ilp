@@ -5,5 +5,5 @@
   "data": {
     "for": "that thing"
   },
-  "condition": "ni:///sha-256;hd5x8kpaDDLQu-KqMyCrlsg5QJ9g9qaFr9ytTwqyCsw?fpt=preimage-sha-256&cost=32"
+  "condition": "hd5x8kpaDDLQu-KqMyCrlsg5QJ9g9qaFr9ytTwqyCsw"
 }
