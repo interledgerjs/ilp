@@ -48,8 +48,8 @@ class Client extends EventEmitter {
   quote (req) {
     return Promise.resolve({
       connectorAccount: "example.connie",
-      sourceAmount: "10",
-      destinationAmount: "10"
+      sourceAmount: req.sourceAmount || "10",
+      destinationAmount: req.destinationAmount || "10"
     })
   }
 
