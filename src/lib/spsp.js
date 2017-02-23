@@ -38,13 +38,13 @@ const _querySPSP = function * (receiver) {
 
 const query = co.wrap(_querySPSP)
 
-const _quote = function * ({ plugin, spsp, sourceAmount, destinationAmount }) {
+const _quote = function * ({ plugin, spsp, sourceAmount, destinationAmount, ilp }) {
   if (!plugin) throw new Error('missing plugin')
   if (!spsp.destination_account) throw new Error('missing destination account')
   if (!spsp.maximum_destination_amount) throw new Error('missing maximum destination amount')
   if (!spsp.minimum_destination_amount) throw new Error('missing minimum destination amount')
 
-  const client = new IlpCore.Client(plugin)
+  const client = new IlpCore.Client(plugin, ilp)
   const quote = yield client.quote({
     destinationAddress: spsp.destination_account,
     destinationAmount,
@@ -82,20 +82,20 @@ const _createPayment = (spsp, quote) => {
   }
 }
 
-const quoteSource = (plugin, receiver, amount) => {
+const quoteSource = (plugin, receiver, amount, ilp) => {
   return co(function * () {
     const spsp = yield _querySPSP(receiver)
     // quote by the source amount, leaving destination amount unspecified
-    const quote = yield _quote({ plugin, spsp, sourceAmount: amount })
+    const quote = yield _quote({ plugin, spsp, sourceAmount: amount, ilp })
     return _createPayment(spsp, quote)
   })
 }
 
-const quoteDestination = (plugin, receiver, amount) => {
+const quoteDestination = (plugin, receiver, amount, ilp) => {
   return co(function * () {
     const spsp = yield _querySPSP(receiver)
     // quote by the destination amount, leaving source amount unspecified
-    const quote = yield _quote({ plugin, spsp, destinationAmount: amount })
+    const quote = yield _quote({ plugin, spsp, destinationAmount: amount, ilp })
     return _createPayment(spsp, quote)
   })
 }

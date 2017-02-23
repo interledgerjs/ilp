@@ -4,9 +4,10 @@ const EventEmitter = require('eventemitter2')
 const CustomError = require('custom-error-instance')
 
 class Client extends EventEmitter {
-  constructor (opts) {
+  constructor (opts, additional) {
     super()
     this.account = opts.account
+    this.additional = additional || {}
 
     const MissingFulfillmentError = CustomError('MissingFulfillmentError', { message: 'Missing fulfillment' })
     this.plugin = {
@@ -47,7 +48,7 @@ class Client extends EventEmitter {
 
   quote (req) {
     return Promise.resolve({
-      connectorAccount: "example.connie",
+      connectorAccount: this.additional.connector || "example.connie",
       sourceAmount: req.sourceAmount || "10",
       destinationAmount: req.destinationAmount || "10"
     })

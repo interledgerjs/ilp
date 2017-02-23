@@ -87,6 +87,22 @@ describe('SPSP Module', function () {
         })
     })
 
+    it('should pass client options to client', function * () {
+      nock('https://example.com')
+        .get('/.well-known/webfinger?resource=acct:alice@example.com')
+        .reply(200, webfinger)
+
+      nock('https://example.com')
+        .get('/spsp')
+        .reply(200, spspResponse)
+
+      const payment = yield SPSP.quoteDestination(this.plugin, 'alice@example.com', '12', {
+        connector: 'example.carl'
+      })
+  
+      assert.equal(payment.connectorAccount, 'example.carl')
+    })
+
     it('should return an error if webfinger can\'t be reached', function * () {
       nock('https://example.com')
         .get('/.well-known/webfinger?resource=acct:alice@example.com')
@@ -132,6 +148,22 @@ describe('SPSP Module', function () {
         .catch((e) => {
           if (e.message !== 'Transfer expired, money returned') throw e 
         })
+    })
+
+    it('should pass client options to client', function * () {
+      nock('https://example.com')
+        .get('/.well-known/webfinger?resource=acct:alice@example.com')
+        .reply(200, webfinger)
+
+      nock('https://example.com')
+        .get('/spsp')
+        .reply(200, spspResponse)
+
+      const payment = yield SPSP.quoteSource(this.plugin, 'alice@example.com', '12', {
+        connector: 'example.carl'
+      })
+  
+      assert.equal(payment.connectorAccount, 'example.carl')
     })
 
     it('should fail without a sender', function * () {
