@@ -1,2 +1,2 @@
 --require co-mocha
---timeout 100000
+--timeout 500

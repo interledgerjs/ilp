@@ -22,6 +22,6 @@ function toFulfillmentUri (conditionPreimage) {
 }
 
 Object.assign(exports, {
-  toConditionUri,
-  toFulfillmentUri
+  toCondition,
+  toFulfillment
 })

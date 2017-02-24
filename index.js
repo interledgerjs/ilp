@@ -1,5 +1,8 @@
 'use strict'
 
-exports.createSender = require('./src/lib/sender').createSender
-exports.createReceiver = require('./src/lib/receiver').createReceiver
-exports.SPSP = require('./src/lib/spsp')
+module.exports = {
+  ILQP: require('./src/lib/ilqp'),
+  PSK: require('./src/lib/psk'),
+  IPR: require('./src/lib/ipr'),
+  SPSP: require('./src/lib/spsp')
+}
