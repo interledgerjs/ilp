@@ -39,7 +39,6 @@
     "canonical-json": "0.0.4",
     "debug": "^2.2.0",
     "eventemitter2": "^2.0.0",
-    "ilp-core": "^13.0.0",
     "ilp-packet": "~1.1.1",
     "moment": "^2.14.1",
     "superagent": "^3.4.0",

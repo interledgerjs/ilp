@@ -4,44 +4,24 @@ const crypto = require('crypto')
 const stringify = require('canonical-json')
 
 const IPR_RECEIVER_ID_STRING = 'ilp_ipr_receiver_id'
-const IPR_CONDITION_STRING = 'ilp_ipr_condition'
 const PSK_GENERATION_STRING = 'ilp_psk_generation'
 const PSK_CONDITION_STRING = 'ilp_psk_condition'
 const PSK_ENCRYPTION_STRING = 'ilp_key_encryption'
 
-function createHmacHelper (hmacKey) {
-  if (!hmacKey) {
-    hmacKey = crypto.randomBytes(32)
-  }
+const RECEIVER_ID_LENGTH = 8
+const SHARED_SECRET_LENGTH = 16
 
-  const iprConditionKey = hmac(hmacKey, IPR_CONDITION_STRING)
-  function hmacJsonForIprCondition (obj) {
-    const jsonString = stringify(obj)
-    return hmac(iprConditionKey, jsonString)
-  }
+function getPskToken () {
+  return crypto.randomBytes(16)
+}
 
-  function getReceiverId () {
-    return hmac(hmacKey, IPR_RECEIVER_ID_STRING).slice(0, 8)
-  }
+function getReceiverId (hmacKey) {
+  return hmac(hmacKey, IPR_RECEIVER_ID_STRING).slice(0, RECEIVER_ID_LENGTH)
+}
 
-  function getPskToken () {
-    return crypto.randomBytes(16)
-  }
-
-  function getPskSharedSecret (token) {
-    const generator = hmac(hmacKey, PSK_GENERATION_STRING)
-    return hmac(generator, token).slice(0, 16)
-  }
-
-  return {
-    hmacJsonForIprCondition,
-    getReceiverId,
-    getPskToken,
-    getPskSharedSecret,
-    hmacJsonForPskCondition,
-    aesDecryptObject,
-    aesEncryptObject
-  }
+function getPskSharedSecret (hmacKey, token) {
+  const generator = hmac(hmacKey, PSK_GENERATION_STRING)
+  return hmac(generator, token).slice(0, SHARED_SECRET_LENGTH)
 }
 
 function hmac (key, message) {
@@ -63,7 +43,7 @@ function aesEncryptObject (obj, sharedSecret) {
   const cipher = crypto.createCipher('aes-256-ctr', pskEncryptionKey)
 
   return Buffer.concat([
-    cipher.update(Buffer.from(JSON.stringify(obj), 'utf-8')),
+    cipher.update(Buffer.from(JSON.stringify(obj), 'utf8')),
     cipher.final()
   ])
 }
@@ -74,7 +54,7 @@ function aesDecryptObject (encrypted, sharedSecret) {
   const decipher = crypto.createDecipher('aes-256-ctr', pskEncryptionKey)
 
   const decoded = Buffer.concat([
-    decipher.update(encrypted),
+    decipher.update(Buffer.from(encrypted, 'base64')),
     decipher.final()
   ])
 
@@ -86,8 +66,10 @@ function aesDecryptObject (encrypted, sharedSecret) {
 }
 
 module.exports = {
-  createHmacHelper,
   hmacJsonForPskCondition,
   aesEncryptObject,
-  aesDecryptObject
+  aesDecryptObject,
+  getPskToken,
+  getReceiverId,
+  getPskSharedSecret
 }

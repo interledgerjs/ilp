@@ -1,11 +1,11 @@
 <h1 align="center">
   <a href="https://interledger.org"><img src="ilp_logo.png" width="150"></a>
   <br>
-  ILP Client
+  ILP
 </h1>
 
 <h4 align="center">
-A low-level JS <a href="https://interledger.org">Interledger</a> sender/receiver library
+A low-level JS <a href="https://interledger.org">Interledger</a> library
 </h4>
 
 <br>
@@ -23,19 +23,14 @@ A low-level JS <a href="https://interledger.org">Interledger</a> sender/receiver
 [snyk-image]: https://snyk.io/test/npm/ilp/badge.svg
 [snyk-url]: https://snyk.io/test/npm/ilp
 
-This is a low-level interface to ILP, largely intended for building ILP into other [Application layer](https://github.com/interledger/rfcs/tree/master/0001-interledger-architecture) protocols.
+This module bundles low-level and high-level interfaces to ILP, largely intended for building ILP into other [Application layer](https://github.com/interledger/rfcs/tree/master/0001-interledger-architecture) protocols.
 
-#### The ILP Client includes:
+#### The ILP module includes:
 
 * [Interledger Payment Request (IPR)](#interledger-payment-request-ipr-transport-protocol) Transport Protocol, an interactive protocol in which the receiver specifies the payment details, including the condition
 * [Pre-Shared Key (PSK)](#pre-shared-key-psk-transport-protocol) Transport Protocol, a non-interactive protocol in which the sender creates the payment details and uses a shared secret to generate the conditions
+* [Simple Payment Setup Protocol (SPSP)](#simple-payment-setup-protocol-spsp), a higher level interface for sending ILP payments, which requires the receiver to have an SPSP server.
 * Interledger Quoting and the ability to send through multiple ledger types using [Ledger Plugins](https://github.com/interledgerjs?utf8=✓&q=ilp-plugin)
-
-#### The ILP Client does **not** handle:
-
-* Account discovery
-* Amount negotiation
-* Communication of requests from recipient to sender
 
 ## Installation
 
@@ -43,6 +38,35 @@ This is a low-level interface to ILP, largely intended for building ILP into oth
 
 *Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module*
 
+## Simple Payment Setup Protocol (SPSP)
+
+If you are sending to an SPSP receiver with a `user@example.com` identifier, the SPSP module
+provides a high-level interface:
+
+```js
+'use strict'
+
+const co = require('co')
+const SPSP = require('ilp').SPSP
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
+
+const plugin = new FiveBellsLedgerPlugin({
+  account: 'https://red.ilpdemo.org/ledger/accounts/alice',
+  password: 'alice'
+})
+
+co(function * () {
+  const payment = yield SPSP.quote(plugin, {
+    receiver: 'bob@blue.ilpdemo.org'
+    sourceAmount: '1',
+  })
+
+  console.log('got SPSP payment details:', payment)
+
+  const { fulfillment } = yield SPSP.sendPayment(plugin, payment)
+  console.log('sent! fulfillment:', fulfillment)
+})
+```
 
 ## Interledger Payment Request (IPR) Transport Protocol
 
@@ -55,47 +79,59 @@ This library handles the generation of payment requests, but **not the communica
 ```js
 'use strict'
 
+const uuid = require('uuid')
 const co = require('co')
 const ILP = require('ilp')
 const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 
-const sender = ILP.createSender({
-  _plugin: FiveBellsLedgerPlugin,
-  prefix: 'ilpdemo.red.',
+const sender = new FiveBellsLedgerPlugin({
   account: 'https://red.ilpdemo.org/ledger/accounts/alice',
   password: 'alice'
 })
 
-const receiver = ILP.createReceiver({
-  _plugin: FiveBellsLedgerPlugin,
-  prefix: 'ilpdemo.blue.',
+const receiver = new FiveBellsLedgerPlugin({
   account: 'https://blue.ilpdemo.org/ledger/accounts/bob',
   password: 'bobbob'
 })
 
 co(function * () {
-  yield receiver.listen()
-  receiver.on('incoming', (transfer, fulfillment) => {
-    console.log('received transfer:', transfer)
-    console.log('fulfilled transfer hold with fulfillment:', fulfillment)
+  const stopListening = yield ILP.IPR.listen(receiver, {
+    secret: Buffer.from('secret', 'utf8')
+  }, (params) => {
+    console.log('got transfer:', params.transfer)
+
+    console.log('fulfilling.')
+    return params.fulfill()
   })
 
-  const request = receiver.createRequest({
-    amount: '10',
+  const { packet, condition } = ILP.IPR.createPacketAndCondition({
+    secret: Buffer.from('secret', 'utf8')
+    destinationAccount: receiver.getAccount(),
+    destinationAmount: '10',
   })
-  console.log('request:', request)
 
   // Note the user of this module must implement the method for
-  // communicating payment requests from the recipient to the sender
-  const paymentParams = yield sender.quoteRequest(request)
-  console.log('paymentParams', paymentParams)
+  // communicating packet and condition from the recipient to the sender
 
-  const result = yield sender.payRequest(paymentParams)
-  console.log('sender result:', result)
+  const quote = yield ILP.ILQP.quoteByPacket(sender, packet)
+  console.log('got quote:', quote)
+
+  yield sender.sendTransfer({
+    id: uuid(),
+    to: quote.connectorAccount,
+    amount: quote.sourceAmount,
+    expiresAt: quote.expiresAt,
+    executionCondition: condition,
+    ilp: packet
+  })
+
+  sender.on('outgoing_fulfill', (transfer, fulfillment) => {
+    console.log(transfer.id, 'was fulfilled with', fulfillment)
+    stopListening()
+  })
 }).catch((err) => {
   console.log(err)
 })
-
 ```
 
 ### Pre-Shared Key (PSK) Transport Protocol
@@ -125,52 +161,59 @@ from getting unwanted funds.
 ```js
 'use strict'
 
+const uuid = require('uuid')
 const co = require('co')
-const ILP = require('.')
+const ILP = require('ilp')
 const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 
-const sender = ILP.createSender({
-  _plugin: FiveBellsLedgerPlugin,
-  account: 'https://localhost/ledger/accounts/alice',
+const sender = new FiveBellsLedgerPlugin({
+  account: 'https://red.ilpdemo.org/ledger/accounts/alice',
   password: 'alice'
 })
 
-const receiver = ILP.createReceiver({
-  _plugin: FiveBellsLedgerPlugin,
-  account: 'https://localhost/ledger/accounts/bob',
-  password: 'bobbob',
-  // A callback can be specified to review incoming payments.
-  // This is required when using PSK.
-  reviewPayment: (payment, transfer) => {
-    if (+transfer.amount > 100) {
-      return Promise.reject(new Error('payment is too big!'))
-    }
-  }
+const receiver = new FiveBellsLedgerPlugin({
+  account: 'https://blue.ilpdemo.org/ledger/accounts/bob',
+  password: 'bobbob'
 })
 
+const { sharedSecret, destinationAccount } = ILP.PSK.generateParams(receiver, 
+
+// Note the user of this module must implement the method for
+// communicating sharedSecret and destinationAccount from the recipient
+// to the sender
+
 co(function * () {
-  yield receiver.listen()
-  receiver.on('incoming', (transfer, fulfillment) => {
-    console.log('received transfer:', transfer)
-    console.log('fulfilled transfer hold with fulfillment:', fulfillment)
-  })
-  // The user of this module is responsible for communicating the
-  // PSK parameters from the recipient to the sender
-  const pskParams = receiver.generatePskParams()
+  const stopListening = yield ILP.PSK.listen(receiver, { sharedSecret }, (params) => {
+    console.log('got transfer:', params.transfer)
 
-  // Note the payment is created by the sender
-  const request = sender.createRequest({
+    console.log('fulfilling.')
+    return params.fulfill()
+  })
+
+  // the sender can generate these, via the sharedSecret and destinationAccount
+  // given to them by the receiver.
+  const { packet, condition } = ILP.PSK.createPacketAndCondition({
+    sharedSecret,
+    destinationAccount,
     destinationAmount: '10',
-    destinationAccount: pskParams.destinationAccount,
-    sharedSecret: pskParams.sharedSecret
   })
-  console.log('request:', request)
 
-  const paymentParams = yield sender.quoteRequest(request)
-  console.log('paymentParams', paymentParams)
+  const quote = yield ILP.ILQP.quoteByPacket(sender, packet)
+  console.log('got quote:', quote)
 
-  const result = yield sender.payRequest(paymentParams)
-  console.log('sender result:', result)
+  yield sender.sendTransfer({
+    id: uuid(),
+    to: quote.connectorAccount,
+    amount: quote.sourceAmount,
+    expiresAt: quote.expiresAt,
+    executionCondition: condition,
+    ilp: packet
+  })
+
+  sender.on('outgoing_fulfill', (transfer, fulfillment) => {
+    console.log(transfer.id, 'was fulfilled with', fulfillment)
+    stopListening()
+  })
 }).catch((err) => {
   console.log(err)
 })

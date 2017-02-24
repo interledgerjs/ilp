@@ -1,11 +1,17 @@
 'use strict'
 const co = require('co')
+const assert = require('assert')
 const agent = require('superagent')
 const uuid = require('uuid/v4')
+const moment = require('moment')
 const BigNumber = require('bignumber.js')
 
-const Sender = require('./sender')
-const IlpCore = require('ilp-core')
+const ILQP = require('./ilqp')
+const PSK = require('./psk')
+const { xor } = require('../utils')
+
+const toInteger = (d, s) => (new BigNumber(d)).shift(s).round().toString()
+const toDecimal = (i, s) => (new BigNumber(i)).shift(-s).toString()
 
 /**
  * @module SPSP
@@ -37,24 +43,54 @@ const _querySPSP = function * (receiver) {
     .set('Accept', 'application/json')).body
 }
 
+const _createPayment = (plugin, spsp, quote, id) => {
+  const sourceAmount =
+    toDecimal(quote.sourceAmount, plugin.getInfo().scale)
+  const destinationAmount =
+    toDecimal(quote.destinationAmount, spsp.ledger_info.scale)
+
+  return {
+    id: id || uuid(),
+    sourceAmount: sourceAmount,
+    destinationAmount: destinationAmount,
+    destinationAccount: spsp.destination_account,
+    connectorAccount: quote.connectorAccount,
+    sourceExpiryDuration: quote.sourceExpiryDuration,
+    spsp: spsp
+  }
+}
+
 const query = co.wrap(_querySPSP)
 
-const _quote = function * ({ plugin, spsp, sourceAmount, destinationAmount, ilp }) {
-  if (!plugin) throw new Error('missing plugin')
-  if (!spsp.destination_account) throw new Error('missing destination account')
-  if (!spsp.maximum_destination_amount) throw new Error('missing maximum destination amount')
-  if (!spsp.minimum_destination_amount) throw new Error('missing minimum destination amount')
+const quote = function * (plugin, {
+  receiver,
+  sourceAmount,
+  destinationAmount,
+  connectors,
+  id,
+  timeout
+}) {
+  assert(plugin, 'missing plugin')
+  assert(receiver, 'receiver')
+  assert(xor(sourceAmount, destinationAmount),
+    'destinationAmount or sourceAmount must be specified')
 
-  const client = new IlpCore.Client(plugin, ilp)
   const sourceScale = plugin.getInfo().scale
-  const destinationScale = spsp.ledger_info.amount_scale
-  const integerSourceAmount = sourceAmount && new BigNumber(sourceAmount).shift(sourceScale).toString()
-  const integerDestinationAmount = destinationAmount && new BigNumber(destinationAmount).shift(destinationScale).toString()
+  const integerSourceAmount = sourceAmount &&
+    toInteger(sourceAmount, sourceScale)
 
-  const quote = yield client.quote({
+  const spsp = yield _querySPSP(receiver)
+  const destinationScale = spsp.ledger_info.scale
+  const integerDestinationAmount = destinationAmount &&
+    toInteger(destinationAmount, destinationScale)
+
+  const quote = yield ILQP.quote(plugin, {
     destinationAddress: spsp.destination_account,
     destinationAmount: integerDestinationAmount,
-    sourceAmount: integerSourceAmount
+    sourceAmount: integerSourceAmount,
+    connectors,
+    id,
+    timeout
   })
 
   if (!quote) {
@@ -79,83 +115,71 @@ const _quote = function * ({ plugin, spsp, sourceAmount, destinationAmount, ilp 
       ']')
   }
 
-  return spspQuote
+  return _createPayment(plugin, spsp, quote, id)
 }
 
-const _createPayment = (spsp, quote) => {
-  return {
-    id: uuid(),
-    sourceAmount: quote.sourceAmount,
-    destinationAmount: quote.destinationAmount,
-    destinationAccount: spsp.destination_account,
-    connectorAccount: quote.connectorAccount,
-    spsp: spsp
-  }
-}
+function * sendPayment (plugin, payment) {
+  assert(plugin, 'missing plugin')
+  assert(payment, 'missing payment')
+  assert(payment.spsp, 'missing SPSP response in payment')
+  assert(payment.spsp.shared_secret, 'missing SPSP shared_secret')
+  assert(payment.destinationAmount, 'missing destinationAmount')
+  assert(payment.sourceAmount, 'missing sourceAmount')
+  assert(payment.destinationAccount, 'missing destinationAccount')
+  assert(payment.sourceExpiryDuration, 'missing sourceExpiryDuration')
+  assert(payment.id, 'payment must have an id')
 
-const quoteSource = (plugin, receiver, amount, ilp) => {
-  return co(function * () {
-    const spsp = yield _querySPSP(receiver)
-    // quote by the source amount, leaving destination amount unspecified
-    const quote = yield _quote({ plugin, spsp, sourceAmount: amount, ilp })
-    return _createPayment(spsp, quote)
+  const sourceScale = plugin.getInfo().scale
+  const integerSourceAmount =
+    toInteger(payment.sourceAmount, sourceScale)
+
+  const destinationScale = payment.spsp.ledger_info.scale
+  const integerDestinationAmount =
+    toInteger(payment.destinationAmount, destinationScale)
+
+  const { packet, condition } = PSK.createPacketAndCondition({
+    sharedSecret: Buffer.from(payment.spsp.shared_secret, 'base64'),
+    destinationAmount: integerDestinationAmount,
+    destinationAccount: payment.destinationAccount,
+    data: payment.data // optional
   })
-}
 
-const quoteDestination = (plugin, receiver, amount, ilp) => {
-  return co(function * () {
-    const spsp = yield _querySPSP(receiver)
-    // quote by the destination amount, leaving source amount unspecified
-    const quote = yield _quote({ plugin, spsp, destinationAmount: amount, ilp })
-    return _createPayment(spsp, quote)
+  const listen = new Promise((resolve, reject) => {
+    function remove () {
+      plugin.removeListener('outgoing_fulfill', fulfill)
+      plugin.removeListener('outgoing_cancel', cancel)
+      plugin.removeListener('outgoing_reject', cancel)
+    }
+
+    function fulfill (transfer, fulfillment) {
+      if (transfer.id !== payment.id) return
+      remove()
+      resolve({ fulfillment })
+    }
+
+    function cancel (transfer) {
+      if (transfer.id !== payment.id) return
+      remove()
+      reject(new Error('transfer ' + payment.id + ' failed.'))
+    }
+
+    plugin.on('outgoing_fulfill', fulfill)
+    plugin.on('outgoing_cancel', cancel)
+    plugin.on('outgoing_reject', cancel)
   })
-}
 
-const sendPayment = (plugin, payment, ilp) => {
-  return co(function * () {
-    if (!plugin) throw new Error('missing plugin')
-    if (!payment) throw new Error('missing payment')
-    if (!payment.spsp) throw new Error('missing SPSP response in payment')
-    if (!payment.spsp.shared_secret) throw new Error('missing SPSP shared_secret')
-    if (!payment.destinationAmount) throw new Error('missing destinationAmount')
-    if (!payment.sourceAmount) throw new Error('missing sourceAmount')
-    if (!payment.destinationAccount) throw new Error('missing destinationAccount')
-    if (!payment.id) throw new Error('payment must have an id')
-
-    const sender = Sender.createSender(Object.assign({
-      client: (new IlpCore.Client(plugin))
-    }, ilp))
-
-    const integerSourceAmount = new BigNumber(payment.sourceAmount)
-      .shift(plugin.getInfo().scale)
-      .toString()
-    const integerDestinationAmount = new BigNumber(payment.destinationAmount)
-      .shift(payment.spsp.ledger_info.amount_scale)
-      .toString()
-    const request = sender.createRequest({
-      id: payment.id,
-      sharedSecret: payment.spsp.shared_secret,
-      destinationAmount: integerDestinationAmount,
-      destinationAccount: payment.spsp.destination_account,
-      data: payment.data
-    })
-
-    const fulfillment = yield sender.payRequest({
-      uuid: payment.id,
-      sourceAmount: integerSourceAmount,
-      connectorAccount: payment.connectorAccount,
-      destinationAmount: integerDestinationAmount,
-      destinationAccount: request.address,
-      destinationMemo: {
-        data: request.data,
-        expires_at: request.expires_at
-      },
-      executionCondition: request.condition,
-      expiresAt: request.expires_at
-    })
-
-    return { fulfillment }
+  yield plugin.sendTransfer({
+    id: payment.id,
+    to: payment.connectorAccount,
+    amount: integerSourceAmount,
+    ilp: packet,
+    executionCondition: condition,
+    expiresAt: moment()
+      .add(payment.sourceExpiryDuration, 'seconds')
+      .format()
   })
+
+  return yield listen
 }
 
 /**
@@ -170,53 +194,12 @@ const sendPayment = (plugin, payment, ilp) => {
   * @property {string} data extra data to attach to transfer.
   */
 
-/** SPSP Client */
-class Client {
-  /**
-    * Create an SPSP client.
-    * @param {Object} opts plugin options
-    * @param {Function} opts._plugin (optional) plugin constructor. Defaults to PluginBells
-    */
-  constructor (opts) {
-    // use ILP Core Client constructor to turn opts into plugin
-    this.plugin = (new IlpCore.Client(Object.assign(opts))).getPlugin()
-
-    /**
-      * Get payment params via SPSP query and ILQP quote, based on source amount
-      * @param {String} receiver webfinger identifier of receiver
-      * @param {String} sourceAmount Amount that you will send
-      * @returns {Promise.<SpspPayment>} Resolves with the parameters that can be passed to sendPayment
-      */
-    this.quoteSource = quoteSource.bind(null, this.plugin)
-
-    /**
-      * Get payment params via SPSP query and ILQP quote, based on destination amount
-      * @param {String} receiver webfinger identifier of receiver
-      * @param {String} destinationAmount Amount that the receiver will get
-      * @returns {Promise.<SpspPayment>} Resolves with the parameters that can be passed to sendPayment
-      */
-    this.quoteDestination = quoteDestination.bind(null, this.plugin)
-
-    /**
-      * Sends a payment using the PaymentParams
-      * @param {SpspPayment} payment params, returned by quoteSource or quoteDestination
-      * @returns {Promise.<PaymentResult>} Returns payment result
-      */
-    this.sendPayment = sendPayment.bind(null, this.plugin)
-
-    /**
-      * Queries an SPSP endpoint
-      * @param {String} receiver A URL or an account
-      * @returns {Object} result Result from SPSP endpoint
-      */
-    this.query = query
-  }
-}
-
 module.exports = {
-  Client,
-  quoteSource,
-  quoteDestination,
-  sendPayment,
+  _getHref,
+  _getSPSPFromReceiver,
+  _querySPSP,
+  _createPayment,
+  quote: co.wrap(quote),
+  sendPayment: co.wrap(sendPayment),
   query
 }
