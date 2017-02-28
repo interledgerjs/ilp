@@ -231,8 +231,8 @@ function createReceiver (opts) {
       })
     }
 
-    // The payment request is extracted from the ilp_header
-    const packet = transfer.data && transfer.data.ilp_header
+    // The payment request is extracted from the ILP header
+    const packet = transfer.ilp
 
     if (!packet) {
       debug('got notification of transfer with no packet attached')
@@ -275,14 +275,25 @@ function createReceiver (opts) {
       })
     }
 
+    let packetData
+    try {
+      packetData = packet.data ? JSON.parse(Buffer.from(packet.data, 'base64')) : {}
+    } catch (err) {
+      return rejectIncomingTransfer(transfer.id, {
+        code: 'S01',
+        name: 'Invalid Packet',
+        message: 'packet.data parse error: ' + err.message
+      })
+    }
+
     const paymentRequest = {
       address: packet.account,
       amount: packet.amount,
-      expires_at: packet.data && packet.data.expires_at
+      expires_at: packetData.expires_at
     }
 
-    if (packet.data && packet.data.data) {
-      paymentRequest.data = packet.data.data
+    if (packetData.data) {
+      paymentRequest.data = packetData.data
     }
 
     debug('parsed payment request from transfer:', paymentRequest)
