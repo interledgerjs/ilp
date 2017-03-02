@@ -257,7 +257,7 @@ function createReceiver (opts) {
 
     const paymentRequest = {
       address: packet.account,
-      amount: (new BigNumber(packet.amount)).toString(),
+      amount: packet.amount,
       expires_at: packet.data && packet.data.expires_at
     }
 

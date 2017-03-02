@@ -501,9 +501,9 @@ describe('Receiver Module', function () {
           expect(results).to.contain('sent')
         })
 
-        it('should handle trailing zeros in the packet amount', function * () {
+        it('should not modify trailing zeros in the packet amount', function * () {
           const request = this.receiver.createRequest({
-            amount: 1,
+            amount: '1.00',
             id: '22e315dc-3f99-4f89-9914-1987ceaa906d',
             expiresAt: this.transfer.data.ilp_header.data.expires_at
           })
@@ -512,7 +512,8 @@ describe('Receiver Module', function () {
               ilp_header: {
                 amount: '1.00'
               }
-            }
+            },
+            executionCondition: 'FxvyD1JYuUbbI2jPABx6Soq0dZihdYrsY4zMKTQoGNU'
           }))
           expect(results).to.contain('sent')
         })
@@ -780,6 +781,31 @@ describe('Receiver Module', function () {
           this.transfer.data.ilp_header.data.expires_at = request.expires_at
           this.transfer.data.ilp_header.account = request.address
           this.transfer.data.ilp_header.data.data = null
+
+          yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
+            .to.eventually.be.deep.equal(['sent'])
+        })
+
+        it('should not modify decimal numbers from the packet before hashing', function * () {
+          const sender = createSender({
+            client: new MockClient({}),
+            uuidSeed: Buffer.from('f73e2739c0f0ff4c9b7cac6678c89a59ee6cb8911b39d39afbf2fef9e77bc9c3', 'hex')
+          })
+
+          yield this.receiver.listen()
+
+          const psk = this.receiver.generatePskParams()
+          const request = sender.createRequest(Object.assign({}, psk, {
+            destinationAmount: "1.00",
+            data: { for: 'that thing' }
+          }))
+
+          this.transfer.account = request.address
+          this.transfer.executionCondition = request.condition
+          this.transfer.data.ilp_header.data.expires_at = request.expires_at
+          this.transfer.data.ilp_header.account = request.address
+          this.transfer.data.ilp_header.amount = request.amount
+          this.transfer.data.ilp_header.data.data = request.data
 
           yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
             .to.eventually.be.deep.equal(['sent'])
