@@ -335,7 +335,15 @@ function createReceiver (opts) {
       .then(() => null)
       .catch((err) => {
         debug('reviewPayment got error', err)
-        return rejectIncomingTransfer(transfer.id, 'rejected-by-receiver: ' + err.name + ': ' + err.message)
+        let errorMessage
+        if (err instanceof Error) {
+          errorMessage = err.name + ': ' + err.message
+        } else if (typeof err === 'string') {
+          errorMessage = err
+        } else {
+          errorMessage = 'reason not specified'
+        }
+        return rejectIncomingTransfer(transfer.id, 'rejected-by-receiver: ' + errorMessage)
       })
 
     // returning the promise is only so the result is picked up by the tests' emitAsync
