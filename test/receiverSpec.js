@@ -529,13 +529,12 @@ describe('Receiver Module', function () {
           expect(spy).not.to.have.been.called
         })
 
-        it('should reject the transfer if reviewPayment callback rejects', function * () {
+        it('should reject the transfer if reviewPayment callback rejects with an error', function * () {
           this.receiver.stopListening()
           const receiver = createReceiver({
             client: this.client,
             hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
             reviewPayment: (transfer, paymentRequest) => {
-              console.log('i was called')
               return Promise.reject(new Error('rejected!'))
             }
           })
@@ -554,6 +553,77 @@ describe('Receiver Module', function () {
           expect(this.client.rejected).to.be.true
         })
 
+        it('should reject the transfer if reviewPayment callback throws an error', function * () {
+          this.receiver.stopListening()
+          const receiver = createReceiver({
+            client: this.client,
+            hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+            reviewPayment: (transfer, paymentRequest) => {
+              throw new Error('rejected!')
+            }
+          })
+          yield receiver.listen()
+
+          const request = receiver.createRequest({
+            amount: 1,
+            id: '22e315dc-3f99-4f89-9914-1987ceaa906d',
+            expiresAt: this.transfer.data.ilp_header.data.expires_at,
+            data: { for: 'that thing' }
+          })
+
+          this.transfer.executionCondition = request.condition
+          yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
+            .to.eventually.deep.equal(['rejected-by-receiver: Error: rejected!'])
+          expect(this.client.rejected).to.be.true
+        })
+
+        it('should reject the transfer if reviewPayment callback rejects with a string', function * () {
+          this.receiver.stopListening()
+          const receiver = createReceiver({
+            client: this.client,
+            hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+            reviewPayment: (transfer, paymentRequest) => {
+              return Promise.reject('rejected!')
+            }
+          })
+          yield receiver.listen()
+
+          const request = receiver.createRequest({
+            amount: 1,
+            id: '22e315dc-3f99-4f89-9914-1987ceaa906d',
+            expiresAt: this.transfer.data.ilp_header.data.expires_at,
+            data: { for: 'that thing' }
+          })
+
+          this.transfer.executionCondition = request.condition
+          yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
+            .to.eventually.deep.equal(['rejected-by-receiver: rejected!'])
+          expect(this.client.rejected).to.be.true
+        })
+
+        it('should reject the transfer if reviewPayment callback rejects with null', function * () {
+          this.receiver.stopListening()
+          const receiver = createReceiver({
+            client: this.client,
+            hmacKey: Buffer.from('+Xd3hhabpygJD6cen+R/eon+acKWvFLzqp65XieY8W0=', 'base64'),
+            reviewPayment: (transfer, paymentRequest) => {
+              return Promise.reject(null)
+            }
+          })
+          yield receiver.listen()
+
+          const request = receiver.createRequest({
+            amount: 1,
+            id: '22e315dc-3f99-4f89-9914-1987ceaa906d',
+            expiresAt: this.transfer.data.ilp_header.data.expires_at,
+            data: { for: 'that thing' }
+          })
+
+          this.transfer.executionCondition = request.condition
+          yield expect(this.client.emitAsync('incoming_prepare', this.transfer))
+            .to.eventually.deep.equal(['rejected-by-receiver: reason not specified'])
+          expect(this.client.rejected).to.be.true
+        })
       })
 
       describe('autoFulfillConditions - PSK', function () {
