@@ -189,12 +189,16 @@ function createReceiver (opts) {
   /**
    * @private
    * @param {String} transferId
-   * @param {String} rejectionMessage
-   * @returns {Promise<String>} the rejection message
+   * @param {RejectionMessage} rejectionMessage
+   * @returns {Promise<RejectionMessage>} the rejection message
    */
   function rejectIncomingTransfer (transferId, rejectionMessage) {
     return client.getPlugin()
-      .rejectIncomingTransfer(transferId, rejectionMessage)
+      .rejectIncomingTransfer(transferId, Object.assign({
+        triggered_by: account,
+        triggered_at: (new Date()).toISOString(),
+        additional_info: {}
+      }, rejectionMessage))
       .then(() => rejectionMessage)
   }
 
@@ -211,12 +215,20 @@ function createReceiver (opts) {
   function autoFulfillCondition (transfer) {
     if (transfer.cancellationCondition) {
       debug('got notification of transfer with cancellationCondition', transfer)
-      return rejectIncomingTransfer(transfer.id, 'cancellation')
+      return rejectIncomingTransfer(transfer.id, {
+        code: 'S00',
+        name: 'Bad Request',
+        message: 'got notification of transfer with cancellationCondition'
+      })
     }
 
     if (!transfer.executionCondition) {
       debug('got notification of transfer without executionCondition ', transfer)
-      return rejectIncomingTransfer(transfer.id, 'no-execution')
+      return rejectIncomingTransfer(transfer.id, {
+        code: 'S00',
+        name: 'Bad Request',
+        message: 'got notification of transfer without executionCondition'
+      })
     }
 
     // The payment request is extracted from the ilp_header
@@ -224,7 +236,11 @@ function createReceiver (opts) {
 
     if (!packet) {
       debug('got notification of transfer with no packet attached')
-      return rejectIncomingTransfer(transfer.id, 'no-packet')
+      return rejectIncomingTransfer(transfer.id, {
+        code: 'S01',
+        name: 'Invalid Packet',
+        message: 'got notification of transfer with no packet attached'
+      })
     }
 
     // check if the address starts with our address
@@ -252,7 +268,11 @@ function createReceiver (opts) {
 
     if (!packet.amount) {
       debug('got notification of transfer with packet that has no amount')
-      return rejectIncomingTransfer(transfer.id, 'no-amount-in-packet')
+      return rejectIncomingTransfer(transfer.id, {
+        code: 'S01',
+        name: 'Invalid Packet',
+        message: 'got notification of transfer with packet that has no amount'
+      })
     }
 
     const paymentRequest = {
@@ -269,22 +289,38 @@ function createReceiver (opts) {
 
     if ((new BigNumber(transfer.amount)).lessThan(packet.amount)) {
       debug('got notification of transfer where amount is less than expected (' + packet.amount + ')', transfer)
-      return rejectIncomingTransfer(transfer.id, 'insufficient')
+      return rejectIncomingTransfer(transfer.id, {
+        code: 'S04',
+        name: 'Insufficient Destination Amount',
+        message: 'got notification of transfer where amount is less than expected'
+      })
     }
 
     if (!allowOverPayment && (new BigNumber(transfer.amount)).greaterThan(packet.amount)) {
       debug('got notification of transfer where amount is greater than expected (' + packet.amount + ')', transfer)
-      return rejectIncomingTransfer(transfer.id, 'overpayment-disallowed')
+      return rejectIncomingTransfer(transfer.id, {
+        code: 'S03',
+        name: 'Invalid Amount',
+        message: 'got notification of transfer where amount is greater than expected'
+      })
     }
 
     if (paymentRequest.expires_at && moment().isAfter(paymentRequest.expires_at)) {
       debug('got notification of transfer with expired packet', transfer)
-      return rejectIncomingTransfer(transfer.id, 'expired')
+      return rejectIncomingTransfer(transfer.id, {
+        code: 'R01',
+        name: 'Transfer Timed Out',
+        message: 'got notification of transfer with expired packet'
+      })
     }
 
     if (protocol === 'psk' && !reviewPayment) {
       debug('got PSK payment on non-PSK receiver')
-      return rejectIncomingTransfer(transfer.id, 'psk-not-supported')
+      return rejectIncomingTransfer(transfer.id, {
+        code: 'S00',
+        name: 'Bad Request',
+        message: 'got PSK payment on non-PSK receiver'
+      })
     }
 
     let conditionPreimage
@@ -307,7 +343,11 @@ function createReceiver (opts) {
     if (protocol === 'psk' && paymentRequest.data) {
       if (Object.keys(paymentRequest.data).length > 1 || !paymentRequest.data.blob) {
         debug('got PSK payment where the data is not encrypted', paymentRequest)
-        return rejectIncomingTransfer(transfer.id, 'psk-data-must-be-encrypted-blob')
+        return rejectIncomingTransfer(transfer.id, {
+          code: 'S00',
+          name: 'Bad Request',
+          message: 'got PSK payment where the data is not encrypted'
+        })
       }
       try {
         paymentRequest.data = cryptoHelper.aesDecryptObject(
@@ -317,7 +357,11 @@ function createReceiver (opts) {
       } catch (e) {
         // return errors as promises, in case of invalid data
         debug('got corrupted data', e, paymentRequest.data)
-        return rejectIncomingTransfer(transfer.id, 'psk-corrupted-data')
+        return rejectIncomingTransfer(transfer.id, {
+          code: 'S00',
+          name: 'Bad Request',
+          message: 'got corrupted data'
+        })
       }
     }
 
@@ -335,7 +379,11 @@ function createReceiver (opts) {
       .then(() => null)
       .catch((err) => {
         debug('reviewPayment got error', err)
-        return rejectIncomingTransfer(transfer.id, 'rejected-by-receiver: ' + err.name + ': ' + err.message)
+        return rejectIncomingTransfer(transfer.id, {
+          code: 'S00',
+          name: 'Bad Request',
+          message: 'rejected-by-receiver: ' + err.name + ': ' + err.message
+        })
       })
 
     // returning the promise is only so the result is picked up by the tests' emitAsync
