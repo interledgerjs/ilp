@@ -30,7 +30,13 @@ const spspResponse = {
   shared_secret: 'itsasecret',
   destination_account: 'example.alice',
   maximum_destination_amount: '20',
-  minimum_destination_amount: '10'
+  minimum_destination_amount: '10',
+  ledger_info: {
+    currency_code: 'USD',
+    currency_symbol: '$',
+    amount_scale: '2',
+    amount_precision: '10'
+  }
 }
 
 const SPSP = require('../src/lib/spsp')
@@ -73,11 +79,11 @@ describe('SPSP Module', function () {
 
       const payment = yield SPSP.quoteDestination(this.plugin, 'alice@example.com', '12')
       assert.deepEqual(payment, {
-        destinationAccount: "example.alice",
-        connectorAccount: "example.connie",
-        sourceAmount: "10",
+        destinationAccount: 'example.alice',
+        connectorAccount: 'example.connie',
+        sourceAmount: '10',
         id: payment.id,
-        destinationAmount: "12",
+        destinationAmount: '12',
         spsp: spspResponse
       })
 
@@ -208,8 +214,8 @@ describe('SPSP Module', function () {
       expect(result).to.deep.equal({ fulfillment: 'fulfillment' })
 
       expect(payment).to.be.ok
-      expect(payment.destinationAmount).to.equal(this.payment.destinationAmount)
-      expect(payment.sourceAmount).to.equal(this.payment.sourceAmount)
+      expect(payment.destinationAmount).to.equal('1000')
+      expect(payment.sourceAmount).to.equal('1000')
       expect(payment.uuid).to.equal(this.payment.id)
       // payment destinationAccount will have extra PSK identifiers
       expect(payment.destinationAccount.startsWith(this.payment.destinationAccount)).to.be.ok

@@ -2,6 +2,7 @@
 const co = require('co')
 const agent = require('superagent')
 const uuid = require('uuid/v4')
+const BigNumber = require('bignumber.js')
 
 const Sender = require('./sender')
 const IlpCore = require('ilp-core')
@@ -45,10 +46,15 @@ const _quote = function * ({ plugin, spsp, sourceAmount, destinationAmount, ilp 
   if (!spsp.minimum_destination_amount) throw new Error('missing minimum destination amount')
 
   const client = new IlpCore.Client(plugin, ilp)
+  const sourceScale = plugin.getInfo().scale
+  const destinationScale = spsp.ledger_info.amount_scale
+  const integerSourceAmount = sourceAmount && new BigNumber(sourceAmount).shift(sourceScale).toString()
+  const integerDestinationAmount = destinationAmount && new BigNumber(destinationAmount).shift(destinationScale).toString()
+
   const quote = yield client.quote({
     destinationAddress: spsp.destination_account,
-    destinationAmount,
-    sourceAmount
+    destinationAmount: integerDestinationAmount,
+    sourceAmount: integerSourceAmount
   })
 
   if (!quote) {
@@ -57,10 +63,15 @@ const _quote = function * ({ plugin, spsp, sourceAmount, destinationAmount, ilp 
       JSON.stringify(spsp))
   }
 
-  if (+quote.destinationAmount > +spsp.maximum_destination_amount ||
-      +quote.destinationAmount < +spsp.minimum_destination_amount) {
+  const spspQuote = Object.assign({}, quote, {
+    destinationAmount: new BigNumber(quote.destinationAmount).shift(-destinationScale).toString(),
+    sourceAmount: new BigNumber(quote.sourceAmount).shift(-sourceScale).toString()
+  })
+
+  if (+spspQuote.destinationAmount > +spsp.maximum_destination_amount ||
+      +spspQuote.destinationAmount < +spsp.minimum_destination_amount) {
     throw new Error('Destination amount (' +
-      quote.destinationAmount +
+      spspQuote.destinationAmount +
       ') is outside of range [' +
       spsp.maximum_destination_amount +
       ', ' +
@@ -68,7 +79,7 @@ const _quote = function * ({ plugin, spsp, sourceAmount, destinationAmount, ilp 
       ']')
   }
 
-  return quote
+  return spspQuote
 }
 
 const _createPayment = (spsp, quote) => {
@@ -115,19 +126,25 @@ const sendPayment = (plugin, payment, ilp) => {
       client: (new IlpCore.Client(plugin))
     }, ilp))
 
+    const integerSourceAmount = new BigNumber(payment.sourceAmount)
+      .shift(plugin.getInfo().scale)
+      .toString()
+    const integerDestinationAmount = new BigNumber(payment.destinationAmount)
+      .shift(payment.spsp.ledger_info.amount_scale)
+      .toString()
     const request = sender.createRequest({
       id: payment.id,
       sharedSecret: payment.spsp.shared_secret,
-      destinationAmount: payment.destinationAmount,
+      destinationAmount: integerDestinationAmount,
       destinationAccount: payment.spsp.destination_account,
       data: payment.data
     })
 
     const fulfillment = yield sender.payRequest({
       uuid: payment.id,
-      sourceAmount: String(payment.sourceAmount),
+      sourceAmount: integerSourceAmount,
       connectorAccount: payment.connectorAccount,
-      destinationAmount: String(payment.destinationAmount),
+      destinationAmount: integerDestinationAmount,
       destinationAccount: request.address,
       destinationMemo: {
         data: request.data,
