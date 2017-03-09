@@ -10,6 +10,7 @@ const debug = require('debug')('ilp:receiver')
 const BigNumber = require('bignumber.js')
 const cryptoHelper = require('../utils/crypto')
 const util = require('util')
+const packet = require('ilp-packet')
 
 const IPR_RECEIVER_ID_PREFIX = '~ipr.'
 const PSK_RECEIVER_ID_PREFIX = '~psk.'
@@ -74,7 +75,6 @@ function createReceiver (opts) {
   }
   // the following details are set on listen
   let account
-  let scale
   let precision
 
   /**
@@ -95,7 +95,7 @@ function createReceiver (opts) {
    * Round the amount based on the rounding mode specified.
    * Throws errors if rounding the amount would increase or decrease it too much.
    */
-  function roundAmount (amount, scale, roundDirection) {
+  function roundAmount (amount, roundDirection) {
     if (!roundDirection) {
       return amount
     }
@@ -103,7 +103,7 @@ function createReceiver (opts) {
     if (!BigNumber.hasOwnProperty(roundingMode)) {
       throw new Error('invalid roundingMode: ' + roundDirection)
     }
-    const roundedAmount = amount.round(scale, BigNumber[roundingMode])
+    const roundedAmount = amount.round(0, BigNumber[roundingMode])
     debug('rounded amount ' + amount.toString() + ' ' + roundDirection + ' to ' + roundedAmount.toString())
 
     if (roundedAmount.equals(0)) {
@@ -140,11 +140,10 @@ function createReceiver (opts) {
 
     const amount = roundAmount(
       new BigNumber(params.amount),
-      scale,
       params.roundingMode || roundingMode
     )
-    if (amount.decimalPlaces() > scale) {
-      throw new Error('request amount has more decimal places than the ledger supports (' + scale + ')')
+    if (amount.decimalPlaces() > 0) {
+      throw new Error('request amount must be an integer')
     }
     if (amount.precision() > precision) {
       throw new Error('request amount has more significant digits than the ledger supports (' + precision + ')')
@@ -231,10 +230,7 @@ function createReceiver (opts) {
       })
     }
 
-    // The payment request is extracted from the ILP header
-    const packet = transfer.ilp
-
-    if (!packet) {
+    if (!transfer.ilp) {
       debug('got notification of transfer with no packet attached')
       return rejectIncomingTransfer(transfer.id, {
         code: 'S01',
@@ -243,14 +239,26 @@ function createReceiver (opts) {
       })
     }
 
+    // The payment request is extracted from the ILP packet
+    let jsonPacket
+    try {
+      jsonPacket = packet.deserializeIlpPayment(Buffer.from(transfer.ilp, 'base64'))
+    } catch (err) {
+      return rejectIncomingTransfer(transfer.id, {
+        code: 'S01',
+        name: 'Invalid Packet',
+        message: 'got notification of transfer with invalid ILP packet'
+      })
+    }
+
     // check if the address starts with our address
-    if (packet.account.indexOf(getAddress()) !== 0) {
-      debug('got notification of transfer for another account account=' + packet.account + ' me=' + getAddress())
+    if (jsonPacket.account.indexOf(getAddress()) !== 0) {
+      debug('got notification of transfer for another account account=' + jsonPacket.account + ' me=' + getAddress())
       return 'not-my-packet'
     }
 
     // check if the address contains "~ipr"/"~psk" + our receiver id
-    const localPart = packet.account.slice(getAddress().length + 1)
+    const localPart = jsonPacket.account.slice(getAddress().length + 1)
     let protocol = null
     let requestId = null
     let sharedSecret = null
@@ -266,7 +274,7 @@ function createReceiver (opts) {
       return 'not-my-packet'
     }
 
-    if (!packet.amount) {
+    if (!jsonPacket.amount) {
       debug('got notification of transfer with packet that has no amount')
       return rejectIncomingTransfer(transfer.id, {
         code: 'S01',
@@ -277,7 +285,7 @@ function createReceiver (opts) {
 
     let packetData
     try {
-      packetData = packet.data ? JSON.parse(Buffer.from(packet.data, 'base64')) : {}
+      packetData = jsonPacket.data ? JSON.parse(Buffer.from(jsonPacket.data, 'base64')) : {}
     } catch (err) {
       return rejectIncomingTransfer(transfer.id, {
         code: 'S01',
@@ -287,8 +295,8 @@ function createReceiver (opts) {
     }
 
     const paymentRequest = {
-      address: packet.account,
-      amount: packet.amount,
+      address: jsonPacket.account,
+      amount: jsonPacket.amount,
       expires_at: packetData.expires_at
     }
 
@@ -298,8 +306,8 @@ function createReceiver (opts) {
 
     debug('parsed payment request from transfer:', paymentRequest)
 
-    if ((new BigNumber(transfer.amount)).lessThan(packet.amount)) {
-      debug('got notification of transfer where amount is less than expected (' + packet.amount + ')', transfer)
+    if ((new BigNumber(transfer.amount)).lessThan(jsonPacket.amount)) {
+      debug('got notification of transfer where amount is less than expected (' + jsonPacket.amount + ')', transfer)
       return rejectIncomingTransfer(transfer.id, {
         code: 'S04',
         name: 'Insufficient Destination Amount',
@@ -307,8 +315,8 @@ function createReceiver (opts) {
       })
     }
 
-    if (!allowOverPayment && (new BigNumber(transfer.amount)).greaterThan(packet.amount)) {
-      debug('got notification of transfer where amount is greater than expected (' + packet.amount + ')', transfer)
+    if (!allowOverPayment && (new BigNumber(transfer.amount)).greaterThan(jsonPacket.amount)) {
+      debug('got notification of transfer where amount is greater than expected (' + jsonPacket.amount + ')', transfer)
       return rejectIncomingTransfer(transfer.id, {
         code: 'S03',
         name: 'Invalid Amount',
@@ -480,7 +488,6 @@ function createReceiver (opts) {
           account = client.getPlugin().getAccount()
           const info = client.getPlugin().getInfo()
           debug('account: ' + account + ' ledger info: ', info)
-          scale = info.scale
           precision = info.precision
         })
         .then(() => debug('receiver listening')),

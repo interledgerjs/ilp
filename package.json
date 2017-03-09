@@ -39,7 +39,8 @@
     "canonical-json": "0.0.4",
     "debug": "^2.2.0",
     "eventemitter2": "^2.0.0",
-    "ilp-core": "^11.0.0",
+    "ilp-core": "^13.0.0",
+    "ilp-packet": "~1.1.1",
     "moment": "^2.14.1",
     "superagent": "^3.4.0",
     "uuid": "^3.0.0"
@@ -56,7 +57,7 @@
     "eslint-plugin-standard": "^2.0.0",
     "five-bells-integration-test-loader": "^1.0.0",
     "ghooks": "^1.3.2",
-    "ilp-plugin-bells": "^10.2.3",
+    "ilp-plugin-bells": "^12.0.0",
     "istanbul": "^0.4.4",
     "jsdoc-to-markdown": "^1.3.6",
     "lodash": "^4.13.1",
