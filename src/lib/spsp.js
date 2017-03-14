@@ -60,7 +60,30 @@ const _createPayment = (plugin, spsp, quote, id) => {
   }
 }
 
+/**
+  * Query an SPSP endpoint and get SPSP details
+  *
+  * @param {String} receiver webfinger account identifier (eg. 'alice@example.com') or URL to SPSP endpoint.
+  *
+  * @return {Promise<Object>} SPSP SPSP response from server
+  */
+
 const query = co.wrap(_querySPSP)
+
+/**
+  * Quote to an SPSP receiver
+  *
+  * @param {Object} plugin Ledger plugin used for quoting.
+  * @param {Object} params Quote parameters
+  * @param {String} params.receiver webfinger account identifier (eg. 'alice@example.com') or URL to SPSP endpoint.
+  * @param {String} [params.sourceAmount] source amount to quote. This is a decimal, NOT an integer. It will be shifted by the sending ledger's scale to get the integer amount.
+  * @param {String} [params.destinationAmount] destination amount to quote. This is a decimal, NOT an integer. It will be shifted by the receiving ledger's scale to get the integer amount.
+  * @param {Array} [params.connectors=[]] connectors to quote. These will be supplied by plugin.getInfo if left unspecified.
+  * @param {String} [params.id=uuid()] id to use for payment. sending a payment with the same id twice will be idempotent. If left unspecified, the id will be generated randomly.
+  * @param {Number} [params.timeout=5000] how long to wait for a quote response (ms).
+  *
+  * @returns {Promise<SpspPayment>} SPSP payment object to be sent.
+  */
 
 const quote = function * (plugin, {
   receiver,
@@ -89,7 +112,6 @@ const quote = function * (plugin, {
     destinationAmount: integerDestinationAmount,
     sourceAmount: integerSourceAmount,
     connectors,
-    id,
     timeout
   })
 
@@ -118,6 +140,16 @@ const quote = function * (plugin, {
   return _createPayment(plugin, spsp, quote, id)
 }
 
+/**
+  * Quote to an SPSP receiver
+  *
+  * @param {Object} plugin Ledger plugin used for quoting.
+  * @param {SpspPayment} payment SPSP Payment returned from SPSP.quote.
+  *
+  * @return {Promise<Object>} result The result of the payment.
+  * @return {String} result.fulfillment The fulfillment of the payment.
+  */
+
 function * sendPayment (plugin, payment) {
   assert(plugin, 'missing plugin')
   assert(payment, 'missing payment')
@@ -133,6 +165,7 @@ function * sendPayment (plugin, payment) {
   const integerSourceAmount =
     toInteger(payment.sourceAmount, sourceScale)
 
+  const data = JSON.stringify(payment.memo || {})
   const destinationScale = payment.spsp.ledger_info.scale
   const integerDestinationAmount =
     toInteger(payment.destinationAmount, destinationScale)
@@ -141,7 +174,13 @@ function * sendPayment (plugin, payment) {
     sharedSecret: Buffer.from(payment.spsp.shared_secret, 'base64'),
     destinationAmount: integerDestinationAmount,
     destinationAccount: payment.destinationAccount,
-    data: payment.data // optional
+    publicHeaders: payment.publicHeaders,
+    headers: Object.assign({
+      'Content-Length': data.length,
+      'Content-Type': 'application/json'
+    }, payment.headers),
+    disableEncryption: payment.disableEncryption,
+    data: Buffer.from(data, 'utf8')
   })
 
   const listen = new Promise((resolve, reject) => {
