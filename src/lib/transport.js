@@ -3,30 +3,22 @@
 const Packet = require('../utils/packet')
 const moment = require('moment')
 const cryptoHelper = require('../utils/crypto')
-const cc = require('../utils/condition')
 const co = require('co')
 const debug = require('debug')('ilp:transport')
 const assert = require('assert')
 const base64url = require('../utils/base64url')
 const BigNumber = require('bignumber.js')
-const { safeConnect, omitUndefined } = require('../utils')
-
-function _safeDecrypt (data, secret) {
-  if (!data) return {}
-  try {
-    return cryptoHelper.aesDecryptObject(data, secret)
-  } catch (err) {
-    debug('decryption error="' + err.message + '"', 'data="' + data + '"')
-    return undefined
-  }
-}
+const { safeConnect } = require('../utils')
+const { createDetails, parseDetails } = require('../utils/details')
 
 function createPacketAndCondition ({
-  id,
   destinationAmount,
   destinationAccount,
   secret,
   data,
+  headers,
+  publicHeaders,
+  disableEncryption,
   expiresAt
 }, protocol) {
   assert(typeof destinationAmount === 'string', 'destinationAmount must be a string')
@@ -34,26 +26,26 @@ function createPacketAndCondition ({
   assert(Buffer.isBuffer(secret), 'secret must be a buffer')
 
   const receiverId = base64url(cryptoHelper.getReceiverId(secret))
-  const address = destinationAccount + '.~' + protocol + '.' + receiverId +
-    (id ? ('.' + id) : '')
+  const address = destinationAccount + '.' + receiverId
 
-  const blobData = omitUndefined({
-    expires_at: expiresAt,
-    data: data
+  const details = createDetails({
+    publicHeaders: Object.assign({}, publicHeaders),
+    headers: Object.assign({
+      'Expires-At': expiresAt
+    }, headers),
+
+    data,
+    secret,
+    disableEncryption
   })
-
-  const blob = base64url(cryptoHelper.aesEncryptObject(blobData, secret))
 
   const packet = Packet.serialize({
     account: address,
     amount: destinationAmount,
-    data: blob
+    data: details
   })
 
-  const condition = base64url(cc.toCondition(
-    cryptoHelper.hmacJsonForPskCondition(
-      packet,
-      secret)))
+  const condition = cryptoHelper.packetToCondition(secret, packet)
 
   return {
     packet,
@@ -101,15 +93,15 @@ function * listen (plugin, {
 
     if (err) return err
 
-    const preimage = cryptoHelper.hmacJsonForPskCondition(
+    const preimage = cryptoHelper.packetToPreimage(
       Packet.getFromTransfer(transfer),
       secret)
 
-    if (transfer.executionCondition !== cc.toCondition(preimage)) {
+    if (transfer.executionCondition !== cryptoHelper.preimageToCondition(preimage)) {
       debug('notified of transfer where executionCondition does not' +
         ' match the one we generate.' +
         ' executionCondition=' + transfer.executionCondition +
-        ' our condition=' + cc.toCondition(preimage))
+        ' our condition=' + cryptoHelper.preimageToCondition(preimage))
       return yield _reject(plugin, transfer.id, {
         code: 'S05',
         name: 'Wrong Condition',
@@ -118,24 +110,18 @@ function * listen (plugin, {
     }
 
     const parsed = Packet.parseFromTransfer(transfer)
-    if (parsed === undefined) {
-      return yield _reject(plugin, transfer.id, {
-        code: 'S01',
-        name: 'Invalid Packet',
-        message: 'got notification of transfer with invalid ILP packet'
-      })
-    }
-
     const destinationAmount = parsed.amount
     const destinationAccount = parsed.account
     const data = parsed.data
-    const decryptedData = _safeDecrypt(data, secret)
-    const fulfillment = cc.toFulfillment(preimage)
+    const details = parseDetails({ details: data, secret })
+    const fulfillment = cryptoHelper.preimageToFulfillment(preimage)
 
     try {
       yield Promise.resolve(callback({
         transfer: transfer,
-        data: decryptedData,
+        publicHeaders: details.publicHeaders,
+        headers: details.headers,
+        data: details.data,
         destinationAccount,
         destinationAmount,
         fulfill: function () {
@@ -214,12 +200,7 @@ function * _validateOrRejectTransfer ({
   }
 
   const localPart = destinationAccount.slice(account.length + 1)
-  const [ addressProtocol, addressReceiverId ] = localPart.split('.')
-
-  if (addressProtocol !== '~' + protocol) {
-    debug('notified of transfer with protocol=' + addressProtocol)
-    return 'not-my-packet'
-  }
+  const [ addressReceiverId ] = localPart.split('.')
 
   if (addressReceiverId !== receiverId) {
     debug('notified of transfer for another receiver: receiver=' +
@@ -229,17 +210,50 @@ function * _validateOrRejectTransfer ({
     return 'not-my-packet'
   }
 
-  const decryptedData = _safeDecrypt(data, secret)
+  let details
+  try {
+    details = parseDetails({ details: data, secret })
+  } catch (e) {
+    // reject messages based off of invalid PSK format
+    debug('error parsing PSK data transferId=' +
+      transfer.id + ' data=' +
+      base64url(data) + ' message=' +
+      e.stack)
 
-  if (decryptedData === undefined) {
-    return yield _reject(plugin, transfer.id, {
-      code: 'S01',
-      name: 'Invalid Packet',
-      message: 'got notification of packet with corrupted ciphertext'
-    })
+    if (e.message === 'unsupported status') {
+      return yield _reject(plugin, transfer.id, {
+        code: 'S06',
+        name: 'Unexpected Payment',
+        message: 'unsupported PSK version or status'
+      })
+    } else if (e.message === 'missing nonce') {
+      return yield _reject(plugin, transfer.id, {
+        code: 'S06',
+        name: 'Unexpected Payment',
+        message: 'missing PSK nonce'
+      })
+    } else if (e.message === 'unsupported key') {
+      return yield _reject(plugin, transfer.id, {
+        code: 'S06',
+        name: 'Unexpected Payment',
+        message: 'unsupported PSK key derivation'
+      })
+    } else if (e.message === 'unsupported encryption') {
+      return yield _reject(plugin, transfer.id, {
+        code: 'S06',
+        name: 'Unexpected Payment',
+        message: 'unsupported PSK encryption method'
+      })
+    } else {
+      return yield _reject(plugin, transfer.id, {
+        code: 'S06',
+        name: 'Unexpected Payment',
+        message: 'unspecified PSK error'
+      })
+    }
   }
 
-  const expiresAt = decryptedData.expires_at
+  const expiresAt = details.headers['expires-at']
   const amount = new BigNumber(transfer.amount)
 
   if (amount.lessThan(destinationAmount)) {

@@ -13,6 +13,9 @@ const Transport = require('../src/lib/transport')
 const Packet = require('../src/utils/packet')
 const MockPlugin = require('./mocks/mockPlugin')
 const { wait } = require('../src/utils')
+const base64url = require('../src/utils/base64url')
+const { parsePacketAndDetails } = require('../src/utils/details')
+const Details = require('../src/utils/details')
 
 describe('Transport', function () {
   describe('PSK', function () {
@@ -48,13 +51,32 @@ describe('Transport', function () {
         // the data is still encrypted, so we can't check it from just parsing
         assert.isString(data)
         assert.equal(amount, '1')
-        assert.match(account, /^test\.example\.alice\.~(psk|ipr)/)
+        assert.match(account, /^test\.example\.alice\./)
       }
     })
 
     it('should create a valid packet and condition', function () {
       const result = Transport.createPacketAndCondition(this.params, 'psk')
       this.validate(result)
+    })
+
+    it('should take additional headers for details', function () {
+      this.params.headers = { header: 'value' }
+      this.params.publicHeaders = { unsafeHeader: 'unsafeValue' }
+
+      const result = Transport.createPacketAndCondition(this.params, 'psk')
+      this.validate(result)
+
+      const details = parsePacketAndDetails({
+        packet: result.packet,
+        secret: this.params.secret
+      })
+
+      assert.equal(details.publicHeaders['encryption'], 'aes-256-ctr')
+      assert.match(details.publicHeaders['nonce'], /[A-Za-z0-9_-]{22}/)
+      assert.equal(details.publicHeaders['unsafeheader'], 'unsafeValue')
+      assert.equal(details.headers['expires-at'], this.params.expiresAt)
+      assert.equal(details.headers['header'], 'value')
     })
 
     it('should generate an id if one isn\'t provided', function () {
@@ -64,7 +86,21 @@ describe('Transport', function () {
 
       const parsed = Packet.parse(result.packet)
       assert.match(parsed.account,
-        /test\.example\.alice\.~psk\..{8}/)
+        /test\.example\.alice\..{8}/)
+    })
+
+    it('should allow encryption to be disabled', function () {
+      this.params.disableEncryption = true
+      const result = Transport.createPacketAndCondition(this.params, 'psk')
+      this.validate(result)
+
+      const details = parsePacketAndDetails({
+        // no secret provided, because no encryption
+        packet: result.packet
+      })
+
+      assert.equal(details.publicHeaders['encryption'], 'none')
+      assert.equal(details.headers['expires-at'], this.params.expiresAt)
     })
 
     describe('IPR', function () {
@@ -140,14 +176,11 @@ describe('Transport', function () {
         destinationAccount: 'test.example.alice',
         secret: Buffer.from('shh_its_a_secret', 'base64'),
         data: { foo: 'bar' },
-        id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
         expiresAt: moment().add(1, 'seconds').format(),
       }, 'ipr')
 
       this.packet = packet
       this.params = {
-        protocol: 'ipr',
-        id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
         plugin: this.plugin,
         secret: Buffer.from('shh_its_a_secret', 'base64'),
         transfer: {
@@ -182,6 +215,90 @@ describe('Transport', function () {
         })
     })
 
+    it('should reject transfer without PSK data', function * () {
+      this.params.transfer.ilp = Packet.serialize(Object.assign(
+        Packet.parse(this.packet),
+        { data: 'garbage' }))
+
+      assert.deepEqual(
+        yield Transport._validateOrRejectTransfer(this.params),
+        { code: 'S06',
+          message: 'unspecified PSK error',
+          name: 'Unexpected Payment'
+        })
+      yield this.rejected
+    })
+
+    it('should reject transfer with unsupported PSK encryption', function * () {
+      this.params.transfer.ilp = Packet.serialize(Object.assign(
+        Packet.parse(this.packet),
+        { data: base64url(Buffer.from(`PSK/1.0
+Nonce: KxjrC8g5qGQ7mj_ODqBMtw
+Encryption: rot13
+
+data`, 'utf8')) }))
+
+      assert.deepEqual(
+        yield Transport._validateOrRejectTransfer(this.params),
+        { code: 'S06',
+          message: 'unsupported PSK encryption method',
+          name: 'Unexpected Payment'
+        })
+      yield this.rejected
+    })
+
+    it('should reject transfer without PSK nonce', function * () {
+      this.params.transfer.ilp = Packet.serialize(Object.assign(
+        Packet.parse(this.packet),
+        { data: base64url(Buffer.from(`PSK/1.0
+Encryption: aes-256-ctr
+
+data`, 'utf8')) }))
+
+      assert.deepEqual(
+        yield Transport._validateOrRejectTransfer(this.params),
+        { code: 'S06',
+          message: 'missing PSK nonce',
+          name: 'Unexpected Payment'
+        })
+      yield this.rejected
+    })
+
+    it('should reject transfer with PSK key header', function * () {
+      this.params.transfer.ilp = Packet.serialize(Object.assign(
+        Packet.parse(this.packet),
+        { data: base64url(Buffer.from(`PSK/1.0
+Nonce: KxjrC8g5qGQ7mj_ODqBMtw
+Encryption: aes-256-ctr
+Key: ed25519-ecdh
+
+data`, 'utf8')) }))
+
+      assert.deepEqual(
+        yield Transport._validateOrRejectTransfer(this.params),
+        { code: 'S06',
+          message: 'unsupported PSK key derivation',
+          name: 'Unexpected Payment'
+        })
+      yield this.rejected
+    })
+
+    it('should reject transfer withbad PSK status line', function * () {
+      this.params.transfer.ilp = Packet.serialize(Object.assign(
+        Packet.parse(this.packet),
+        { data: base64url(Buffer.from(`PSK/2.0
+
+data`, 'utf8')) }))
+
+      assert.deepEqual(
+        yield Transport._validateOrRejectTransfer(this.params),
+        { code: 'S06',
+          message: 'unsupported PSK version or status',
+          name: 'Unexpected Payment'
+        })
+      yield this.rejected
+    })
+
     it('should ignore transfer for other account', function * () {
       this.params.transfer.ilp = Packet.serialize(Object.assign(
         Packet.parse(this.packet),
@@ -192,20 +309,10 @@ describe('Transport', function () {
         'not-my-packet')
     })
 
-    it('should not accept transfer for other protocol', function * () {
-      this.params.transfer.ilp = Packet.serialize(Object.assign(
-        Packet.parse(this.packet),
-        { account: 'test.example.alice.~ekp' }))
-
-      assert.equal(
-        yield Transport._validateOrRejectTransfer(this.params),
-        'not-my-packet')
-    })
-
     it('should not accept transfer for other receiver', function * () {
       this.params.transfer.ilp = Packet.serialize(Object.assign(
         Packet.parse(this.packet),
-        { account: 'test.example.alice.~ipr.garbage' }))
+        { account: 'test.example.alice.garbage' }))
 
       assert.equal(
         yield Transport._validateOrRejectTransfer(this.params),
@@ -271,12 +378,11 @@ describe('Transport', function () {
     beforeEach(function () {
       const { packet, condition } = Transport.createPacketAndCondition({
         destinationAmount: '1',
-        destinationAccount: 'test.example.alice.~ipr.GbLOVv3YyLo',
+        destinationAccount: 'test.example.alice.GbLOVv3YyLo',
         secret: Buffer.from('shh_its_a_secret', 'base64'),
         data: { foo: 'bar' },
         id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
         expiresAt: moment().add(1, 'seconds').format(),
-        protocol: 'ipr'
       })
 
       this.params = {
@@ -287,7 +393,7 @@ describe('Transport', function () {
       this.transfer = {
         id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
         amount: '1',
-        to: 'test.example.alice.~ipr.GbLOVv3YyLo',
+        to: 'test.example.alice.GbLOVv3YyLo',
         from: 'test.example.connie',
         executionCondition: condition,
         ilp: packet
@@ -326,7 +432,7 @@ describe('Transport', function () {
     })
 
     it('should reject when packet details have been changed', function * () {
-      this.transfer.ilp = this.transfer.ilp + '0'
+      this.transfer.ilp = this.transfer.ilp + 'garbage'
       yield Transport.listen(this.plugin, this.params, this.callback, 'ipr')
 
       // listener returns false for debug purposes
@@ -344,7 +450,10 @@ describe('Transport', function () {
 
       this.callback = (details) => {
         assert.isObject(details.transfer, 'must pass in transfer')
-        assert.isObject(details.data, 'must pass in decrypted data')
+        assert.isObject(details.headers, 'must pass in headers')
+        assert.isString(details.headers['expires-at'], 'must pass in Expires-At header')
+        assert.isObject(details.publicHeaders, 'must pass in publicHeaders')
+        assert.isObject(JSON.parse(details.data), 'must pass in decrypted data')
         assert.isString(details.destinationAccount, 'must pass in account')
         assert.isString(details.destinationAmount, 'must pass in amount')
         assert.isFunction(details.fulfill, 'fulfill callback must be a function')
@@ -352,7 +461,11 @@ describe('Transport', function () {
       }
 
       yield Transport.listen(this.plugin, this.params, this.callback, 'ipr')
-      yield this.plugin.emitAsync('incoming_prepare', this.transfer)
+      const res = yield this.plugin.emitAsync('incoming_prepare', this.transfer)
+      if (typeof res[0] === 'object') {
+        throw new Error('got error code: ' + JSON.stringify(res))
+      }
+
       yield fulfilled
     })
 

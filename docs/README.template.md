@@ -5,7 +5,7 @@
 </h1>
 
 <h4 align="center">
-A low-level JS <a href="https://interledger.org">Interledger</a> library
+The Javascript client library for <a href="https://interledger.org">Interledger</a>
 </h4>
 
 <br>
@@ -23,8 +23,6 @@ A low-level JS <a href="https://interledger.org">Interledger</a> library
 [snyk-image]: https://snyk.io/test/npm/ilp/badge.svg
 [snyk-url]: https://snyk.io/test/npm/ilp
 
-This module bundles low-level and high-level interfaces to ILP, largely intended for building ILP into other [Application layer](https://github.com/interledger/rfcs/tree/master/0001-interledger-architecture) protocols.
-
 #### The ILP module includes:
 
 * [Interledger Payment Request (IPR)](#interledger-payment-request-ipr-transport-protocol) Transport Protocol, an interactive protocol in which the receiver specifies the payment details, including the condition
@@ -38,7 +36,7 @@ This module bundles low-level and high-level interfaces to ILP, largely intended
 
 *Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module*
 
-## Simple Payment Setup Protocol (SPSP)
+## [Simple Payment Setup Protocol (SPSP)](https://github.com/interledger/rfcs/blob/master/0009-simple-payment-setup-protocol/0009-simple-payment-setup-protocol.md)
 
 If you are sending to an SPSP receiver with a `user@example.com` identifier, the SPSP module
 provides a high-level interface:
@@ -46,31 +44,30 @@ provides a high-level interface:
 ```js
 'use strict'
 
-const co = require('co')
-const SPSP = require('ilp').SPSP
-const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
+import { SPSP } from 'ilp'
+import FiveBellsLedgerPlugin from 'ilp-plugin-bells'
 
 const plugin = new FiveBellsLedgerPlugin({
   account: 'https://red.ilpdemo.org/ledger/accounts/alice',
   password: 'alice'
 })
 
-co(function * () {
-  const payment = yield SPSP.quote(plugin, {
-    receiver: 'bob@blue.ilpdemo.org'
-    sourceAmount: '1',
+(async function () {
+  const payment = await SPSP.quote(plugin, {
+    receiver: 'bob@blue.ilpdemo.org',
+    sourceAmount: '1'
   })
 
   console.log('got SPSP payment details:', payment)
 
-  const { fulfillment } = yield SPSP.sendPayment(plugin, payment)
-  console.log('sent! fulfillment:', fulfillment)
-})
+  await SPSP.sendPayment(plugin, payment)
+  console.log('receiver claimed funds!')
+})()
 ```
 
-## Interledger Payment Request (IPR) Transport Protocol
+## [Interledger Payment Request (IPR) Transport Protocol](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md)
 
-This protocol uses recipient-generated [Interledger Payment Requests](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md), which include the condition for the payment. This means that the recipient must first generate a payment request, which the sender then fulfills.
+This protocol uses recipient-generated Interledger Payment Requests, which include the condition for the payment. This means that the recipient must first generate a payment request, which the sender then fulfills.
 
 This library handles the generation of payment requests, but **not the communication of the request details from the recipient to the sender**. In some cases, the sender and receiver might be HTTP servers, in which case HTTP would be used. In other cases, they might be using a different medium of communication.
 
@@ -79,10 +76,9 @@ This library handles the generation of payment requests, but **not the communica
 ```js
 'use strict'
 
-const uuid = require('uuid')
-const co = require('co')
-const ILP = require('ilp')
-const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
+import 'uuid'
+import ILP from 'ilp'
+import FiveBellsLedgerPlugin from 'ilp-plugin-bells'
 
 const sender = new FiveBellsLedgerPlugin({
   account: 'https://red.ilpdemo.org/ledger/accounts/alice',
@@ -94,18 +90,19 @@ const receiver = new FiveBellsLedgerPlugin({
   password: 'bobbob'
 })
 
-co(function * () {
-  const stopListening = yield ILP.IPR.listen(receiver, {
+(async function () {
+  const stopListening = await ILP.IPR.listen(receiver, {
     secret: Buffer.from('secret', 'utf8')
-  }, (params) => {
-    console.log('got transfer:', params.transfer)
+  }, async function ({ transfer, fulfill }) {
+    console.log('got transfer:', transfer)
 
-    console.log('fulfilling.')
-    return params.fulfill()
+    console.log('claiming incoming funds...')
+    await fulfill()
+    console.log('funds received!')
   })
 
   const { packet, condition } = ILP.IPR.createPacketAndCondition({
-    secret: Buffer.from('secret', 'utf8')
+    secret: Buffer.from('secret', 'utf8'),
     destinationAccount: receiver.getAccount(),
     destinationAmount: '10',
   })
@@ -113,10 +110,10 @@ co(function * () {
   // Note the user of this module must implement the method for
   // communicating packet and condition from the recipient to the sender
 
-  const quote = yield ILP.ILQP.quoteByPacket(sender, packet)
+  const quote = await ILP.ILQP.quoteByPacket(sender, packet)
   console.log('got quote:', quote)
 
-  yield sender.sendTransfer({
+  await sender.sendTransfer({
     id: uuid(),
     to: quote.connectorAccount,
     amount: quote.sourceAmount,
@@ -129,12 +126,10 @@ co(function * () {
     console.log(transfer.id, 'was fulfilled with', fulfillment)
     stopListening()
   })
-}).catch((err) => {
-  console.log(err)
-})
+})()
 ```
 
-### Pre-Shared Key (PSK) Transport Protocol
+## Pre-Shared Key (PSK) Transport Protocol
 
 This is a non-interactive protocol in which the sender chooses the payment
 amount and generates the condition without communicating with the recipient.
@@ -161,10 +156,9 @@ from getting unwanted funds.
 ```js
 'use strict'
 
-const uuid = require('uuid')
-const co = require('co')
-const ILP = require('ilp')
-const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
+import 'uuid'
+import ILP from 'ilp'
+import FiveBellsLedgerPlugin from 'ilp-plugin-bells'
 
 const sender = new FiveBellsLedgerPlugin({
   account: 'https://red.ilpdemo.org/ledger/accounts/alice',
@@ -176,14 +170,17 @@ const receiver = new FiveBellsLedgerPlugin({
   password: 'bobbob'
 })
 
-const { sharedSecret, destinationAccount } = ILP.PSK.generateParams(receiver, 
+const { sharedSecret, destinationAccount } = ILP.PSK.generateParams({
+  destinationAccount: receiver,
+  secretSeed: Buffer.from('secret_seed')
+})
 
 // Note the user of this module must implement the method for
 // communicating sharedSecret and destinationAccount from the recipient
 // to the sender
 
-co(function * () {
-  const stopListening = yield ILP.PSK.listen(receiver, { sharedSecret }, (params) => {
+(async function () {
+  const stopListening = await ILP.PSK.listen(receiver, { sharedSecret }, (params) => {
     console.log('got transfer:', params.transfer)
 
     console.log('fulfilling.')
@@ -198,10 +195,10 @@ co(function * () {
     destinationAmount: '10',
   })
 
-  const quote = yield ILP.ILQP.quoteByPacket(sender, packet)
+  const quote = await ILP.ILQP.quoteByPacket(sender, packet)
   console.log('got quote:', quote)
 
-  yield sender.sendTransfer({
+  await sender.sendTransfer({
     id: uuid(),
     to: quote.connectorAccount,
     amount: quote.sourceAmount,
@@ -214,9 +211,7 @@ co(function * () {
     console.log(transfer.id, 'was fulfilled with', fulfillment)
     stopListening()
   })
-}).catch((err) => {
-  console.log(err)
-})
+})()
 ```
 
 ## API Reference
@@ -226,12 +221,17 @@ co(function * () {
 {{>members~}}
 {{/module}}
 
-{{#module name="Sender"~}}
+{{#module name="ILQP"~}}
 {{>body~}}
 {{>members~}}
 {{/module}}
 
-{{#module name="Receiver"~}}
+{{#module name="PSK"~}}
+{{>body~}}
+{{>members~}}
+{{/module}}
+
+{{#module name="IPR"~}}
 {{>body~}}
 {{>members~}}
 {{/module}}

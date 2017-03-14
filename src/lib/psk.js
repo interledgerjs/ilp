@@ -1,9 +1,9 @@
 'use strict'
 
+const Details = require('../utils/details')
 const Transport = require('./transport')
 const cryptoHelper = require('../utils/crypto')
 const assert = require('assert')
-const base64url = require('../utils/base64url')
 
 /**
   * @module PSK
@@ -13,12 +13,15 @@ const base64url = require('../utils/base64url')
   * Create a payment request using a Pre-Shared Key (PSK).
   *
   * @param {Object} params Parameters for creating payment request
-  * @param {String} params.destinationAmount Amount that should arrive in the recipient's account
+  * @param {String} params.destinationAmount Amount that should arrive in the recipient's account. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger.
   * @param {String} params.destinationAccount Target account's ILP address
   * @param {String} params.sharedSecret Shared secret for PSK protocol
   * @param {String} [params.id=uuid.v4()] Unique ID for the request (used to ensure conditions are unique per request)
   * @param {String} [params.expiresAt=30 seconds from now] Expiry of request
   * @param {Object} [params.data=null] Additional data to include in the request
+  * @param {Object} [params.headers=null] Additional headers for private PSK details
+  * @param {Object} [params.publicHeaders=null] Additional headers for public PSK details
+  * @param {Object} [params.disableEncryption=false] Turns off encryption of private memos and data
   *
   * @return {Object} Payment request
   */
@@ -43,11 +46,8 @@ function generateParams ({
   assert(typeof destinationAccount === 'string', 'destinationAccount must be a string')
   assert(Buffer.isBuffer(secretSeed), 'secretSeed must be a buffer')
 
-  const token = base64url(cryptoHelper.getPskToken(secretSeed))
-  const sharedSecret =
-    base64url(cryptoHelper.getPskSharedSecret(secretSeed, token))
-
-  const receiverId = base64url(cryptoHelper.getReceiverId(sharedSecret))
+  const { token, sharedSecret, receiverId } =
+    cryptoHelper.generatePskParams(secretSeed)
 
   return {
     sharedSecret,
@@ -84,5 +84,8 @@ function listen (plugin, rawParams, callback) {
 module.exports = {
   createPacketAndCondition,
   generateParams,
-  listen
+  listen,
+  parseDetails: Details.parseDetails,
+  createDetails: Details.createDetails,
+  parsePacketAndDetails: Details.parsePacketAndDetails
 }
