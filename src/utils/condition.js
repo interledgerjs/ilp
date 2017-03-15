@@ -11,14 +11,14 @@ function toConditionUri (conditionPreimage) {
   hash.update(conditionPreimage)
   const condition = hash.digest()
   const conditionUri = base64url(condition)
-  return conditionUri
+  return `cc:0:3:${conditionUri}:32`
 }
 
 function toFulfillmentUri (conditionPreimage) {
   if (conditionPreimage.length !== 32) {
     throw new Error('Condition preimage must be 32 bytes')
   }
-  return base64url(conditionPreimage)
+  return `cf:0:${base64url(conditionPreimage)}`
 }
 
 Object.assign(exports, {
