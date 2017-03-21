@@ -194,7 +194,7 @@ function * quote (plugin, {
       .add(
         bestQuote.source_expiry_duration || DEFAULT_EXPIRY_DURATION,
         'seconds')
-      .format()
+      .toISOString()
   })
 }
 

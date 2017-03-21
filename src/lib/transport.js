@@ -8,7 +8,7 @@ const debug = require('debug')('ilp:transport')
 const assert = require('assert')
 const base64url = require('../utils/base64url')
 const BigNumber = require('bignumber.js')
-const { safeConnect } = require('../utils')
+const { omitUndefined, startsWith, safeConnect } = require('../utils')
 const { createDetails, parseDetails } = require('../utils/details')
 
 function createPacketAndCondition ({
@@ -18,29 +18,28 @@ function createPacketAndCondition ({
   data,
   headers,
   publicHeaders,
+  nonce,
   disableEncryption,
   expiresAt
-}, protocol) {
+}) {
   assert(typeof destinationAmount === 'string', 'destinationAmount must be a string')
   assert(typeof destinationAccount === 'string', 'destinationAccount must be a string')
   assert(Buffer.isBuffer(secret), 'secret must be a buffer')
 
-  const receiverId = base64url(cryptoHelper.getReceiverId(secret))
-  const address = destinationAccount + '.' + receiverId
-
   const details = createDetails({
     publicHeaders: Object.assign({}, publicHeaders),
-    headers: Object.assign({
+    headers: Object.assign(omitUndefined({
       'Expires-At': expiresAt
-    }, headers),
+    }), headers),
 
     data,
+    nonce,
     secret,
     disableEncryption
   })
 
   const packet = Packet.serialize({
-    account: address,
+    account: destinationAccount,
     amount: destinationAmount,
     data: details
   })
@@ -53,25 +52,34 @@ function createPacketAndCondition ({
   }
 }
 
+function _accountToSharedSecret ({ account, pluginAccount, receiverSecret }) {
+  const localPart = account.slice(pluginAccount.length + 1)
+  const receiverId = base64url(cryptoHelper.getReceiverId(receiverSecret))
+  const token = Buffer.from(localPart.slice(receiverId.length), 'base64')
+
+  return cryptoHelper.getPskSharedSecret(receiverSecret, token)
+}
+
 function _reject (plugin, id, reason) {
   return plugin
     .rejectIncomingTransfer(id, Object.assign({
       triggered_by: plugin.getAccount(),
-      triggered_at: moment().format(),
+      triggered_at: moment().toISOString(),
       additional_info: {}
     }, reason))
     .then(() => reason)
 }
 
 function * listen (plugin, {
-  secret,
+  receiverSecret,
   allowOverPayment
-}, callback, protocol) {
+}, callback) {
   assert(plugin && typeof plugin === 'object', 'plugin must be an object')
   assert(typeof callback === 'function', 'callback must be a function')
-  assert(Buffer.isBuffer(secret), 'opts.secret must be a buffer')
+  assert(Buffer.isBuffer(receiverSecret), 'opts.receiverSecret must be a buffer')
 
   yield safeConnect(plugin)
+  const account = plugin.getAccount()
 
   /**
    * When we receive a transfer notification, check the transfer
@@ -86,13 +94,22 @@ function * listen (plugin, {
     const err = yield _validateOrRejectTransfer({
       plugin,
       transfer,
-      protocol,
       allowOverPayment,
-      secret
+      receiverSecret
     })
 
     if (err) return err
 
+    const parsed = Packet.parseFromTransfer(transfer)
+    const secret = _accountToSharedSecret({
+      receiverSecret,
+      account: parsed.account,
+      pluginAccount: account
+    })
+    const destinationAmount = parsed.amount
+    const destinationAccount = parsed.account
+    const data = parsed.data
+    const details = parseDetails({ details: data, secret })
     const preimage = cryptoHelper.packetToPreimage(
       Packet.getFromTransfer(transfer),
       secret)
@@ -109,11 +126,6 @@ function * listen (plugin, {
       })
     }
 
-    const parsed = Packet.parseFromTransfer(transfer)
-    const destinationAmount = parsed.amount
-    const destinationAccount = parsed.account
-    const data = parsed.data
-    const details = parseDetails({ details: data, secret })
     const fulfillment = cryptoHelper.preimageToFulfillment(preimage)
 
     try {
@@ -153,12 +165,11 @@ function * listen (plugin, {
 function * _validateOrRejectTransfer ({
   plugin,
   transfer,
-  protocol,
   allowOverPayment,
-  secret
+  receiverSecret
 }) {
   const account = plugin.getAccount()
-  const receiverId = base64url(cryptoHelper.getReceiverId(secret))
+  const receiverId = base64url(cryptoHelper.getReceiverId(receiverSecret))
 
   if (!transfer.executionCondition) {
     debug('notified of transfer without executionCondition ', transfer)
@@ -187,6 +198,11 @@ function * _validateOrRejectTransfer ({
     })
   }
 
+  const secret = _accountToSharedSecret({
+    receiverSecret,
+    account: parsed.account,
+    pluginAccount: account
+  })
   const destinationAmount = parsed.amount
   const destinationAccount = parsed.account
   const data = parsed.data
@@ -202,7 +218,7 @@ function * _validateOrRejectTransfer ({
   const localPart = destinationAccount.slice(account.length + 1)
   const [ addressReceiverId ] = localPart.split('.')
 
-  if (addressReceiverId !== receiverId) {
+  if (!startsWith(receiverId, addressReceiverId)) {
     debug('notified of transfer for another receiver: receiver=' +
       addressReceiverId +
       ' me=' +
@@ -282,7 +298,7 @@ function * _validateOrRejectTransfer ({
     debug('notified of transfer with expired packet:', transfer)
     return yield _reject(plugin, transfer.id, {
       code: 'R01',
-      name: 'Payment Timed Out',
+      name: 'Transfer Timed Out',
       message: 'got notification of transfer with expired packet'
     })
   }
