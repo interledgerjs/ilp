@@ -16,13 +16,14 @@ const { wait } = require('../src/utils')
 const base64url = require('../src/utils/base64url')
 const { parsePacketAndDetails } = require('../src/utils/details')
 const Details = require('../src/utils/details')
+const cryptoHelper = require('../src/utils/crypto')
 
 describe('Transport', function () {
   describe('PSK', function () {
     beforeEach(function () {
       this.params = {
         destinationAccount: 'test.example.alice',
-        secretSeed: Buffer.from('shh_its_a_secret', 'base64')
+        receiverSecret: Buffer.from('secret')
       }
     })
 
@@ -36,22 +37,24 @@ describe('Transport', function () {
 
   describe('createPacketAndCondition', function () {
     beforeEach(function () {
+      this.secret = Buffer.from('secret')
       this.params = {
         destinationAmount: '1',
-        destinationAccount: 'test.example.alice',
-        secret: Buffer.from('shh_its_a_secret', 'base64'),
-        data: { foo: 'bar' },
+        destinationAccount: 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ',
+        secret: this.secret,
+        data: Buffer.from('test data'),
         id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
-        expiresAt: moment().format()
+        expiresAt: moment().toISOString()
       }
 
       this.validate = (result) => {
         const { account, amount, data } = Packet.parse(result.packet)
+        const receiverId = base64url(cryptoHelper.getReceiverId(this.secret))
 
         // the data is still encrypted, so we can't check it from just parsing
         assert.isString(data)
         assert.equal(amount, '1')
-        assert.match(account, /^test\.example\.alice\./)
+        assert.equal(account, 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ')
       }
     })
 
@@ -72,21 +75,11 @@ describe('Transport', function () {
         secret: this.params.secret
       })
 
-      assert.equal(details.publicHeaders['encryption'], 'aes-256-ctr')
+      assert.match(details.publicHeaders['encryption'], /^aes-256-gcm /)
       assert.match(details.publicHeaders['nonce'], /[A-Za-z0-9_-]{22}/)
       assert.equal(details.publicHeaders['unsafeheader'], 'unsafeValue')
       assert.equal(details.headers['expires-at'], this.params.expiresAt)
       assert.equal(details.headers['header'], 'value')
-    })
-
-    it('should generate an id if one isn\'t provided', function () {
-      delete this.params.id
-      const result = Transport.createPacketAndCondition(this.params, 'psk')
-      this.validate(result)
-
-      const parsed = Packet.parse(result.packet)
-      assert.match(parsed.account,
-        /test\.example\.alice\..{8}/)
     })
 
     it('should allow encryption to be disabled', function () {
@@ -105,15 +98,22 @@ describe('Transport', function () {
 
     describe('IPR', function () {
       it('should create packet and condition', function () {
+        this.params.receiverSecret = Buffer.from('secret')
+        this.params.destinationAccount = 'test.example.alice'
+        delete this.params.secret
+
         const result = ILP.IPR.createPacketAndCondition(this.params)
-        this.validate(result)
+        const { account } = Packet.parse(result.packet)
+        assert.match(account,
+          /test\.example\.alice\.ebKWcAEB9_A[A-Za-z0-9_-]{22}/)
       })
     })
 
     describe('PSK', function () {
       it('should create packet and condition', function () {
-        // one field name is different
-        this.params.sharedSecret = this.params.secret
+        // one field name is different, and takes a string
+        this.params.sharedSecret = 'bo4GhvVNW8nacSz0PvibKA'
+        delete this.params.secret
 
         const result = ILP.PSK.createPacketAndCondition(this.params)
         this.validate(result)
@@ -129,7 +129,7 @@ describe('Transport', function () {
     beforeEach(function () {
       this.params = {
         id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
-        secret: Buffer.from('shh_its_a_secret', 'base64')
+        receiverSecret: Buffer.from('bo4GhvVNW8nacSz0PvibKA', 'base64')
       }
     })
 
@@ -173,20 +173,20 @@ describe('Transport', function () {
     beforeEach(function () {
       const { packet, condition } = Transport.createPacketAndCondition({
         destinationAmount: '1',
-        destinationAccount: 'test.example.alice',
-        secret: Buffer.from('shh_its_a_secret', 'base64'),
-        data: { foo: 'bar' },
-        expiresAt: moment().add(1, 'seconds').format(),
+        destinationAccount: 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ',
+        secret: Buffer.from('bo4GhvVNW8nacSz0PvibKA', 'base64'),
+        data: Buffer.from('test data'),
+        expiresAt: moment().add(1, 'seconds').toISOString(),
       }, 'ipr')
 
       this.packet = packet
       this.params = {
         plugin: this.plugin,
-        secret: Buffer.from('shh_its_a_secret', 'base64'),
+        receiverSecret: Buffer.from('secret'),
         transfer: {
           id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
           amount: '1',
-          to: 'test.example.alice',
+          to: 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ',
           from: 'test.example.connie',
           executionCondition: condition,
           ilp: packet
@@ -251,7 +251,7 @@ data`, 'utf8')) }))
       this.params.transfer.ilp = Packet.serialize(Object.assign(
         Packet.parse(this.packet),
         { data: base64url(Buffer.from(`PSK/1.0
-Encryption: aes-256-ctr
+Encryption: aes-256-gcm PVWdX4iBjPQg16AOli2CBw
 
 data`, 'utf8')) }))
 
@@ -269,7 +269,7 @@ data`, 'utf8')) }))
         Packet.parse(this.packet),
         { data: base64url(Buffer.from(`PSK/1.0
 Nonce: KxjrC8g5qGQ7mj_ODqBMtw
-Encryption: aes-256-ctr
+Encryption: aes-256-gcm PVWdX4iBjPQg16AOli2CBw
 Key: ed25519-ecdh
 
 data`, 'utf8')) }))
@@ -354,11 +354,11 @@ data`, 'utf8')) }))
     it('should not accept late transfer', function * () {
       const { packet, condition } = Transport.createPacketAndCondition({
         destinationAmount: '1',
-        destinationAccount: 'test.example.alice',
-        secret: Buffer.from('shh_its_a_secret', 'base64'),
-        data: { foo: 'bar' },
+        destinationAccount: 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ',
+        secret: Buffer.from('bo4GhvVNW8nacSz0PvibKA', 'base64'),
+        data: Buffer.from('test data'),
         id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
-        expiresAt: moment().add(-1, 'seconds').format(),
+        expiresAt: moment().add(-1, 'seconds').toISOString(),
       }, 'ipr')
 
       this.params.transfer.ilp = packet
@@ -367,7 +367,7 @@ data`, 'utf8')) }))
         yield Transport._validateOrRejectTransfer(this.params),
         { code: 'R01',
           message: 'got notification of transfer with expired packet',
-          name: 'Payment Timed Out'
+          name: 'Transfer Timed Out'
         })
 
       yield this.rejected
@@ -378,22 +378,22 @@ data`, 'utf8')) }))
     beforeEach(function () {
       const { packet, condition } = Transport.createPacketAndCondition({
         destinationAmount: '1',
-        destinationAccount: 'test.example.alice.GbLOVv3YyLo',
-        secret: Buffer.from('shh_its_a_secret', 'base64'),
-        data: { foo: 'bar' },
+        destinationAccount: 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ',
+        secret: Buffer.from('bo4GhvVNW8nacSz0PvibKA', 'base64'),
+        data: Buffer.from('test data'),
         id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
-        expiresAt: moment().add(1, 'seconds').format(),
+        expiresAt: moment().add(1, 'seconds').toISOString(),
       })
 
       this.params = {
         id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
-        secret: Buffer.from('shh_its_a_secret', 'base64'),
+        receiverSecret: Buffer.from('secret')
       }
 
       this.transfer = {
         id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
         amount: '1',
-        to: 'test.example.alice.GbLOVv3YyLo',
+        to: 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ',
         from: 'test.example.connie',
         executionCondition: condition,
         ilp: packet
@@ -453,7 +453,7 @@ data`, 'utf8')) }))
         assert.isObject(details.headers, 'must pass in headers')
         assert.isString(details.headers['expires-at'], 'must pass in Expires-At header')
         assert.isObject(details.publicHeaders, 'must pass in publicHeaders')
-        assert.isObject(JSON.parse(details.data), 'must pass in decrypted data')
+        assert.equal(details.data.toString('utf8'), 'test data', 'must pass in decrypted data')
         assert.isString(details.destinationAccount, 'must pass in account')
         assert.isString(details.destinationAmount, 'must pass in amount')
         assert.isFunction(details.fulfill, 'fulfill callback must be a function')

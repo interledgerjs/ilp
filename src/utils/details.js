@@ -5,6 +5,7 @@ const base64url = require('./base64url')
 const cryptoHelper = require('./crypto')
 const Packet = require('./packet')
 const debug = require('debug')('ilp:psk-data')
+const { startsWith } = require('.')
 const DATA_DELIMITER = '\n\n'
 const STATUS_LINE_REGEX = /^PSK\/1\.0$/
 const KEY_HEADER_REGEX = /^hmac-sha-256 (.+)$/
@@ -19,17 +20,10 @@ function _createRequest ({
     .map((k) => k + ': ' + headers[k])
     .join('\n') + DATA_DELIMITER
 
-  let rawData = data
-  if (!Buffer.isBuffer(data) && typeof data === 'object') {
-    rawData = Buffer.from(JSON.stringify(data), 'utf8')
-  } else if (data === undefined) {
-    rawData = Buffer.from([])
-  }
-
   return Buffer.concat([
     Buffer.from(statusLineText, 'utf8'),
     Buffer.from(headerLines, 'utf8'),
-    rawData
+    data || Buffer.from([])
   ])
 }
 
@@ -40,6 +34,13 @@ function createDetails ({
   secret,
   data
 }) {
+  const caseInsensitiveHeaders = Object
+    .keys(publicHeaders)
+    .map((name) => name.toLowerCase())
+  if (caseInsensitiveHeaders.indexOf('nonce') >= 0) {
+    throw new Error('public "Nonce" header may not be specified manually.')
+  }
+
   const nonce = cryptoHelper.getPskToken()
   const privateRequest = _createRequest({
     statusLine: false,
@@ -49,17 +50,19 @@ function createDetails ({
 
   const encryption = !disableEncryption
   const publicData = encryption
-    ? cryptoHelper.aesEncryptBuffer(secret, nonce, privateRequest)
-    : privateRequest
+    ? cryptoHelper.aesEncryptBuffer({ secret, nonce, buffer: privateRequest })
+    : { content: privateRequest }
 
   const defaultPublicHeaders = {}
   defaultPublicHeaders['Nonce'] = base64url(nonce)
-  defaultPublicHeaders['Encryption'] = encryption ? 'aes-256-ctr' : 'none'
+  defaultPublicHeaders['Encryption'] = encryption
+    ? (cryptoHelper.ENCRYPTION_ALGORITHM + ' ' + base64url(publicData.tag))
+    : 'none'
 
   const publicRequest = _createRequest({
     statusLine: true,
     headers: Object.assign({}, defaultPublicHeaders, publicHeaders),
-    data: publicData
+    data: publicData.content
   })
 
   return publicRequest
@@ -113,8 +116,10 @@ function parseDetails ({
     throw new Error('missing nonce')
   }
 
-  const encryption = (publicRequest.headers['encryption'] === 'aes-256-ctr')
   const nonce = Buffer.from(publicRequest.headers['nonce'], 'base64')
+  const encryption = startsWith(
+    cryptoHelper.ENCRYPTION_ALGORITHM,
+    publicRequest.headers['encryption'])
 
   if (!encryption && publicRequest.headers['encryption'] !== 'none') {
     debug('unsupported encryption in', JSON.stringify(publicRequest.headers))
@@ -131,8 +136,21 @@ function parseDetails ({
       JSON.stringify(publicRequest.headers))
   }
 
+  const tagHeader = publicRequest.headers['encryption'].split(' ')[1]
+  if (encryption && (!tagHeader || !tagHeader.match(/[A-Za-z0-9_-]{22}/))) {
+    debug('encryption missing tag in', JSON.stringify(publicRequest.headers))
+    throw new Error('unsupported encryption')
+  }
+
   const decrypted = encryption
-    ? cryptoHelper.aesDecryptBuffer(secret, nonce, publicRequest.data)
+    ? (cryptoHelper
+        .aesDecryptBuffer({
+          secret,
+          nonce,
+          tag: Buffer.from(tagHeader, 'base64'),
+          buffer: publicRequest.data
+        })
+        .content)
     : publicRequest.data
 
   const privateRequest = _parseRequest({

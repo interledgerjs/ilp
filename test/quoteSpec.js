@@ -58,8 +58,9 @@ describe('ILQP', function () {
     })
 
     it('should quote by source amount', function * () {
-      this.result.expiresAt = moment().format()
       const response = yield ILQP.quote(this.plugin, this.params)
+      this.result.expiresAt = (new Date(response.expiresAt)).toISOString()
+
       assert.deepEqual(
         response,
         this.result)
@@ -69,8 +70,9 @@ describe('ILQP', function () {
       this.params.destinationAmount = this.params.sourceAmount
       delete this.params.sourceAmount
 
-      this.result.expiresAt = moment().format()
       const response = yield ILQP.quote(this.plugin, this.params)
+      this.result.expiresAt = (new Date(response.expiresAt)).toISOString()
+
       assert.deepEqual(
         response,
         this.result)
@@ -80,8 +82,9 @@ describe('ILQP', function () {
       // remove manually provided connectors
       delete this.params.connectors
 
-      this.result.expiresAt = moment().format()
       const response = yield ILQP.quote(this.plugin, this.params)
+      this.result.expiresAt = (new Date(response.expiresAt)).toISOString()
+
       assert.deepEqual(
         response,
         this.result)
@@ -129,7 +132,6 @@ describe('ILQP', function () {
     describe('quoteByPacket', function () {
       it('should parse quote params from packet', function * () {
         // the response we're using gives sourceExpiryDuration of 0
-        this.result.expiresAt = moment().format()
 
         const response = yield ILQP.quoteByPacket(
           this.plugin,
@@ -138,6 +140,8 @@ describe('ILQP', function () {
             account: 'test.local.bob'
           })
         )
+        this.result.expiresAt = (new Date(response.expiresAt)).toISOString()
+
         assert.deepEqual(
           response,
           this.result)

@@ -3,12 +3,12 @@
 const crypto = require('crypto')
 const base64url = require('./base64url')
 
-const IPR_RECEIVER_ID_STRING = 'ilp_ipr_receiver_id'
+const IPR_RECEIVER_ID_STRING = 'ilp_psk_receiver_id'
 const PSK_GENERATION_STRING = 'ilp_psk_generation'
 const PSK_CONDITION_STRING = 'ilp_psk_condition'
 const PSK_ENCRYPTION_STRING = 'ilp_key_encryption'
 
-const ENCRYPTION_ALGORITHM = 'aes-256-ctr'
+const ENCRYPTION_ALGORITHM = 'aes-256-gcm'
 const RECEIVER_ID_LENGTH = 8
 const SHARED_SECRET_LENGTH = 16
 const PSK_TOKEN_LENGTH = 16
@@ -26,20 +26,16 @@ function getPskSharedSecret (hmacKey, token) {
   return hmac(generator, token).slice(0, SHARED_SECRET_LENGTH)
 }
 
-function generatePskParams (secretSeed) {
+function generatePskParams (receiverSecret) {
   const token = getPskToken()
-  const sharedSecret = getPskSharedSecret(secretSeed, token)
-  const receiverId = getReceiverId(sharedSecret)
+  const sharedSecret = getPskSharedSecret(receiverSecret, token)
+  const receiverId = getReceiverId(receiverSecret)
 
   return {
     token: base64url(token),
     receiverId: base64url(receiverId),
     sharedSecret: base64url(sharedSecret)
   }
-}
-
-function getPaymentKey (hmacKey, token) {
-  return hmac(hmacKey, token)
 }
 
 function hmac (key, message) {
@@ -55,27 +51,33 @@ function packetToPreimage (packet, sharedSecret) {
 }
 
 // turn buffer into encrypted buffer
-function aesEncryptBuffer (sharedSecret, nonce, buffer) {
-  const pskEncryptionKey = hmac(sharedSecret, PSK_ENCRYPTION_STRING)
+function aesEncryptBuffer ({ secret, nonce, buffer }) {
+  const pskEncryptionKey = hmac(secret, PSK_ENCRYPTION_STRING)
   const cipher =
-    crypto.createCipher(ENCRYPTION_ALGORITHM, pskEncryptionKey, nonce)
+    crypto.createCipheriv(ENCRYPTION_ALGORITHM, pskEncryptionKey, nonce)
 
-  return Buffer.concat([
+  const content = Buffer.concat([
     cipher.update(buffer),
     cipher.final()
   ])
+  const tag = cipher.getAuthTag()
+
+  return { content, tag }
 }
 
 // turn buffer into decrypted buffer
-function aesDecryptBuffer (sharedSecret, nonce, encrypted) {
-  const pskEncryptionKey = hmac(sharedSecret, PSK_ENCRYPTION_STRING)
+function aesDecryptBuffer ({ secret, nonce, tag, buffer }) {
+  const pskEncryptionKey = hmac(secret, PSK_ENCRYPTION_STRING)
   const decipher =
-    crypto.createDecipher(ENCRYPTION_ALGORITHM, pskEncryptionKey, nonce)
+    crypto.createDecipheriv(ENCRYPTION_ALGORITHM, pskEncryptionKey, nonce)
+  decipher.setAuthTag(tag)
 
-  return Buffer.concat([
-    decipher.update(encrypted),
+  const content = Buffer.concat([
+    decipher.update(buffer),
     decipher.final()
   ])
+
+  return { content }
 }
 
 function preimageToCondition (conditionPreimage) {
@@ -94,6 +96,7 @@ function preimageToFulfillment (conditionPreimage) {
 }
 
 module.exports = {
+  ENCRYPTION_ALGORITHM,
   packetToPreimage,
   packetToCondition,
   generatePskParams,
@@ -102,7 +105,6 @@ module.exports = {
   aesEncryptBuffer,
   aesDecryptBuffer,
   getPskToken,
-  getPaymentKey,
   getReceiverId,
   getPskSharedSecret
 }

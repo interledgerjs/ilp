@@ -17,17 +17,17 @@ const assert = require('assert')
   * @param {String} params.destinationAccount Target account's ILP address
   * @param {String} params.sharedSecret Shared secret for PSK protocol
   * @param {String} [params.id=uuid.v4()] Unique ID for the request (used to ensure conditions are unique per request)
-  * @param {String} [params.expiresAt=30 seconds from now] Expiry of request
-  * @param {Object} [params.data=null] Additional data to include in the request
-  * @param {Object} [params.headers=null] Additional headers for private PSK details
-  * @param {Object} [params.publicHeaders=null] Additional headers for public PSK details
+  * @param {String} [params.expiresAt=none] Expiry of request
+  * @param {Buffer} [params.data=null] Additional data to include in the request
+  * @param {Object} [params.headers=null] Additional headers for private PSK details. The key-value pairs represent header names and values.
+  * @param {Object} [params.publicHeaders=null] Additional headers for public PSK details. The key-value pairs represent header names and values.
   * @param {Object} [params.disableEncryption=false] Turns off encryption of private memos and data
   *
   * @return {Object} Payment request
   */
 function createPacketAndCondition (rawParams) {
-  const params = Object.assign({}, rawParams, { secret: rawParams.sharedSecret })
-  return Transport.createPacketAndCondition(params, 'psk')
+  const params = Object.assign({}, rawParams, { secret: Buffer.from(rawParams.sharedSecret, 'base64') })
+  return Transport.createPacketAndCondition(params)
 }
 
 /**
@@ -35,19 +35,19 @@ function createPacketAndCondition (rawParams) {
   *
   * @param {Object} params Parameters for creating PSK params
   * @param {String} params.destinationAccount The ILP address that will receive PSK payments
-  * @param {Buffer} params.secretSeed secret used to generate the shared secret and the extra segments of destinationAccount
+  * @param {Buffer} params.receiverSecret secret used to generate the shared secret and the extra segments of destinationAccount
   *
   * @return {PskParams}
   */
 function generateParams ({
   destinationAccount,
-  secretSeed
+  receiverSecret
 }) {
   assert(typeof destinationAccount === 'string', 'destinationAccount must be a string')
-  assert(Buffer.isBuffer(secretSeed), 'secretSeed must be a buffer')
+  assert(Buffer.isBuffer(receiverSecret), 'receiverSecret must be a buffer')
 
   const { token, sharedSecret, receiverId } =
-    cryptoHelper.generatePskParams(secretSeed)
+    cryptoHelper.generatePskParams(receiverSecret)
 
   return {
     sharedSecret,

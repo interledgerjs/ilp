@@ -30,7 +30,7 @@ const _getSPSPFromReceiver = function * (receiver) {
     .get('https://' + host + '/.well-known/webfinger?resource=acct:' + receiver)
     .set('Accept', 'application/json')).body
 
-  return _getHref(resource, 'https://interledger.org/rel/spsp/v1')
+  return _getHref(resource, 'https://interledger.org/rel/spsp/v2')
 }
 
 const _querySPSP = function * (receiver) {
@@ -38,9 +38,28 @@ const _querySPSP = function * (receiver) {
     ? (yield _getSPSPFromReceiver(receiver))
     : receiver
 
-  return (yield agent
+  const response = (yield agent
     .get(endpoint)
     .set('Accept', 'application/json')).body
+
+  validateSPSPResponse(response)
+  return response
+}
+
+function validateSPSPResponse (response) {
+  assert(typeof response === 'object', 'response must be a JSON object')
+  assert(typeof response.destination_account === 'string', 'destination_account must be a string')
+  assert(typeof response.shared_secret === 'string', 'shared_secret must be a string')
+  assert(response.shared_secret.match(/^[A-Za-z0-9_-]+$/), 'shared_secret must be base64url')
+  assert(Buffer.from(response.shared_secret, 'base64').length === 32, 'shared_secret must be 32 bytes')
+  assert(typeof response.maximum_destination_amount === 'string', 'maximum_destination_amount must be a string')
+  assert(typeof response.minimum_destination_amount === 'string', 'minimum_destination_amount must be a string')
+  assert(typeof response.ledger_info === 'object', 'ledger_info must be an object')
+  assert(typeof response.ledger_info.currency_code === 'string', 'ledger_info.currency_code must be a string')
+  assert(typeof response.ledger_info.currency_symbol === 'string', 'ledger_info.currency_symbol must be a string')
+  assert(typeof response.ledger_info.scale === 'number', 'ledger_info.scale must be a number')
+  assert(typeof response.ledger_info.precision === 'number', 'ledger_info.precision must be a number')
+  assert(typeof response.receiver_info === 'object', 'receiver_info must be an object')
 }
 
 const _createPayment = (plugin, spsp, quote, id) => {
@@ -65,7 +84,7 @@ const _createPayment = (plugin, spsp, quote, id) => {
   *
   * @param {String} receiver webfinger account identifier (eg. 'alice@example.com') or URL to SPSP endpoint.
   *
-  * @return {Promise<Object>} SPSP SPSP response from server
+  * @return {Promise<SpspResponse>} SPSP SPSP response from server
   */
 
 const query = co.wrap(_querySPSP)
@@ -121,15 +140,10 @@ const quote = function * (plugin, {
       JSON.stringify(spsp))
   }
 
-  const spspQuote = Object.assign({}, quote, {
-    destinationAmount: new BigNumber(quote.destinationAmount).shift(-destinationScale).toString(),
-    sourceAmount: new BigNumber(quote.sourceAmount).shift(-sourceScale).toString()
-  })
-
-  if (+spspQuote.destinationAmount > +spsp.maximum_destination_amount ||
-      +spspQuote.destinationAmount < +spsp.minimum_destination_amount) {
+  if (+quote.destinationAmount > +spsp.maximum_destination_amount ||
+      +quote.destinationAmount < +spsp.minimum_destination_amount) {
     throw new Error('Destination amount (' +
-      spspQuote.destinationAmount +
+      quote.destinationAmount +
       ') is outside of range [' +
       spsp.maximum_destination_amount +
       ', ' +
@@ -215,11 +229,13 @@ function * sendPayment (plugin, payment) {
     executionCondition: condition,
     expiresAt: moment()
       .add(payment.sourceExpiryDuration, 'seconds')
-      .format()
+      .toISOString()
   })
 
   return yield listen
 }
+
+/**
 
 /**
   * Parameters for an SPSP payment
@@ -230,7 +246,24 @@ function * sendPayment (plugin, payment) {
   * @property {string} destination_account Receiver's ILP address.
   * @property {string} connector_account The connector's account on the sender's ledger. The initial transfer on the sender's ledger is made to this account.
   * @property {string} spsp SPSP response object, containing details to contruct transfers.
-  * @property {string} data extra data to attach to transfer.
+  * @property {Object} [publicHeaders={}] public headers for PSK data. The key-value pairs represent header names and values.
+  * @property {Object} [headers={}] headers for PSK data. The key-value pairs represent header names and values.
+  * @property {Object} [memo={}] arbitrary JSON object for additional data.
+  */
+
+/**
+  * SPSP query response
+  * @typedef {Object} SpspResponse
+  * @property {string} destination_account The ILP address which will receive payments.
+  * @property {string} shared_secret Base64url encoded 32-byte shared secret for use in PSK.
+  * @property {string} maximum_destination_amount Integer string representing the maximum that the receiver will be willing to accept.
+  * @property {string} minimum_destination_amount Integer string representing the minimum that the receiver will be willing to accept.
+  * @property {Object} ledger_info An object containing the receiver's ledger metadata.
+  * @property {string} ledger_info.currency_code The currency code of the receiver's ledger.
+  * @property {string} ledger_info.currency_symbol The currency symbol of the receiver's ledger.
+  * @property {string} ledger_info.precision The precision of the receiver's ledger.
+  * @property {string} ledger_info.scale The scale of the receiver's ledger.
+  * @property {Object} receiver_info Additional information containing arbitrary fields.
   */
 
 module.exports = {

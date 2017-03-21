@@ -10,16 +10,20 @@ const nock = require('nock')
 const SPSP = require('../src/lib/spsp')
 const webfinger = {
   links: [{
-    rel: 'https://interledger.org/rel/spsp/v1',
+    rel: 'https://interledger.org/rel/spsp/v2',
     href: 'https://example.com/spsp' 
   }]
 }
 const spspResponse = {
-  shared_secret: 'itsasecret',
+  shared_secret: 'COgjSJJiXUq_eRlgsjm_8FJBSrNKpzCMhD4NYnD57SU',
   destination_account: 'test.other.alice',
   maximum_destination_amount: '20',
   minimum_destination_amount: '10',
+  receiver_info: {},
   ledger_info: {
+    currency_code: 'USD',
+    currency_symbol: '$',
+    precision: 10,
     scale: 2
   }
 }
@@ -102,6 +106,23 @@ describe('SPSP', function () {
       assert.deepEqual(payment, this.result)
     })
 
+    it('should return an error if spspResponse is invalid', function * () {
+      nock('https://example.com')
+        .get('/.well-known/webfinger?resource=acct:alice@example.com')
+        .reply(200, webfinger)
+
+      const badResponse = Object.assign({},
+        spspResponse,
+        { shared_secret: 'garbage' })
+
+      nock('https://example.com')
+        .get('/spsp')
+        .reply(200, badResponse)
+
+      yield expect(SPSP.quote(this.plugin, this.params))
+        .to.eventually.be.rejectedWith(/shared_secret must be 32 bytes/)
+    })
+
     it('should return an error if webfinger can\'t be reached', function * () {
       nock('https://example.com')
         .get('/.well-known/webfinger?resource=acct:alice@example.com')
@@ -117,7 +138,7 @@ describe('SPSP', function () {
         .reply(200, {links: []})
 
       yield expect(SPSP.quote(this.plugin, this.params))
-        .to.eventually.be.rejectedWith(/spsp\/v1 not found/)
+        .to.eventually.be.rejectedWith(/spsp\/v2 not found/)
     })
 
     it('should fail without an amount', function * () {

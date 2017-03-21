@@ -17,6 +17,14 @@ describe('Utils', function () {
         /invalid request:/)
     })
 
+    it('should not allow the user to specify a nonce', function () {
+      assert.throws(() => Details.createDetails({
+        // make sure it's case insensitive
+        publicHeaders: { nOnce: 'a very bad nonce' }
+      }),
+        /"Nonce" header may not be specified manually/)
+    })
+
     it('should encrypt 64 kilobytes of data', function () {
       const len = 64000
       const secret = Buffer.from('secret')
@@ -46,6 +54,24 @@ binary data goes here
         statusLine: true
       }),
         /unsupported status/)
+    })
+
+    it('should not parse a request without authentication tag', function () {
+      const request = `PSK/1.0
+Nonce: bOyTLeBv5XRfwJffYTR_tA
+Encryption: aes-256-gcm
+Header: stuff
+
+binary data goes here
+      `
+
+      assert.throws(() => {
+        return Details.parseDetails({
+          details: base64url(Buffer.from(request, 'utf8')),
+          secret: Buffer.from('secret', 'utf8')
+        })
+      },
+        /unsupported encryption/)
     })
 
     it('should parse a request', function () {
@@ -78,10 +104,11 @@ binary data goes here`
       })
 
       const parsed = Details.parsePacketAndDetails({ packet, secret })
+      const tag = parsed.publicHeaders.encryption.split(' ')[1]
       assert.deepEqual(
         parsed,
         { publicHeaders: {
-            encryption: 'aes-256-ctr',
+            encryption: 'aes-256-gcm ' + tag,
             // the nonce field isn't deterministic
             nonce: parsed.publicHeaders.nonce,
             unsafeheader: 'value'
