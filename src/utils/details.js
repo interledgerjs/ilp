@@ -7,7 +7,7 @@ const Packet = require('./packet')
 const debug = require('debug')('ilp:psk-data')
 const { startsWith } = require('.')
 const DATA_DELIMITER = '\n\n'
-const STATUS_LINE_REGEX = /^PSK\/1\.0$/
+const STATUS_LINE_REGEX = /^PSK\/1\.\d+$/
 const KEY_HEADER_REGEX = /^hmac-sha-256 (.+)$/
 
 function _createRequest ({
