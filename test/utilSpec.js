@@ -56,6 +56,18 @@ binary data goes here
         /unsupported status/)
     })
 
+    it('should parse a request with a minor version change', function () {
+      const request = `PSK/1.1
+Header: stuff
+
+binary data goes here
+      `
+      Details._parseRequest({
+        request: Buffer.from(request, 'utf8'),
+        statusLine: true
+      })
+    })
+
     it('should not parse a request without authentication tag', function () {
       const request = `PSK/1.0
 Nonce: bOyTLeBv5XRfwJffYTR_tA
