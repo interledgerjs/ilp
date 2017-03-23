@@ -297,7 +297,7 @@ SPSP query response
 | Name | Type | Description |
 | --- | --- | --- |
 | destination_account | <code>string</code> | The ILP address which will receive payments. |
-| shared_secret | <code>string</code> | Base64url encoded 32-byte shared secret for use in PSK. |
+| shared_secret | <code>string</code> | Base64url encoded 16-byte shared secret for use in PSK. |
 | maximum_destination_amount | <code>string</code> | Integer string representing the maximum that the receiver will be willing to accept. |
 | minimum_destination_amount | <code>string</code> | Integer string representing the minimum that the receiver will be willing to accept. |
 | ledger_info | <code>Object</code> | An object containing the receiver's ledger metadata. |
