@@ -154,7 +154,7 @@ function * quote (plugin, {
       connectorAccount: destinationAddress,
       sourceAmount: amount,
       destinationAmount: amount,
-      sourceExpiryDuration: destinationExpiryDuration
+      sourceExpiryDuration: destinationExpiryDuration || DEFAULT_EXPIRY_DURATION
     })
   }
 
