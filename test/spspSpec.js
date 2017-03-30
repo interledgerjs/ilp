@@ -27,9 +27,7 @@ const spspResponse = {
   receiver_info: {},
   ledger_info: {
     currency_code: 'USD',
-    currency_symbol: '$',
-    precision: 10,
-    scale: 2
+    currency_scale: 2
   }
 }
 
