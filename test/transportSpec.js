@@ -35,6 +35,63 @@ describe('Transport', function () {
     })
   })
 
+  describe('IPR', function () {
+    beforeEach(function () {
+      this.secret = Buffer.from('secret')
+      this.params = Transport.createPacketAndCondition({
+        destinationAmount: '1',
+        destinationAccount: 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ',
+        secret: this.secret,
+        data: Buffer.from('test data'),
+        id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
+        expiresAt: moment().toISOString()
+      })
+    })
+
+    it('should encode an IPR properly', function () {
+      const ipr = ILP.IPR.encodeIPR(this.params)
+
+      // version byte at the start
+      assert.equal(ipr.slice(0, 1).toString('hex'), '02')
+      // condition should come next
+      assert.equal(base64url(ipr.slice(1, 33)), this.params.condition)
+      // ignore the two length bytes before the variable octet string
+      assert.equal(base64url(ipr.slice(35)), this.params.packet)
+    })
+
+    it('should not encode an IPR with an invalid condition', function () {
+      this.params.condition += 'aadoimawdadoiamdwad'
+      assert.throws(() => ILP.IPR.encodeIPR(this.params),
+        /params.condition must encode 32 bytes/)
+    })
+
+    it('should decode an IPR', function () {
+      const ipr = Buffer.from(
+        '0289d6ba47b7bb8fd72bede6ae57dd0adaaca5eca79c8f25ac9c33019e54bdcb8f8' +
+        '1c80181c5000000000000000134746573742e6578616d706c652e616c6963652e65' +
+        '624b5763414542395f41476d65574958334431464c7749583043467666465351818' +
+        '550534b2f312e300a4e6f6e63653a203049494d742d6d38794c5851304a4f693469' +
+        '766972510a456e6372797074696f6e3a206165732d3235362d67636d20303137432' +
+        'd33677731726a455a7a71753332695636670a0a5e2b0de9974e3aefedfe8e85740b' +
+        'cd8dff4af2aaed3311d05e808e2e4b3f4eb49670e260915befca7e9aa7da7c970400',
+        'hex')
+
+      const conditionFixture =
+        'ida6R7e7j9cr7eauV90K2qyl7KecjyWsnDMBnlS9y48'
+
+      const packetFixture =
+        'AYHFAAAAAAAAAAE0dGVzdC5leGFtcGxlLmFsaWNlLmViS1djQUVCOV9BR21lV0lYM0Q' +
+        'xRkx3SVgwQ0Z2ZkZTUYGFUFNLLzEuMApOb25jZTogMElJTXQtbTh5TFhRMEpPaTRpdm' +
+        'lyUQpFbmNyeXB0aW9uOiBhZXMtMjU2LWdjbSAwMTdDLTNndzFyakVaenF1MzJpVjZnC' +
+        'gpeKw3pl0467-3-joV0C82N_0ryqu0zEdBegI4uSz9OtJZw4mCRW-_Kfpqn2nyXBAA'
+
+      const { packet, condition } = ILP.IPR.decodeIPR(ipr)
+
+      assert.equal(condition, conditionFixture)
+      assert.equal(packet, packetFixture)
+    })
+  })
+
   describe('createPacketAndCondition', function () {
     beforeEach(function () {
       this.secret = Buffer.from('secret')

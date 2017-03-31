@@ -191,15 +191,20 @@ const receiver = new FiveBellsLedgerPlugin({
     console.log('funds received!')
   })
 
-  const { packet, condition } = ILP.IPR.createPacketAndCondition({
+  // `ipr` is a buffer with the encoded IPR
+  const ipr = ILP.IPR.createIPR({
     receiverSecret: Buffer.from('secret', 'utf8'),
     destinationAccount: receiver.getAccount(),
-    destinationAmount: '10', // denominated in the ledger's base unit
+    // denominated in the ledger's base unit
+    destinationAmount: '10',
   })
 
-  // Note the user of this module must implement the method for
-  // communicating packet and condition from the recipient to the sender
+  // Note the user of this module must implement the method for communicating
+  // packet and condition from the recipient to the sender.
 
+  // In practice, The rest of this example would happen on the sender's side.
+
+  const { packet, condition } = ILP.IPR.decodeIPR(ipr)
   const quote = await ILP.ILQP.quoteByPacket(sender, packet)
   console.log('got quote:', quote)
 
@@ -214,7 +219,6 @@ const receiver = new FiveBellsLedgerPlugin({
 
   sender.on('outgoing_fulfill', (transfer, fulfillment) => {
     console.log(transfer.id, 'was fulfilled with', fulfillment)
-    stopListening()
   })
 })()
 ```
