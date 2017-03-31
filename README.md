@@ -133,7 +133,8 @@ const { sharedSecret, destinationAccount } = ILP.PSK.generateParams({
   const { packet, condition } = ILP.PSK.createPacketAndCondition({
     sharedSecret,
     destinationAccount,
-    destinationAmount: '10', // denominated in the ledger's base unit
+    // denominated in the ledger's base unit
+    destinationAmount: '10',
   })
 
   const quote = await ILP.ILQP.quoteByPacket(sender, packet)
@@ -191,15 +192,20 @@ const receiver = new FiveBellsLedgerPlugin({
     console.log('funds received!')
   })
 
-  const { packet, condition } = ILP.IPR.createPacketAndCondition({
+  // `ipr` is a buffer with the encoded IPR
+  const ipr = ILP.IPR.createIPR({
     receiverSecret: Buffer.from('secret', 'utf8'),
     destinationAccount: receiver.getAccount(),
-    destinationAmount: '10', // denominated in the ledger's base unit
+    // denominated in the ledger's base unit
+    destinationAmount: '10',
   })
 
-  // Note the user of this module must implement the method for
-  // communicating packet and condition from the recipient to the sender
+  // Note the user of this module must implement the method for communicating
+  // packet and condition from the recipient to the sender.
 
+  // In practice, The rest of this example would happen on the sender's side.
+
+  const { packet, condition } = ILP.IPR.decodeIPR(ipr)
   const quote = await ILP.ILQP.quoteByPacket(sender, packet)
   console.log('got quote:', quote)
 
@@ -214,7 +220,6 @@ const receiver = new FiveBellsLedgerPlugin({
 
   sender.on('outgoing_fulfill', (transfer, fulfillment) => {
     console.log(transfer.id, 'was fulfilled with', fulfillment)
-    stopListening()
   })
 })()
 ```
@@ -394,10 +399,57 @@ Listen on a plugin for incoming PSK payments, and auto-generate fulfillments.
 <a name="module_IPR..createPacketAndCondition"></a>
 
 ### IPR~createPacketAndCondition(params) ⇒ <code>Object</code>
+Create a packet and condition
+
+**Kind**: inner method of <code>[IPR](#module_IPR)</code>  
+**Returns**: <code>Object</code> - Packet and condition for use in the IPR protocol.  
+
+| Param | Type | Default | Description |
+| --- | --- | --- | --- |
+| params | <code>Object</code> |  | Parameters for creating payment request |
+| params.destinationAmount | <code>String</code> |  | Amount that should arrive in the recipient's account. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger. |
+| params.destinationAccount | <code>String</code> |  | Target account's ILP address |
+| params.receiverSecret | <code>Buffer</code> |  | Secret for generating IPR packets |
+| [params.id] | <code>String</code> | <code>uuid.v4()</code> | Unique ID for the request (used to ensure conditions are unique per request) |
+| [params.expiresAt] | <code>String</code> | <code>60 seconds from now</code> | Expiry of request |
+| [params.data] | <code>Buffer</code> | <code></code> | Additional data to include in the request |
+| [params.headers] | <code>Object</code> | <code></code> | Additional headers for private details. The key-value pairs represent header names and values. |
+| [params.publicHeaders] | <code>Object</code> | <code></code> | Additional headers for public details. The key-value pairs represent header names and values. |
+| [params.disableEncryption] | <code>Object</code> | <code>false</code> | Turns off encryption of private memos and data |
+
+<a name="module_IPR..encodeIPR"></a>
+
+### IPR~encodeIPR(params) ⇒ <code>Buffer</code>
+Create an encoded IPR for use in the IPR transport protocol
+
+**Kind**: inner method of <code>[IPR](#module_IPR)</code>  
+**Returns**: <code>Buffer</code> - encoded IPR buffer  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| params | <code>Object</code> | Parameters for encoding IPR |
+| params.packet | <code>String</code> | ILP packet of this IPR |
+| params.condition | <code>String</code> | condition of this IPR |
+
+<a name="module_IPR..decodeIPR"></a>
+
+### IPR~decodeIPR(ipr) ⇒ <code>Object</code>
+Decode an IPR buffer for use in the IPR transport protocol
+
+**Kind**: inner method of <code>[IPR](#module_IPR)</code>  
+**Returns**: <code>Object</code> - Decoded IPR parameters, containing 'packet' and 'condition' as base64url strings.  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| ipr | <code>Buffer</code> | encoded IPR buffer |
+
+<a name="module_IPR..createIPR"></a>
+
+### IPR~createIPR(params) ⇒ <code>Buffer</code>
 Create a payment request for use in the IPR transport protocol.
 
 **Kind**: inner method of <code>[IPR](#module_IPR)</code>  
-**Returns**: <code>Object</code> - Payment request  
+**Returns**: <code>Buffer</code> - encoded IPR buffer for use in the IPR protocol  
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
