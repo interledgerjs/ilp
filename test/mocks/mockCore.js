@@ -13,8 +13,7 @@ class Client extends EventEmitter {
     this.plugin = {
       getAccount: () => this.account,
       getInfo: () => ({
-        scale: 2,
-        precision: 10
+        currencyScale: 2
       }),
       isConnected: () => true,
       rejectIncomingTransfer: () => {

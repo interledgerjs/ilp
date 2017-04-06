@@ -56,17 +56,15 @@ function validateSPSPResponse (response) {
   assert(typeof response.minimum_destination_amount === 'string', 'minimum_destination_amount must be a string')
   assert(typeof response.ledger_info === 'object', 'ledger_info must be an object')
   assert(typeof response.ledger_info.currency_code === 'string', 'ledger_info.currency_code must be a string')
-  assert(typeof response.ledger_info.currency_symbol === 'string', 'ledger_info.currency_symbol must be a string')
-  assert(typeof response.ledger_info.scale === 'number', 'ledger_info.scale must be a number')
-  assert(typeof response.ledger_info.precision === 'number', 'ledger_info.precision must be a number')
+  assert(typeof response.ledger_info.currency_scale === 'number', 'ledger_info.currency_scale must be a number')
   assert(typeof response.receiver_info === 'object', 'receiver_info must be an object')
 }
 
 const _createPayment = (plugin, spsp, quote, id) => {
   const sourceAmount =
-    toDecimal(quote.sourceAmount, plugin.getInfo().scale)
+    toDecimal(quote.sourceAmount, plugin.getInfo().currencyScale)
   const destinationAmount =
-    toDecimal(quote.destinationAmount, spsp.ledger_info.scale)
+    toDecimal(quote.destinationAmount, spsp.ledger_info.currency_scale)
 
   return {
     id: id || uuid(),
@@ -116,13 +114,12 @@ const quote = function * (plugin, {
   assert(receiver, 'receiver')
   assert(xor(sourceAmount, destinationAmount),
     'destinationAmount or sourceAmount must be specified')
-
-  const sourceScale = plugin.getInfo().scale
+  const sourceScale = plugin.getInfo().currencyScale
   const integerSourceAmount = sourceAmount &&
     toInteger(sourceAmount, sourceScale)
 
   const spsp = yield _querySPSP(receiver)
-  const destinationScale = spsp.ledger_info.scale
+  const destinationScale = spsp.ledger_info.currency_scale
   const integerDestinationAmount = destinationAmount &&
     toInteger(destinationAmount, destinationScale)
 
@@ -175,12 +172,12 @@ function * sendPayment (plugin, payment) {
   assert(payment.sourceExpiryDuration, 'missing sourceExpiryDuration')
   assert(payment.id, 'payment must have an id')
 
-  const sourceScale = plugin.getInfo().scale
+  const sourceScale = plugin.getInfo().currencyScale
   const integerSourceAmount =
     toInteger(payment.sourceAmount, sourceScale)
 
   const data = JSON.stringify(payment.memo || {})
-  const destinationScale = payment.spsp.ledger_info.scale
+  const destinationScale = payment.spsp.ledger_info.currency_scale
   const integerDestinationAmount =
     toInteger(payment.destinationAmount, destinationScale)
 
@@ -260,9 +257,7 @@ function * sendPayment (plugin, payment) {
   * @property {string} minimum_destination_amount Integer string representing the minimum that the receiver will be willing to accept.
   * @property {Object} ledger_info An object containing the receiver's ledger metadata.
   * @property {string} ledger_info.currency_code The currency code of the receiver's ledger.
-  * @property {string} ledger_info.currency_symbol The currency symbol of the receiver's ledger.
-  * @property {string} ledger_info.precision The precision of the receiver's ledger.
-  * @property {string} ledger_info.scale The scale of the receiver's ledger.
+  * @property {string} ledger_info.currency_scale The currency scale of the receiver's ledger.
   * @property {Object} receiver_info Additional information containing arbitrary fields.
   */
 
