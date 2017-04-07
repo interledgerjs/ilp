@@ -132,4 +132,40 @@ binary data goes here`
         })
     })
   })
+
+  describe('retryPromise', () => {
+    beforeEach(function () {
+      this.minWait = 10
+      this.maxWait = 10
+
+      this.stopWaiting = new Date()
+      this.stopWaiting.setSeconds(this.stopWaiting.getSeconds + 1)
+    })
+
+    it('should retry a promise', function * () {
+      let counter = 0
+      const callback = () => {
+        if (counter++ < 3) {
+          return Promise.reject(new Error('please retry'))
+        }
+        return Promise.resolve('success!')
+      }
+
+      yield Utils.retryPromise({
+        callback,
+        minWait: this.minWait,
+        maxWait: this.maxWait,
+        stopWaiting: this.stopWaiting
+      })
+    })
+
+    it('should stop retring after expiry', function * () {
+      yield assert.isRejected(Utils.retryPromise({
+        callback: () => Promise.reject(new Error('please retry')),
+        minWait: this.minWait,
+        maxWait: this.maxWait,
+        stopWaiting: (new Date())
+      }), /retry expiry of .* reached/)
+    })
+  })
 })

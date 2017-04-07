@@ -302,9 +302,7 @@ SPSP query response
 | minimum_destination_amount | <code>string</code> | Integer string representing the minimum that the receiver will be willing to accept. |
 | ledger_info | <code>Object</code> | An object containing the receiver's ledger metadata. |
 | ledger_info.currency_code | <code>string</code> | The currency code of the receiver's ledger. |
-| ledger_info.currency_symbol | <code>string</code> | The currency symbol of the receiver's ledger. |
-| ledger_info.precision | <code>string</code> | The precision of the receiver's ledger. |
-| ledger_info.scale | <code>string</code> | The scale of the receiver's ledger. |
+| ledger_info.currency_scale | <code>string</code> | The currency scale of the receiver's ledger. |
 | receiver_info | <code>Object</code> | Additional information containing arbitrary fields. |
 
 
@@ -345,7 +343,9 @@ Create a payment request using a Pre-Shared Key (PSK).
 | [params.data] | <code>Buffer</code> | <code></code> | Additional data to include in the request |
 | [params.headers] | <code>Object</code> | <code></code> | Additional headers for private PSK details. The key-value pairs represent header names and values. |
 | [params.publicHeaders] | <code>Object</code> | <code></code> | Additional headers for public PSK details. The key-value pairs represent header names and values. |
-| [params.disableEncryption] | <code>Object</code> | <code>false</code> | Turns off encryption of private memos and data |
+| [params.disableEncryption] | <code>Boolean</code> | <code>false</code> | Turns off encryption of private memos and data |
+| [params.minFulfillRetryWait] | <code>Number</code> |  | Minimum amount of time to wait before retrying fulfillment |
+| [params.maxFulfillRetryWait] | <code>Number</code> |  | Maximum amount of time to wait before retrying fulfillment |
 
 <a name="module_PSK..generateParams"></a>
 
@@ -410,7 +410,9 @@ Create a payment request for use in the IPR transport protocol.
 | [params.data] | <code>Buffer</code> | <code></code> | Additional data to include in the request |
 | [params.headers] | <code>Object</code> | <code></code> | Additional headers for private details. The key-value pairs represent header names and values. |
 | [params.publicHeaders] | <code>Object</code> | <code></code> | Additional headers for public details. The key-value pairs represent header names and values. |
-| [params.disableEncryption] | <code>Object</code> | <code>false</code> | Turns off encryption of private memos and data |
+| [params.disableEncryption] | <code>Boolean</code> | <code>false</code> | Turns off encryption of private memos and data |
+| [params.minFulfillRetryWait] | <code>Number</code> |  | Minimum amount of time to wait before retrying fulfillment |
+| [params.maxFulfillRetryWait] | <code>Number</code> |  | Maximum amount of time to wait before retrying fulfillment |
 
 <a name="module_IPR..listen"></a>
 

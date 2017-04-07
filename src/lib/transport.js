@@ -8,8 +8,11 @@ const debug = require('debug')('ilp:transport')
 const assert = require('assert')
 const base64url = require('../utils/base64url')
 const BigNumber = require('bignumber.js')
-const { omitUndefined, startsWith, safeConnect } = require('../utils')
+const { retryPromise, omitUndefined, startsWith, safeConnect } = require('../utils')
 const { createDetails, parseDetails } = require('../utils/details')
+
+const DEFAULT_MIN_FULFILL_RETRY_WAIT = 250
+const DEFAULT_MAX_FULFILL_RETRY_WAIT = 1000
 
 function createPacketAndCondition ({
   destinationAmount,
@@ -72,7 +75,9 @@ function _reject (plugin, id, reason) {
 
 function * listen (plugin, {
   receiverSecret,
-  allowOverPayment
+  allowOverPayment,
+  minFulfillRetryWait,
+  maxFulfillRetryWait
 }, callback) {
   assert(plugin && typeof plugin === 'object', 'plugin must be an object')
   assert(typeof callback === 'function', 'callback must be a function')
@@ -137,7 +142,12 @@ function * listen (plugin, {
         destinationAccount,
         destinationAmount,
         fulfill: function () {
-          return plugin.fulfillCondition(transfer.id, fulfillment)
+          return retryPromise({
+            callback: () => plugin.fulfillCondition(transfer.id, fulfillment),
+            minWait: minFulfillRetryWait || DEFAULT_MIN_FULFILL_RETRY_WAIT,
+            maxWait: maxFulfillRetryWait || DEFAULT_MAX_FULFILL_RETRY_WAIT,
+            stopWaiting: (new Date(transfer.expiresAt))
+          })
         }
       }))
     } catch (e) {
