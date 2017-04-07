@@ -133,7 +133,7 @@ const { sharedSecret, destinationAccount } = ILP.PSK.generateParams({
   const { packet, condition } = ILP.PSK.createPacketAndCondition({
     sharedSecret,
     destinationAccount,
-    destinationAmount: '10',
+    destinationAmount: '10', // denominated in the ledger's base unit
   })
 
   const quote = await ILP.ILQP.quoteByPacket(sender, packet)
@@ -182,7 +182,7 @@ const receiver = new FiveBellsLedgerPlugin({
 
 (async function () {
   const stopListening = await ILP.IPR.listen(receiver, {
-    secret: Buffer.from('secret', 'utf8')
+    receiverSecret: Buffer.from('secret', 'utf8')
   }, async function ({ transfer, fulfill }) {
     console.log('got transfer:', transfer)
 
@@ -192,9 +192,9 @@ const receiver = new FiveBellsLedgerPlugin({
   })
 
   const { packet, condition } = ILP.IPR.createPacketAndCondition({
-    secret: Buffer.from('secret', 'utf8'),
+    receiverSecret: Buffer.from('secret', 'utf8'),
     destinationAccount: receiver.getAccount(),
-    destinationAmount: '10',
+    destinationAmount: '10', // denominated in the ledger's base unit
   })
 
   // Note the user of this module must implement the method for

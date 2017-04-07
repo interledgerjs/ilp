@@ -21,7 +21,9 @@ const cryptoHelper = require('../utils/crypto')
   * @param {Buffer} [params.data=null] Additional data to include in the request
   * @param {Object} [params.headers=null] Additional headers for private details. The key-value pairs represent header names and values.
   * @param {Object} [params.publicHeaders=null] Additional headers for public details. The key-value pairs represent header names and values.
-  * @param {Object} [params.disableEncryption=false] Turns off encryption of private memos and data
+  * @param {Boolean} [params.disableEncryption=false] Turns off encryption of private memos and data
+  * @param {Number} [params.minFulfillRetryWait=250] Minimum amount of time (in ms) to wait before retrying fulfillment
+  * @param {Number} [params.maxFulfillRetryWait=1000] Maximum amount of time (in ms) to wait before retrying fulfillment
   *
   * @return {Object} Payment request
   */

@@ -469,6 +469,32 @@ data`, 'utf8')) }))
       yield fulfilled
     })
 
+    it('should retry fulfillCondition if it fails', function * () {
+      const fulfilled = new Promise((resolve) => {
+        let counter = 0
+        this.plugin.fulfillCondition = () => {
+          if (counter++ < 3) {
+            return Promise.reject(new Error('you\'d better retry this'))
+          }
+          resolve()
+          return Promise.resolve()
+        }
+      })
+
+      this.callback = (details) => {
+        return details.fulfill()
+      }
+
+      this.params.maxFulfillRetryWait = 10
+      yield Transport.listen(this.plugin, this.params, this.callback, 'ipr')
+      const res = yield this.plugin.emitAsync('incoming_prepare', this.transfer)
+      if (typeof res[0] === 'object') {
+        throw new Error('got error code: ' + JSON.stringify(res))
+      }
+
+      yield fulfilled
+    })
+
     it('should reject if the listen callback throws', function * () {
       const rejected = new Promise((resolve) => {
         this.plugin.rejectIncomingTransfer = () => {
