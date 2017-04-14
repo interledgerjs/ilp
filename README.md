@@ -335,7 +335,6 @@ SPSP query response
 | query.destinationAddress | <code>String</code> | Recipient's address |
 | [query.sourceAmount] | <code>String</code> | Either the sourceAmount or destinationAmount must be specified. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger. |
 | [query.destinationAmount] | <code>String</code> | Either the sourceAmount or destinationAmount must be specified. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger. |
-| [query.sourceExpiryDuration] | <code>String</code> &#124; <code>Number</code> | Number of seconds between when the source transfer is proposed and when it expires. |
 | [query.destinationExpiryDuration] | <code>String</code> &#124; <code>Number</code> | Number of seconds between when the destination transfer is proposed and when it expires. |
 | [query.connectors] | <code>Array</code> | List of ILP addresses of connectors to use for this quote. |
 

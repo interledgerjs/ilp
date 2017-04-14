@@ -1,5 +1,6 @@
 'use strict'
 
+const IlpPacket = require('ilp-packet')
 const chai = require('chai')
 const agent = require('superagent')
 const chaiAsPromised = require('chai-as-promised')
@@ -60,20 +61,13 @@ describe('SPSP', function () {
 
   describe('quote', function () {
     beforeEach(function () {
-      this.plugin.sendMessage = (msg) => {
-        this.plugin.emit('incoming_message', {
-          data: {
-            id: msg.data.id,
-            method: 'quote_response',
-            data: {
-              source_amount: '1',
-              destination_amount: '1',
-              source_connector_account: 'test.example.connie',
-              source_expiry_duration: '10'
-            }
-          }
+      this.plugin.sendRequest = (msg) => {
+        return Promise.resolve({
+          ilp: IlpPacket.serializeIlqpByDestinationResponse({
+            sourceAmount: '1',
+            sourceHoldDuration: 10000
+          })
         })
-        return Promise.resolve()
       }
 
       this.id = '622d0846-2063-45c3-9dc0-ddf5182f833c'
