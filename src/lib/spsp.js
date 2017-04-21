@@ -196,9 +196,11 @@ function * sendPayment (plugin, payment) {
 
   const listen = new Promise((resolve, reject) => {
     function remove () {
-      plugin.removeListener('outgoing_fulfill', fulfill)
-      plugin.removeListener('outgoing_cancel', cancel)
-      plugin.removeListener('outgoing_reject', cancel)
+      setImmediate(function () {
+        plugin.removeListener('outgoing_fulfill', fulfill)
+        plugin.removeListener('outgoing_cancel', cancel)
+        plugin.removeListener('outgoing_reject', cancel)
+      })
     }
 
     function fulfill (transfer, fulfillment) {
