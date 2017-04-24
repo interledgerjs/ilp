@@ -5,6 +5,7 @@ const moment = require('moment')
 const assert = chai.assert
 const ILQP = require('..').ILQP
 const Packet = require('../src/utils/packet')
+const { wait } = require('../src/utils')
 const MockPlugin = require('./mocks/mockPlugin')
 const expect = chai.expect
 const chaiAsPromised = require('chai-as-promised')
@@ -76,6 +77,32 @@ describe('ILQP', function () {
       assert.deepEqual(
         response,
         this.result)
+    })
+
+    it('should remove incoming message listener after response', function * () {
+      assert.equal(this.plugin.listeners('incoming_message').length, 0,
+        'no listeners should be registered before quote')
+
+      yield ILQP.quote(this.plugin, this.params)
+      yield wait(10)
+
+      assert.equal(this.plugin.listeners('incoming_message').length, 0,
+        'no listeners should be registered after quote')
+    })
+
+    it('should remove incoming message listener after a timeout', function * () {
+      this.plugin.sendMessage = () => Promise.resolve(null)
+      this.params.timeout = 10
+
+      assert.equal(this.plugin.listeners('incoming_message').length, 0,
+        'no listeners should be registered before quote')
+
+      yield expect(ILQP.quote(this.plugin, this.params))
+        .to.be.rejectedWith(/timed out/)
+      yield wait(10)
+
+      assert.equal(this.plugin.listeners('incoming_message').length, 0,
+        'no listeners should be registered after quote')
     })
 
     it('should default to getInfo\'s connectors', function * () {
@@ -218,6 +245,28 @@ describe('ILQP', function () {
       yield expect(promise)
         .to.eventually.be.rejectedWith(/there was an error/)
     })
+
+    it('should remove incoming message listener after an error response', function * () {
+      this.response.data.method = 'error'
+      this.response.data.data = { message: 'there was an error' }
+
+      assert.equal(this.plugin.listeners('incoming_message').length, 0,
+        'no listeners should be registered before quote')
+
+      const promise = ILQP._sendAndReceiveMessage(this.params)
+
+      assert.equal(this.plugin.listeners('incoming_message').length, 1,
+        'one listener should be registered during quote')
+
+      this.plugin.emit('incoming_message', this.response)
+      yield expect(promise)
+        .to.eventually.be.rejectedWith(/there was an error/)
+      yield wait(10)
+
+      assert.equal(this.plugin.listeners('incoming_message').length, 0,
+        'no listeners should be registered after quote')
+    })
+
 
     it('should time out without response', function * () {
       this.params.timeout = 10
