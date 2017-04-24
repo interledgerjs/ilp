@@ -50,29 +50,55 @@ function _sendAndReceiveMessage ({
   const id = message.data.id = message.data.id || uuid()
   debug('sending message:', JSON.stringify(message))
 
+  // keep a remove callback in case any of the code needs
+  // to remove the listener (preventing a memory leak where
+  // failed quote requests build up
+  let remove = () => {}
+
   const responded = new Promise((resolve, reject) => {
     function onIncomingMessage (response) {
       debug('got incoming message:', JSON.stringify(response))
       const data = response.data
 
       if (!data || data.id !== id) return
-      if (data.method === 'error') reject(data.data.message)
+      if (data.method === 'error') {
+        remove()
+        reject(data.data.message)
+      }
 
       if (data.method === responseMethod) {
         debug('response of type', responseMethod)
-        plugin.removeListener('incoming_message', onIncomingMessage)
+        remove()
         resolve(response)
       }
     }
 
     // TODO: optimize to not add a listener each time?
     plugin.on('incoming_message', onIncomingMessage)
+
+    // now that the listener has been added, set the remove function to
+    // get rid of the listener.
+    remove = () => {
+      debug('removing listener for request', id)
+      // set the remove callback to a no-op so that the function is not removed
+      // twice.
+      remove = () => {}
+      // setImmediate is used so that the listener list's size isn't changed
+      // until after the emitter is done iterating listeners.
+      setImmediate(() => {
+        debug('removing listener for real')
+        plugin.removeListener('incoming_message', onIncomingMessage)
+      })
+    }
   })
 
   return Promise.race([
     plugin.sendMessage(message).then(() => responded),
     wait(timeout || DEFAULT_MESSAGE_TIMEOUT)
-      .then(() => { throw new Error('quote request timed out') })
+      .then(() => {
+        remove()
+        throw new Error('quote request timed out')
+      })
   ])
 }
 
