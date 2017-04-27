@@ -1,6 +1,7 @@
 'use strict'
 
 const chai = require('chai')
+const agent = require('superagent')
 const chaiAsPromised = require('chai-as-promised')
 chai.use(chaiAsPromised)
 const expect = chai.expect
@@ -107,6 +108,20 @@ describe('SPSP', function () {
 
       const payment = yield SPSP.quote(this.plugin, this.params)
       assert.deepEqual(payment, this.result)
+    })
+
+    it('should accept an SPSP response as a parameter', function * () {
+      // an error will be occurred if this nock is called
+      nock('https://example.com')
+        .get('/spsp')
+        .reply(200, { garbage: 'trash' })
+
+      this.params.spspResponse = spspResponse
+      const payment = yield SPSP.quote(this.plugin, this.params)
+      assert.deepEqual(payment, this.result)
+
+      // get the nock to clean it up
+      yield agent.get('https://example.com/spsp')
     })
 
     it('should return an error if spspResponse is invalid', function * () {

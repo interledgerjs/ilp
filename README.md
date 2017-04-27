@@ -133,8 +133,7 @@ const { sharedSecret, destinationAccount } = ILP.PSK.generateParams({
   const { packet, condition } = ILP.PSK.createPacketAndCondition({
     sharedSecret,
     destinationAccount,
-    // denominated in the ledger's base unit
-    destinationAmount: '10',
+    destinationAmount: '10', // denominated in the ledger's base unit
   })
 
   const quote = await ILP.ILQP.quoteByPacket(sender, packet)
@@ -238,6 +237,17 @@ Query an SPSP endpoint and get SPSP details
 | --- | --- | --- |
 | receiver | <code>String</code> | webfinger account identifier (eg. 'alice@example.com') or URL to SPSP endpoint. |
 
+<a name="module_SPSP..validateSPSPResponse"></a>
+
+### SPSP~validateSPSPResponse(SPSP)
+Validate a server's SPSP response, and throw an error if it's wrong.
+
+**Kind**: inner method of <code>[SPSP](#module_SPSP)</code>  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| SPSP | <code>Promise.&lt;SpspResponse&gt;</code> | SPSP response from server |
+
 <a name="module_SPSP..quote"></a>
 
 ### SPSP~quote(plugin, params) ⇒ <code>Promise.&lt;SpspPayment&gt;</code>
@@ -256,6 +266,7 @@ Quote to an SPSP receiver
 | [params.connectors] | <code>Array</code> | <code>[]</code> | connectors to quote. These will be supplied by plugin.getInfo if left unspecified. |
 | [params.id] | <code>String</code> | <code>uuid()</code> | id to use for payment. sending a payment with the same id twice will be idempotent. If left unspecified, the id will be generated randomly. |
 | [params.timeout] | <code>Number</code> | <code>5000</code> | how long to wait for a quote response (ms). |
+| [params.spspResponse] | <code>SpspResponse</code> | <code>SPSP.query(params.receiver)</code> | SPSP response. The receiver endpoint will be queried automatically if this isn't supplied. |
 
 <a name="module_SPSP..sendPayment"></a>
 
@@ -349,8 +360,8 @@ Create a payment request using a Pre-Shared Key (PSK).
 | [params.headers] | <code>Object</code> | <code></code> | Additional headers for private PSK details. The key-value pairs represent header names and values. |
 | [params.publicHeaders] | <code>Object</code> | <code></code> | Additional headers for public PSK details. The key-value pairs represent header names and values. |
 | [params.disableEncryption] | <code>Boolean</code> | <code>false</code> | Turns off encryption of private memos and data |
-| [params.minFulfillRetryWait] | <code>Number</code> |  | Minimum amount of time to wait before retrying fulfillment |
-| [params.maxFulfillRetryWait] | <code>Number</code> |  | Maximum amount of time to wait before retrying fulfillment |
+| [params.minFulfillRetryWait] | <code>Number</code> | <code>250</code> | Minimum amount of time (in ms) to wait before retrying fulfillment |
+| [params.maxFulfillRetryWait] | <code>Number</code> | <code>1000</code> | Maximum amount of time (in ms) to wait before retrying fulfillment |
 
 <a name="module_PSK..generateParams"></a>
 
@@ -415,7 +426,9 @@ Create a packet and condition
 | [params.data] | <code>Buffer</code> | <code></code> | Additional data to include in the request |
 | [params.headers] | <code>Object</code> | <code></code> | Additional headers for private details. The key-value pairs represent header names and values. |
 | [params.publicHeaders] | <code>Object</code> | <code></code> | Additional headers for public details. The key-value pairs represent header names and values. |
-| [params.disableEncryption] | <code>Object</code> | <code>false</code> | Turns off encryption of private memos and data |
+| [params.disableEncryption] | <code>Boolean</code> | <code>false</code> | Turns off encryption of private memos and data |
+| [params.minFulfillRetryWait] | <code>Number</code> | <code>250</code> | Minimum amount of time (in ms) to wait before retrying fulfillment |
+| [params.maxFulfillRetryWait] | <code>Number</code> | <code>1000</code> | Maximum amount of time (in ms) to wait before retrying fulfillment |
 
 <a name="module_IPR..encodeIPR"></a>
 
@@ -462,9 +475,7 @@ Create a payment request for use in the IPR transport protocol.
 | [params.data] | <code>Buffer</code> | <code></code> | Additional data to include in the request |
 | [params.headers] | <code>Object</code> | <code></code> | Additional headers for private details. The key-value pairs represent header names and values. |
 | [params.publicHeaders] | <code>Object</code> | <code></code> | Additional headers for public details. The key-value pairs represent header names and values. |
-| [params.disableEncryption] | <code>Boolean</code> | <code>false</code> | Turns off encryption of private memos and data |
-| [params.minFulfillRetryWait] | <code>Number</code> |  | Minimum amount of time to wait before retrying fulfillment |
-| [params.maxFulfillRetryWait] | <code>Number</code> |  | Maximum amount of time to wait before retrying fulfillment |
+| [params.disableEncryption] | <code>Object</code> | <code>false</code> | Turns off encryption of private memos and data |
 
 <a name="module_IPR..listen"></a>
 

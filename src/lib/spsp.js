@@ -46,6 +46,12 @@ const _querySPSP = function * (receiver) {
   return response
 }
 
+/**
+  * Validate a server's SPSP response, and throw an error if it's wrong.
+  *
+  * @param {Promise<SpspResponse>} SPSP SPSP response from server
+  */
+
 function validateSPSPResponse (response) {
   assert(typeof response === 'object', 'response must be a JSON object')
   assert(typeof response.destination_account === 'string', 'destination_account must be a string')
@@ -98,6 +104,7 @@ const query = co.wrap(_querySPSP)
   * @param {Array} [params.connectors=[]] connectors to quote. These will be supplied by plugin.getInfo if left unspecified.
   * @param {String} [params.id=uuid()] id to use for payment. sending a payment with the same id twice will be idempotent. If left unspecified, the id will be generated randomly.
   * @param {Number} [params.timeout=5000] how long to wait for a quote response (ms).
+  * @param {SpspResponse} [params.spspResponse=SPSP.query(params.receiver)] SPSP response. The receiver endpoint will be queried automatically if this isn't supplied.
   *
   * @returns {Promise<SpspPayment>} SPSP payment object to be sent.
   */
@@ -108,17 +115,21 @@ const quote = function * (plugin, {
   destinationAmount,
   connectors,
   id,
-  timeout
+  timeout,
+  spspResponse
 }) {
   assert(plugin, 'missing plugin')
-  assert(receiver, 'receiver')
+  assert(receiver || spspResponse,
+    'receiver or spspResponse must be specified')
   assert(xor(sourceAmount, destinationAmount),
     'destinationAmount or sourceAmount must be specified')
+  if (spspResponse) validateSPSPResponse(spspResponse)
+
   const sourceScale = plugin.getInfo().currencyScale
   const integerSourceAmount = sourceAmount &&
     toInteger(sourceAmount, sourceScale)
 
-  const spsp = yield _querySPSP(receiver)
+  const spsp = spspResponse || (yield _querySPSP(receiver))
   const destinationScale = spsp.ledger_info.currency_scale
   const integerDestinationAmount = destinationAmount &&
     toInteger(destinationAmount, destinationScale)
@@ -270,5 +281,6 @@ module.exports = {
   _createPayment,
   quote: co.wrap(quote),
   sendPayment: co.wrap(sendPayment),
-  query
+  query,
+  validateSPSPResponse
 }
