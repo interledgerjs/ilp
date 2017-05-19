@@ -513,6 +513,7 @@ data`, 'utf8')) }))
         assert.equal(details.data.toString('utf8'), 'test data', 'must pass in decrypted data')
         assert.isString(details.destinationAccount, 'must pass in account')
         assert.isString(details.destinationAmount, 'must pass in amount')
+        assert.isString(details.fulfillment, 'must pass in fulfillment')
         assert.isFunction(details.fulfill, 'fulfill callback must be a function')
         details.fulfill()
       }

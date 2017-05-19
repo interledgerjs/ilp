@@ -141,6 +141,7 @@ function * listen (plugin, {
         data: details.data,
         destinationAccount,
         destinationAmount,
+        fulfillment,
         fulfill: function () {
           return retryPromise({
             callback: () => plugin.fulfillCondition(transfer.id, fulfillment),
