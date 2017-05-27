@@ -83,10 +83,38 @@ function listen (plugin, rawParams, callback) {
   return Transport.listen(plugin, params, callback, 'psk')
 }
 
+/**
+  * Listen on a ILP plugin bells factory for incoming PSK payments, and auto-generate fulfillments.
+  *
+  * @param {Object} factory Plugin bells factory to listen on
+  * @param {Object} params Parameters for creating payment request
+  * @param {Function} params.receiverSecret secret used to generate the shared secret and the extra segments of destinationAccount
+  * @param {Buffer} [params.allowOverPayment=false] Accept payments with higher amounts than expected
+  * @param {IncomingCallback} callback Called after an incoming payment is validated.
+  *
+  * @return {Object} Payment request
+  */
+function listenAll (factory, rawParams, callback) {
+  assert(Buffer.isBuffer(rawParams.receiverSecret), 'params.receiverSecret must be a buffer')
+
+  function generateReceiverSecret (address) {
+    const params = generateParams({
+      destinationAccount: address,
+      receiverSecret: rawParams.receiverSecret
+    })
+
+    return Buffer.from(params.sharedSecret, 'base64')
+  }
+
+  const params = Object.assign({}, rawParams, { generateReceiverSecret })
+  return Transport.listenAll(factory, params, callback, 'psk')
+}
+
 module.exports = {
   createPacketAndCondition,
   generateParams,
   listen,
+  listenAll,
   parseDetails: Details.parseDetails,
   createDetails: Details.createDetails,
   parsePacketAndDetails: Details.parsePacketAndDetails

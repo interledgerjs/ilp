@@ -84,85 +84,16 @@ function * listen (plugin, {
   assert(Buffer.isBuffer(receiverSecret), 'opts.receiverSecret must be a buffer')
 
   yield safeConnect(plugin)
-  const account = plugin.getAccount()
-
-  /**
-   * When we receive a transfer notification, check the transfer
-   * and try to fulfill the condition (which will only work if
-   * it corresponds to a request or shared secret we created)
-   * Calls the `reviewPayment` callback before fulfillingthe.
-   *
-   * Note return values are only for testing
-   */
   function * autoFulfillCondition (transfer) {
-    // TODO: should this just be included in this function?
-    const err = yield _validateOrRejectTransfer({
-      plugin,
+    return yield _autoFulfillCondition({
       transfer,
-      allowOverPayment,
-      receiverSecret
-    })
-
-    if (err) return err
-
-    const parsed = Packet.parseFromTransfer(transfer)
-    const secret = _accountToSharedSecret({
+      plugin,
       receiverSecret,
-      account: parsed.account,
-      pluginAccount: account
+      allowOverPayment,
+      minFulfillRetryWait,
+      maxFulfillRetryWait,
+      callback
     })
-    const destinationAmount = parsed.amount
-    const destinationAccount = parsed.account
-    const data = parsed.data
-    const details = parseDetails({ details: data, secret })
-    const preimage = cryptoHelper.packetToPreimage(
-      Packet.getFromTransfer(transfer),
-      secret)
-
-    if (transfer.executionCondition !== cryptoHelper.preimageToCondition(preimage)) {
-      debug('notified of transfer where executionCondition does not' +
-        ' match the one we generate.' +
-        ' executionCondition=' + transfer.executionCondition +
-        ' our condition=' + cryptoHelper.preimageToCondition(preimage))
-      return yield _reject(plugin, transfer.id, {
-        code: 'S05',
-        name: 'Wrong Condition',
-        message: 'receiver generated a different condition from the transfer'
-      })
-    }
-
-    const fulfillment = cryptoHelper.preimageToFulfillment(preimage)
-
-    try {
-      yield Promise.resolve(callback({
-        transfer: transfer,
-        publicHeaders: details.publicHeaders,
-        headers: details.headers,
-        data: details.data,
-        destinationAccount,
-        destinationAmount,
-        fulfillment,
-        fulfill: function () {
-          return retryPromise({
-            callback: () => plugin.fulfillCondition(transfer.id, fulfillment),
-            minWait: minFulfillRetryWait || DEFAULT_MIN_FULFILL_RETRY_WAIT,
-            maxWait: maxFulfillRetryWait || DEFAULT_MAX_FULFILL_RETRY_WAIT,
-            stopWaiting: (new Date(transfer.expiresAt))
-          })
-        }
-      }))
-    } catch (e) {
-      // reject immediately and pass the error if review rejects
-
-      return _reject(plugin, transfer.id, {
-        code: 'S00',
-        name: 'Bad Request',
-        message: 'rejected-by-receiver: ' +
-          (e.message || 'reason not specified')
-      })
-    }
-
-    return true
   }
 
   const listener = co.wrap(autoFulfillCondition)
@@ -171,6 +102,129 @@ function * listen (plugin, {
   return function () {
     plugin.removeListener('incoming_prepare', listener)
   }
+}
+
+function * listenAll (factory, {
+  generateReceiverSecret,
+  allowOverPayment,
+  minFulfillRetryWait,
+  maxFulfillRetryWait
+}, callback) {
+  assert(factory && typeof factory === 'object', 'factory must be an object')
+  assert(typeof callback === 'function', 'callback must be a function')
+  assert(typeof genereateReceiverSecret === 'function', 'opts.generateReceiverSecret must be a function')
+
+  yield safeConnect(factory)
+  function * autoFulfillCondition (username, transfer) {
+    const cleanUp = !factory.plugins.get(username)
+    const plugin = yield factory.create({ username })
+    const receiverSecret = generateReceiverSecret(plugin.getAccount())
+
+    const result = yield _autoFulfillCondition({
+      transfer,
+      plugin,
+      receiverSecret,
+      allowOverPayment,
+      minFulfillRetryWait,
+      maxFulfillRetryWait,
+      callback
+    })
+
+    if (cleanUp) yield factory.remove(username)
+    return result
+  }
+
+  const listener = co.wrap(autoFulfillCondition)
+  factory.on('incoming_prepare', listener)
+}
+
+/**
+  * When we receive a transfer notification, check the transfer
+  * and try to fulfill the condition (which will only work if
+  * it corresponds to a request or shared secret we created)
+  * Calls the `reviewPayment` callback before fulfillingthe.
+  *
+  * Note return values are only for testing
+  */
+function * _autoFulfillCondition ({
+  transfer,
+  plugin,
+  receiverSecret,
+  allowOverPayment,
+  minFulfillRetryWait,
+  maxFulfillRetryWait,
+  callback
+}) {
+  const account = plugin.getAccount()
+
+  // TODO: should this just be included in this function?
+  const err = yield _validateOrRejectTransfer({
+    plugin,
+    transfer,
+    allowOverPayment,
+    receiverSecret
+  })
+
+  if (err) return err
+
+  const parsed = Packet.parseFromTransfer(transfer)
+  const secret = _accountToSharedSecret({
+    receiverSecret,
+    account: parsed.account,
+    pluginAccount: account
+  })
+  const destinationAmount = parsed.amount
+  const destinationAccount = parsed.account
+  const data = parsed.data
+  const details = parseDetails({ details: data, secret })
+  const preimage = cryptoHelper.packetToPreimage(
+    Packet.getFromTransfer(transfer),
+    secret)
+
+  if (transfer.executionCondition !== cryptoHelper.preimageToCondition(preimage)) {
+    debug('notified of transfer where executionCondition does not' +
+      ' match the one we generate.' +
+      ' executionCondition=' + transfer.executionCondition +
+      ' our condition=' + cryptoHelper.preimageToCondition(preimage))
+    return yield _reject(plugin, transfer.id, {
+      code: 'S05',
+      name: 'Wrong Condition',
+      message: 'receiver generated a different condition from the transfer'
+    })
+  }
+
+  const fulfillment = cryptoHelper.preimageToFulfillment(preimage)
+
+  try {
+    yield Promise.resolve(callback({
+      transfer: transfer,
+      publicHeaders: details.publicHeaders,
+      headers: details.headers,
+      data: details.data,
+      destinationAccount,
+      destinationAmount,
+      fulfillment,
+      fulfill: function () {
+        return retryPromise({
+          callback: () => plugin.fulfillCondition(transfer.id, fulfillment),
+          minWait: minFulfillRetryWait || DEFAULT_MIN_FULFILL_RETRY_WAIT,
+          maxWait: maxFulfillRetryWait || DEFAULT_MAX_FULFILL_RETRY_WAIT,
+          stopWaiting: (new Date(transfer.expiresAt))
+        })
+      }
+    }))
+  } catch (e) {
+    // reject immediately and pass the error if review rejects
+
+    return _reject(plugin, transfer.id, {
+      code: 'S00',
+      name: 'Bad Request',
+      message: 'rejected-by-receiver: ' +
+        (e.message || 'reason not specified')
+    })
+  }
+
+  return true
 }
 
 function * _validateOrRejectTransfer ({
@@ -317,7 +371,9 @@ function * _validateOrRejectTransfer ({
 
 module.exports = {
   _reject,
+  _autoFulfillCondition,
   _validateOrRejectTransfer: co.wrap(_validateOrRejectTransfer),
   createPacketAndCondition,
-  listen: co.wrap(listen)
+  listen: co.wrap(listen),
+  listenAll: co.wrap(listenAll)
 }
