@@ -1,12 +1,12 @@
 'use strict'
 
 const co = require('co')
+const IlpPacket = require('ilp-packet')
 const Packet = require('../utils/packet')
 const debug = require('debug')('ilp:ilqp')
 const moment = require('moment')
 const BigNumber = require('bignumber.js')
-const uuid = require('uuid')
-const { safeConnect, startsWith, wait, xor, omitUndefined } =
+const { safeConnect, startsWith, xor, omitUndefined } =
   require('../utils')
 
 const DEFAULT_MESSAGE_TIMEOUT = 5000
@@ -23,8 +23,11 @@ function * _handleConnectorResponses (connectors, promises) {
   for (let c = 0; c < connectors.length; ++c) {
     try {
       const quote = yield promises[c]
-      if (quote) {
-        quotes.push(quote)
+      if (quote.code) { // IlpError
+        debug('remote quote error connector=' + connectors[c], 'ilpError=' + JSON.stringify(quote))
+        throw new Error('remote quote error: ' + quote.name)
+      } else if (quote) {
+        quotes.push(Object.assign({connector: connectors[c]}, quote))
       } else {
         throw new Error('got empty quote response: ' + quote)
       }
@@ -41,100 +44,73 @@ function * _handleConnectorResponses (connectors, promises) {
   return quotes
 }
 
-function _sendAndReceiveMessage ({
-  plugin,
-  responseMethod,
-  message,
-  timeout
-}) {
-  const id = message.data.id = message.data.id || uuid()
-  debug('sending message:', JSON.stringify(message))
-
-  // keep a remove callback in case any of the code needs
-  // to remove the listener (preventing a memory leak where
-  // failed quote requests build up
-  let remove = () => {}
-
-  const responded = new Promise((resolve, reject) => {
-    function onIncomingMessage (response) {
-      debug('got incoming message:', JSON.stringify(response))
-      const data = response.data
-
-      if (!data || data.id !== id) return
-      if (data.method === 'error') {
-        remove()
-        reject(data.data.message)
-      }
-
-      if (data.method === responseMethod) {
-        debug('response of type', responseMethod)
-        remove()
-        resolve(response)
-      }
-    }
-
-    // TODO: optimize to not add a listener each time?
-    plugin.on('incoming_message', onIncomingMessage)
-
-    // now that the listener has been added, set the remove function to
-    // get rid of the listener.
-    remove = () => {
-      debug('removing listener for request', id)
-      // set the remove callback to a no-op so that the function is not removed
-      // twice.
-      remove = () => {}
-      // setImmediate is used so that the listener list's size isn't changed
-      // until after the emitter is done iterating listeners.
-      setImmediate(() => {
-        debug('removing listener for real')
-        plugin.removeListener('incoming_message', onIncomingMessage)
-      })
-    }
-  })
-
-  return Promise.race([
-    plugin.sendMessage(message).then(() => responded),
-    wait(timeout || DEFAULT_MESSAGE_TIMEOUT)
-      .then(() => {
-        remove()
-        throw new Error('quote request timed out')
-      })
-  ])
+function _serializeQuoteRequest (requestParams) {
+  if (requestParams.sourceAmount) {
+    return IlpPacket.serializeIlqpBySourceRequest(requestParams)
+  }
+  if (requestParams.destinationAmount) {
+    return IlpPacket.serializeIlqpByDestinationRequest(requestParams)
+  }
+  return IlpPacket.serializeIlqpLiquidityRequest(requestParams)
 }
 
-function _getQuote ({
+function _deserializeQuoteResponse (requestParams, responsePacket) {
+  if (requestParams.sourceAmount) {
+    return IlpPacket.deserializeIlqpBySourceResponse(responsePacket)
+  }
+  if (requestParams.destinationAmount) {
+    return IlpPacket.deserializeIlqpByDestinationResponse(responsePacket)
+  }
+  return IlpPacket.deserializeIlqpLiquidityResponse(responsePacket)
+}
+
+/**
+  * @param {Object} params
+  * @param {Object} params.plugin The LedgerPlugin used to send quote request
+  * @param {String} params.connector The ILP address of the connector to quote from
+  * @param {Object} params.quoteQuery ILQP request packet parameters
+  * @param {Integer} [params.timeout] Milliseconds
+  * @returns {Object} Ilqp{Liquidity,BySourceAmount,ByDestinationAmount}Response or IlpError
+  */
+function quoteByConnector ({
   plugin,
   connector,
   quoteQuery,
   timeout
 }) {
   const prefix = plugin.getInfo().prefix
+  const requestPacket = _serializeQuoteRequest(quoteQuery)
+  const requestType = requestPacket[0]
 
   debug('remote quote connector=' + connector, 'query=' + JSON.stringify(quoteQuery))
-  return _sendAndReceiveMessage({
-    plugin: plugin,
-    responseMethod: 'quote_response',
-    timeout: timeout,
-    message: {
-      ledger: prefix,
-      to: connector,
-      data: {
-        method: 'quote_request',
-        data: quoteQuery
-      }
-    }
+  return plugin.sendRequest({
+    ledger: prefix,
+    from: plugin.getAccount(),
+    to: connector,
+    ilp: requestPacket.toString('base64'),
+    timeout: timeout || DEFAULT_MESSAGE_TIMEOUT
   }).then((response) => {
-    return response.data.data
+    if (!response.ilp) throw new Error('Quote response has no packet')
+    const responsePacket = Buffer.from(response.ilp, 'base64')
+    const responseType = responsePacket[0]
+    if (responseType === IlpPacket.Type.TYPE_ILP_ERROR) {
+      return IlpPacket.deserializeIlpError(responsePacket)
+    }
+    if (responseType !== requestType + 1) {
+      throw new Error('Quote response packet has incorrect type')
+    }
+    return _deserializeQuoteResponse(quoteQuery, responsePacket)
   })
 }
 
 function _getCheaperQuote (quote1, quote2) {
-  const source1 = new BigNumber(quote1.source_amount)
-  const dest1 = new BigNumber(quote1.destination_amount)
-
-  if (source1.lessThan(quote2.source_amount)) return quote1
-  if (dest1.greaterThan(quote2.destination_amount)) return quote1
-
+  if (quote1.sourceAmount) {
+    const source1 = new BigNumber(quote1.sourceAmount)
+    if (source1.lessThan(quote2.sourceAmount)) return quote1
+  } else {
+    const dest1 = new BigNumber(quote1.destinationAmount)
+    if (dest1.greaterThan(quote2.destinationAmount)) return quote1
+  }
   return quote2
 }
 
@@ -149,7 +125,6 @@ function _getCheaperQuote (quote1, quote2) {
   * @param {String} query.destinationAddress Recipient's address
   * @param {String} [query.sourceAmount] Either the sourceAmount or destinationAmount must be specified. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger.
   * @param {String} [query.destinationAmount] Either the sourceAmount or destinationAmount must be specified. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger.
-  * @param {String|Number} [query.sourceExpiryDuration] Number of seconds between when the source transfer is proposed and when it expires.
   * @param {String|Number} [query.destinationExpiryDuration] Number of seconds between when the destination transfer is proposed and when it expires.
   * @param {Array} [query.connectors] List of ILP addresses of connectors to use for this quote.
   * @returns {Promise<Quote>}
@@ -159,7 +134,6 @@ function * quote (plugin, {
   destinationAddress,
   sourceAmount,
   destinationAmount,
-  sourceExpiryDuration,
   destinationExpiryDuration,
   connectors,
   timeout
@@ -172,6 +146,7 @@ function * quote (plugin, {
   yield safeConnect(plugin)
   const prefix = plugin.getInfo().prefix
   const amount = sourceAmount || destinationAmount
+  const destinationHoldDuration = +(destinationExpiryDuration || DEFAULT_EXPIRY_DURATION)
 
   if (startsWith(prefix, destinationAddress)) {
     debug('returning a local transfer to', destinationAddress, 'for', amount)
@@ -180,16 +155,15 @@ function * quote (plugin, {
       connectorAccount: destinationAddress,
       sourceAmount: amount,
       destinationAmount: amount,
-      sourceExpiryDuration: destinationExpiryDuration || DEFAULT_EXPIRY_DURATION
+      sourceExpiryDuration: destinationHoldDuration.toString()
     })
   }
 
   const quoteQuery = omitUndefined({
-    source_address: plugin.getAccount(),
-    source_amount: sourceAmount,
-    destination_address: destinationAddress,
-    destination_amount: destinationAmount,
-    destination_expiry_duration: destinationExpiryDuration
+    destinationAccount: destinationAddress,
+    destinationHoldDuration: destinationHoldDuration * 1000,
+    sourceAmount,
+    destinationAmount
   })
 
   const quoteConnectors = connectors || plugin.getInfo().connectors || []
@@ -202,24 +176,21 @@ function * quote (plugin, {
   const quotes = yield _handleConnectorResponses(
     quoteConnectors,
     quoteConnectors.map((connector) => {
-      return _getQuote({ plugin, connector, quoteQuery, timeout })
+      return quoteByConnector({ plugin, connector, quoteQuery, timeout })
     }))
 
   const bestQuote = quotes.reduce(_getCheaperQuote)
-  debug('got best quote from connector:', JSON.stringify(bestQuote))
+  const sourceHoldDuration = bestQuote.sourceHoldDuration / 1000
+  debug('got best quote from connector:', bestQuote.connector, 'quote:', JSON.stringify(bestQuote))
 
   return omitUndefined({
-    sourceAmount: sourceAmount || bestQuote.source_amount,
-    destinationAmount: destinationAmount || bestQuote.destination_amount,
-    // try to send directly to the destination if there's no connector
-    connectorAccount: bestQuote.source_connector_account || destinationAddress,
-    sourceExpiryDuration: bestQuote.source_expiry_duration ||
-      DEFAULT_EXPIRY_DURATION,
+    sourceAmount: sourceAmount || bestQuote.sourceAmount,
+    destinationAmount: destinationAmount || bestQuote.destinationAmount,
+    connectorAccount: bestQuote.connector,
+    sourceExpiryDuration: sourceHoldDuration.toString(),
     // current time plus sourceExpiryDuration, for convenience
     expiresAt: moment()
-      .add(
-        bestQuote.source_expiry_duration || DEFAULT_EXPIRY_DURATION,
-        'seconds')
+      .add(sourceHoldDuration, 'seconds')
       .toISOString()
   })
 }
@@ -233,9 +204,8 @@ function * quoteByPacket (plugin, packet) {
 }
 
 module.exports = {
-  _sendAndReceiveMessage,
-  _getQuote,
   _getCheaperQuote,
+  quoteByConnector,
   quote: co.wrap(quote),
   quoteByPacket: co.wrap(quoteByPacket)
 }

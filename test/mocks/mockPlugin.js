@@ -22,7 +22,7 @@ module.exports = class MockPlugin extends EventEmitter2 {
     return 'test.example.alice'
   }
 
-  sendMessage () {
+  sendRequest () {
     return Promise.resolve(null)
   }
 
