@@ -44,15 +44,18 @@ provides a high-level interface:
 ```js
 'use strict'
 
-import { SPSP } from 'ilp'
-import FiveBellsLedgerPlugin from 'ilp-plugin-bells'
+const SPSP = require('ilp').SPSP
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 
 const plugin = new FiveBellsLedgerPlugin({
   account: 'https://red.ilpdemo.org/ledger/accounts/alice',
   password: 'alice'
 })
 
-(async function () {
+;(async function () {
+  await plugin.connect()
+  console.log('plugin connected')
+
   const payment = await SPSP.quote(plugin, {
     receiver: 'bob@blue.ilpdemo.org',
     sourceAmount: '1'
@@ -96,9 +99,9 @@ from getting unwanted funds.
 ```js
 'use strict'
 
-import 'uuid'
-import ILP from 'ilp'
-import FiveBellsLedgerPlugin from 'ilp-plugin-bells'
+const uuid = require('uuid')
+const ILP = require('ilp')
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 
 const sender = new FiveBellsLedgerPlugin({
   account: 'https://red.ilpdemo.org/ledger/accounts/alice',
@@ -110,17 +113,20 @@ const receiver = new FiveBellsLedgerPlugin({
   password: 'bobbob'
 })
 
-const receiverSecret = Buffer.from('secret_seed')
-const { sharedSecret, destinationAccount } = ILP.PSK.generateParams({
-  destinationAccount: receiver,
-  receiverSecret
-})
+;(async function () {
+  await receiver.connect()
+  console.log('receiver connected')
 
-// Note the user of this module must implement the method for
-// communicating sharedSecret and destinationAccount from the recipient
-// to the sender
+  const receiverSecret = Buffer.from('secret_seed')
+  const { sharedSecret, destinationAccount } = ILP.PSK.generateParams({
+    destinationAccount: receiver.getAccount(),
+    receiverSecret
+  })
 
-(async function () {
+  // Note the user of this module must implement the method for
+  // communicating sharedSecret and destinationAccount from the recipient
+  // to the sender
+
   const stopListening = await ILP.PSK.listen(receiver, { receiverSecret }, (params) => {
     console.log('got transfer:', params.transfer)
 
@@ -166,9 +172,9 @@ This library handles the generation of payment requests, but **not the communica
 ```js
 'use strict'
 
-import 'uuid'
-import ILP from 'ilp'
-import FiveBellsLedgerPlugin from 'ilp-plugin-bells'
+const uuid = require('uuid')
+const ILP = require('ilp')
+const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
 
 const sender = new FiveBellsLedgerPlugin({
   account: 'https://red.ilpdemo.org/ledger/accounts/alice',
@@ -180,7 +186,7 @@ const receiver = new FiveBellsLedgerPlugin({
   password: 'bobbob'
 })
 
-(async function () {
+;(async function () {
   const stopListening = await ILP.IPR.listen(receiver, {
     receiverSecret: Buffer.from('secret', 'utf8')
   }, async function ({ transfer, fulfill }) {
@@ -230,8 +236,8 @@ const receiver = new FiveBellsLedgerPlugin({
 ### SPSP~query ⇒ <code>Promise.&lt;SpspResponse&gt;</code>
 Query an SPSP endpoint and get SPSP details
 
-**Kind**: inner constant of <code>[SPSP](#module_SPSP)</code>  
-**Returns**: <code>Promise.&lt;SpspResponse&gt;</code> - SPSP SPSP response from server  
+**Kind**: inner constant of <code>[SPSP](#module_SPSP)</code>
+**Returns**: <code>Promise.&lt;SpspResponse&gt;</code> - SPSP SPSP response from server
 
 | Param | Type | Description |
 | --- | --- | --- |
@@ -242,7 +248,7 @@ Query an SPSP endpoint and get SPSP details
 ### SPSP~validateSPSPResponse(SPSP)
 Validate a server's SPSP response, and throw an error if it's wrong.
 
-**Kind**: inner method of <code>[SPSP](#module_SPSP)</code>  
+**Kind**: inner method of <code>[SPSP](#module_SPSP)</code>
 
 | Param | Type | Description |
 | --- | --- | --- |
@@ -253,8 +259,8 @@ Validate a server's SPSP response, and throw an error if it's wrong.
 ### SPSP~quote(plugin, params) ⇒ <code>Promise.&lt;SpspPayment&gt;</code>
 Quote to an SPSP receiver
 
-**Kind**: inner method of <code>[SPSP](#module_SPSP)</code>  
-**Returns**: <code>Promise.&lt;SpspPayment&gt;</code> - SPSP payment object to be sent.  
+**Kind**: inner method of <code>[SPSP](#module_SPSP)</code>
+**Returns**: <code>Promise.&lt;SpspPayment&gt;</code> - SPSP payment object to be sent.
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -273,8 +279,8 @@ Quote to an SPSP receiver
 ### SPSP~sendPayment(plugin, payment) ⇒ <code>Promise.&lt;Object&gt;</code> &#124; <code>String</code>
 Quote to an SPSP receiver
 
-**Kind**: inner method of <code>[SPSP](#module_SPSP)</code>  
-**Returns**: <code>Promise.&lt;Object&gt;</code> - result The result of the payment.<code>String</code> - result.fulfillment The fulfillment of the payment.  
+**Kind**: inner method of <code>[SPSP](#module_SPSP)</code>
+**Returns**: <code>Promise.&lt;Object&gt;</code> - result The result of the payment.<code>String</code> - result.fulfillment The fulfillment of the payment.
 
 | Param | Type | Description |
 | --- | --- | --- |
@@ -287,7 +293,7 @@ Quote to an SPSP receiver
 /**
 Parameters for an SPSP payment
 
-**Kind**: inner typedef of <code>[SPSP](#module_SPSP)</code>  
+**Kind**: inner typedef of <code>[SPSP](#module_SPSP)</code>
 **Properties**
 
 | Name | Type | Default | Description |
@@ -307,7 +313,7 @@ Parameters for an SPSP payment
 ### SPSP~SpspResponse : <code>Object</code>
 SPSP query response
 
-**Kind**: inner typedef of <code>[SPSP](#module_SPSP)</code>  
+**Kind**: inner typedef of <code>[SPSP](#module_SPSP)</code>
 **Properties**
 
 | Name | Type | Description |
@@ -325,7 +331,7 @@ SPSP query response
 <a name="module_ILQP..quote"></a>
 
 ### ILQP~quote(plugin, query) ⇒ <code>Promise.&lt;Quote&gt;</code>
-**Kind**: inner method of <code>[ILQP](#module_ILQP)</code>  
+**Kind**: inner method of <code>[ILQP](#module_ILQP)</code>
 
 | Param | Type | Description |
 | --- | --- | --- |
@@ -344,8 +350,8 @@ SPSP query response
 ### PSK~createPacketAndCondition(params) ⇒ <code>Object</code>
 Create a payment request using a Pre-Shared Key (PSK).
 
-**Kind**: inner method of <code>[PSK](#module_PSK)</code>  
-**Returns**: <code>Object</code> - Payment request  
+**Kind**: inner method of <code>[PSK](#module_PSK)</code>
+**Returns**: <code>Object</code> - Payment request
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -367,7 +373,7 @@ Create a payment request using a Pre-Shared Key (PSK).
 ### PSK~generateParams(params) ⇒ <code>PskParams</code>
 Generate shared secret for Pre-Shared Key (PSK) transport protocol.
 
-**Kind**: inner method of <code>[PSK](#module_PSK)</code>  
+**Kind**: inner method of <code>[PSK](#module_PSK)</code>
 
 | Param | Type | Description |
 | --- | --- | --- |
@@ -380,8 +386,8 @@ Generate shared secret for Pre-Shared Key (PSK) transport protocol.
 ### PSK~listen(plugin, params, callback) ⇒ <code>Object</code>
 Listen on a plugin for incoming PSK payments, and auto-generate fulfillments.
 
-**Kind**: inner method of <code>[PSK](#module_PSK)</code>  
-**Returns**: <code>Object</code> - Payment request  
+**Kind**: inner method of <code>[PSK](#module_PSK)</code>
+**Returns**: <code>Object</code> - Payment request
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -394,7 +400,7 @@ Listen on a plugin for incoming PSK payments, and auto-generate fulfillments.
 <a name="module_PSK..IncomingCallback"></a>
 
 ### PSK~IncomingCallback : <code>function</code>
-**Kind**: inner typedef of <code>[PSK](#module_PSK)</code>  
+**Kind**: inner typedef of <code>[PSK](#module_PSK)</code>
 
 | Param | Type | Description |
 | --- | --- | --- |
@@ -411,8 +417,8 @@ Listen on a plugin for incoming PSK payments, and auto-generate fulfillments.
 ### IPR~createPacketAndCondition(params) ⇒ <code>Object</code>
 Create a packet and condition
 
-**Kind**: inner method of <code>[IPR](#module_IPR)</code>  
-**Returns**: <code>Object</code> - Packet and condition for use in the IPR protocol.  
+**Kind**: inner method of <code>[IPR](#module_IPR)</code>
+**Returns**: <code>Object</code> - Packet and condition for use in the IPR protocol.
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -434,8 +440,8 @@ Create a packet and condition
 ### IPR~encodeIPR(params) ⇒ <code>Buffer</code>
 Create an encoded IPR for use in the IPR transport protocol
 
-**Kind**: inner method of <code>[IPR](#module_IPR)</code>  
-**Returns**: <code>Buffer</code> - encoded IPR buffer  
+**Kind**: inner method of <code>[IPR](#module_IPR)</code>
+**Returns**: <code>Buffer</code> - encoded IPR buffer
 
 | Param | Type | Description |
 | --- | --- | --- |
@@ -448,8 +454,8 @@ Create an encoded IPR for use in the IPR transport protocol
 ### IPR~decodeIPR(ipr) ⇒ <code>Object</code>
 Decode an IPR buffer for use in the IPR transport protocol
 
-**Kind**: inner method of <code>[IPR](#module_IPR)</code>  
-**Returns**: <code>Object</code> - Decoded IPR parameters, containing 'packet' and 'condition' as base64url strings.  
+**Kind**: inner method of <code>[IPR](#module_IPR)</code>
+**Returns**: <code>Object</code> - Decoded IPR parameters, containing 'packet' and 'condition' as base64url strings.
 
 | Param | Type | Description |
 | --- | --- | --- |
@@ -460,8 +466,8 @@ Decode an IPR buffer for use in the IPR transport protocol
 ### IPR~createIPR(params) ⇒ <code>Buffer</code>
 Create a payment request for use in the IPR transport protocol.
 
-**Kind**: inner method of <code>[IPR](#module_IPR)</code>  
-**Returns**: <code>Buffer</code> - encoded IPR buffer for use in the IPR protocol  
+**Kind**: inner method of <code>[IPR](#module_IPR)</code>
+**Returns**: <code>Buffer</code> - encoded IPR buffer for use in the IPR protocol
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -481,8 +487,8 @@ Create a payment request for use in the IPR transport protocol.
 ### IPR~listen(plugin, params, callback) ⇒ <code>Object</code>
 Listen on a plugin for incoming IPR payments, and auto-generate fulfillments.
 
-**Kind**: inner method of <code>[IPR](#module_IPR)</code>  
-**Returns**: <code>Object</code> - Payment request  
+**Kind**: inner method of <code>[IPR](#module_IPR)</code>
+**Returns**: <code>Object</code> - Payment request
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -495,7 +501,7 @@ Listen on a plugin for incoming IPR payments, and auto-generate fulfillments.
 <a name="module_IPR..IncomingCallback"></a>
 
 ### IPR~IncomingCallback : <code>function</code>
-**Kind**: inner typedef of <code>[IPR](#module_IPR)</code>  
+**Kind**: inner typedef of <code>[IPR](#module_IPR)</code>
 
 | Param | Type | Description |
 | --- | --- | --- |
