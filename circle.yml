@@ -6,7 +6,7 @@ test:
     - npm run lint
     - npm test --coverage
     # Run integration test suite
-    - npm run integration
+    - if git log -1 --pretty=%B | grep -qF "[skip tests]"; then true; else npm run integration; fi
   post:
     # Upload code coverage data
     - bash <(curl -s https://codecov.io/bash) || echo "Codecov did not collect coverage reports"
