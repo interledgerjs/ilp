@@ -173,6 +173,8 @@ const quote = function * (plugin, {
   */
 
 function * sendPayment (plugin, payment) {
+  // CAUTION1: `destination` here means the final receiver, not the next hop.
+  // CAUTION2: `source` here actually means "next" (first) hop, seen from the sender.
   assert(plugin, 'missing plugin')
   assert(payment, 'missing payment')
   assert(payment.spsp, 'missing SPSP response in payment')
