@@ -146,10 +146,16 @@ function listen (plugin, params, callback) {
   return Transport.listen(plugin, params, callback, 'ipr')
 }
 
+// TODO: apidoc
+function listenAll (factory, params, callback) {
+  return Transport.listenAll(factory, params, callback, 'ipr')
+}
+
 module.exports = {
   createPacketAndCondition,
   createIPR,
   encodeIPR,
   decodeIPR,
-  listen
+  listen,
+  listenAll
 }
