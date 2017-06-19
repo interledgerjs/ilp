@@ -112,14 +112,14 @@ function * listenAll (factory, {
 }, callback) {
   assert(factory && typeof factory === 'object', 'factory must be an object')
   assert(typeof callback === 'function', 'callback must be a function')
-  assert(typeof genereateReceiverSecret === 'function', 'opts.generateReceiverSecret must be a function')
+  assert(typeof generateReceiverSecret === 'function', 'opts.generateReceiverSecret must be a function')
 
   yield safeConnect(factory)
   function * autoFulfillCondition (username, transfer) {
     const pluginAsUser = {
-      getAccount: factory.getAccountAs.bind(username),
-      rejectIncomingTransfer: factory.rejectIncomingTransferAs.bind(username),
-      fulfillCondition: factory.fulfillConditionAs.bind(username)
+      getAccount: factory.getAccountAs.bind(factory, username),
+      rejectIncomingTransfer: factory.rejectIncomingTransferAs.bind(factory, username),
+      fulfillCondition: factory.fulfillConditionAs.bind(factory, username)
     }
 
     const receiverSecret = generateReceiverSecret(pluginAsUser.getAccount())
