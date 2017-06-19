@@ -116,13 +116,16 @@ function * listenAll (factory, {
 
   yield safeConnect(factory)
   function * autoFulfillCondition (username, transfer) {
-    const cleanUp = !factory.plugins.get(username)
-    const plugin = yield factory.create({ username })
-    const receiverSecret = generateReceiverSecret(plugin.getAccount())
+    const pluginAsUser = {
+      getAccount: factory.getAccountAs.bind(username),
+      rejectIncomingTransfer: factory.rejectIncomingTransferAs.bind(username),
+      fulfillCondition: factory.fulfillConditionAs.bind(username)
+    }
 
+    const receiverSecret = generateReceiverSecret(pluginAsUser.getAccount())
     const result = yield _autoFulfillCondition({
+      plugin: pluginAsUser,
       transfer,
-      plugin,
       receiverSecret,
       allowOverPayment,
       minFulfillRetryWait,
@@ -130,12 +133,15 @@ function * listenAll (factory, {
       callback
     })
 
-    if (cleanUp) yield factory.remove(username)
     return result
   }
 
   const listener = co.wrap(autoFulfillCondition)
   factory.on('incoming_prepare', listener)
+
+  return function () {
+    factory.removeListener('incoming_prepare', listener)
+  }
 }
 
 /**
