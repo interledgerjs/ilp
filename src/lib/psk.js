@@ -88,8 +88,8 @@ function listen (plugin, rawParams, callback) {
   *
   * @param {Object} factory Plugin bells factory to listen on
   * @param {Object} params Parameters for creating payment request
-  * @param {Function} params.receiverSecret secret used to generate the shared secret and the extra segments of destinationAccount
-  * @param {Buffer} [params.allowOverPayment=false] Accept payments with higher amounts than expected
+  * @param {Buffer} params.receiverSecret secret used to generate the shared secret and the extra segments of destinationAccount
+  * @param {Boolean} [params.allowOverPayment=false] Accept payments with higher amounts than expected
   * @param {IncomingCallback} callback Called after an incoming payment is validated.
   *
   * @return {Object} Payment request
@@ -98,12 +98,8 @@ function listenAll (factory, rawParams, callback) {
   assert(Buffer.isBuffer(rawParams.receiverSecret), 'params.receiverSecret must be a buffer')
 
   function generateReceiverSecret (address) {
-    const params = generateParams({
-      destinationAccount: address,
-      receiverSecret: rawParams.receiverSecret
-    })
-
-    return Buffer.from(params.sharedSecret, 'base64')
+    // The listen code already calls accountToSharedSecret
+    return rawParams.receiverSecret
   }
 
   const params = Object.assign({}, rawParams, { generateReceiverSecret })

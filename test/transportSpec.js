@@ -7,6 +7,7 @@ chai.use(chaiAsPromised)
 const assert = chai.assert
 const expect = chai.expect
 const moment = require('moment')
+const EventEmitter = require('events')
 
 const ILP = require('..')
 const Transport = require('../src/lib/transport')
@@ -597,6 +598,46 @@ data`, 'utf8')) }))
       })
 
       yield rejected
+    })
+
+    describe('listenAll', function () {
+      beforeEach(function () {
+        this.factory = new EventEmitter()
+        this.factory.connect = () => Promise.resolve()
+        this.factory.getAccountAs = function (as) {
+          return 'test.example.' + as
+        }
+ 
+        this.fulfilled = new Promise((resolve) => {
+          this.factory.fulfillConditionAs = function () {
+            resolve()
+            return Promise.resolve()
+          }
+        })
+
+        this.rejected = new Promise((resolve) => {
+          this.factory.rejectIncomingTransferAs = function () {
+            resolve()
+            return Promise.resolve()
+          }
+        })
+
+        const secret = this.params.receiverSecret
+        this.params = {
+          generateReceiverSecret: () => secret
+        }
+      })
+
+      it('should listenAll', async function () {
+        this.callback = async function ({ fulfill }) {
+          await fulfill()
+        }
+
+        await Transport.listenAll(this.factory, this.params, this.callback)
+        
+        this.factory.emit('incoming_prepare', 'alice', this.transfer)
+        await this.fulfilled
+      })
     })
   })
 })
