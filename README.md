@@ -397,6 +397,22 @@ Listen on a plugin for incoming PSK payments, and auto-generate fulfillments.
 | [params.allowOverPayment] | <code>Buffer</code> | <code>false</code> | Accept payments with higher amounts than expected |
 | callback | <code>IncomingCallback</code> |  | Called after an incoming payment is validated. |
 
+<a name="module_PSK..listenAll"></a>
+
+### PSK~listenAll(factory, params, callback) ⇒ <code>Object</code>
+Listen on a ILP plugin bells factory for incoming PSK payments, and auto-generate fulfillments.
+
+**Kind**: inner method of <code>[PSK](#module_PSK)</code>  
+**Returns**: <code>Object</code> - Payment request  
+
+| Param | Type | Default | Description |
+| --- | --- | --- | --- |
+| factory | <code>Object</code> |  | Plugin bells factory to listen on |
+| params | <code>Object</code> |  | Parameters for creating payment request |
+| params.receiverSecret | <code>Buffer</code> |  | secret used to generate the shared secret and the extra segments of destinationAccount |
+| [params.allowOverPayment] | <code>Boolean</code> | <code>false</code> | Accept payments with higher amounts than expected |
+| callback | <code>IncomingCallback</code> |  | Called after an incoming payment is validated. |
+
 <a name="module_PSK..IncomingCallback"></a>
 
 ### PSK~IncomingCallback : <code>function</code>
@@ -496,6 +512,22 @@ Listen on a plugin for incoming IPR payments, and auto-generate fulfillments.
 | params | <code>Object</code> |  | Parameters for creating payment request |
 | params.secret | <code>Buffer</code> |  | Secret to generate fulfillments with |
 | [params.allowOverPayment] | <code>Buffer</code> | <code>false</code> | Accept payments with higher amounts than expected |
+| callback | <code>IncomingCallback</code> |  | Called after an incoming payment is validated. |
+
+<a name="module_IPR..listenAll"></a>
+
+### IPR~listenAll(factory, params, callback) ⇒ <code>Object</code>
+Listen on a ILP plugin bells factory for incoming IPR payments, and auto-generate fulfillments.
+
+**Kind**: inner method of <code>[IPR](#module_IPR)</code>  
+**Returns**: <code>Object</code> - Payment request  
+
+| Param | Type | Default | Description |
+| --- | --- | --- | --- |
+| factory | <code>Object</code> |  | Plugin bells factory to listen on |
+| params | <code>Object</code> |  | Parameters for creating payment request |
+| params.generateReceiverSecret | <code>function</code> |  | function that returns receiver secret for a given username |
+| [params.allowOverPayment] | <code>Boolean</code> | <code>false</code> | Accept payments with higher amounts than expected |
 | callback | <code>IncomingCallback</code> |  | Called after an incoming payment is validated. |
 
 <a name="module_IPR..IncomingCallback"></a>

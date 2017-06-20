@@ -146,7 +146,17 @@ function listen (plugin, params, callback) {
   return Transport.listen(plugin, params, callback, 'ipr')
 }
 
-// TODO: apidoc
+/**
+  * Listen on a ILP plugin bells factory for incoming IPR payments, and auto-generate fulfillments.
+  *
+  * @param {Object} factory Plugin bells factory to listen on
+  * @param {Object} params Parameters for creating payment request
+  * @param {Function} params.generateReceiverSecret function that returns receiver secret for a given username
+  * @param {Boolean} [params.allowOverPayment=false] Accept payments with higher amounts than expected
+  * @param {IncomingCallback} callback Called after an incoming payment is validated.
+  *
+  * @return {Object} Payment request
+  */
 function listenAll (factory, params, callback) {
   return Transport.listenAll(factory, params, callback, 'ipr')
 }
