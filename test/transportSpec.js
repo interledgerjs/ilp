@@ -636,7 +636,32 @@ data`, 'utf8')) }))
         await Transport.listenAll(this.factory, this.params, this.callback)
         
         this.factory.emit('incoming_prepare', 'alice', this.transfer)
+
         await this.fulfilled
+        const fulfilledAgain = new Promise((resolve) => {
+          this.factory.fulfillConditionAs = function () {
+            resolve()
+            return Promise.resolve()
+          }
+        })
+
+        // prepare packet and condition for next transfer, on separate account but
+        // with the same listener
+        this.transfer.to = 'test.example.bob.ebKWcAEB9_AqIqs_1-hu7YPOz6y5YI8KQ'
+        const { packet, condition } = Transport.createPacketAndCondition({
+          destinationAmount: '1',
+          destinationAccount: 'test.example.bob.ebKWcAEB9_AqIqs_1-hu7YPOz6y5YI8KQ',
+          secret: Buffer.from('ozYOKjEbNc7gnsNcfiL0NA', 'base64'),
+          data: Buffer.from('test data'),
+          id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
+          expiresAt: moment().add(10).toISOString()
+        })
+        this.transfer.ilp = packet
+        this.transfer.executionCondition = condition
+
+        this.factory.emit('incoming_prepare', 'bob', this.transfer)
+
+        await fulfilledAgain
       })
     })
   })
