@@ -210,18 +210,20 @@ describe('ILQP', function () {
       }
 
       const response = yield ILQP.quoteByConnector(this.params)
-      assert.deepEqual(
-        response,
-        IlpPacket.deserializeIlqpBySourceResponse(Buffer.from(this.response.ilp, 'base64')))
+      assert.deepEqual(response,
+        Object.assign(
+          {responseType: 5},
+          IlpPacket.deserializeIlqpBySourceResponse(Buffer.from(this.response.ilp, 'base64'))))
     })
 
     it('should return an IlpError packet from the message response', function * () {
       this.plugin.sendRequest = (msg) => {
         return Promise.resolve(this.errorResponse)
       }
-      assert.deepEqual(
-        yield ILQP.quoteByConnector(this.params),
-        IlpPacket.deserializeIlpError(Buffer.from(this.errorResponse.ilp, 'base64')))
+      assert.deepEqual(yield ILQP.quoteByConnector(this.params),
+        Object.assign(
+          {responseType: 8},
+          IlpPacket.deserializeIlpError(Buffer.from(this.errorResponse.ilp, 'base64'))))
     })
 
     it('should reject on an error', function * () {

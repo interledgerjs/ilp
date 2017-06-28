@@ -54,14 +54,17 @@ function _serializeQuoteRequest (requestParams) {
   return IlpPacket.serializeIlqpLiquidityRequest(requestParams)
 }
 
-function _deserializeQuoteResponse (requestParams, responsePacket) {
-  if (requestParams.sourceAmount) {
-    return IlpPacket.deserializeIlqpBySourceResponse(responsePacket)
+function _deserializeQuoteResponse (responsePacket) {
+  switch (responsePacket[0]) {
+    case IlpPacket.Type.TYPE_ILQP_BY_SOURCE_RESPONSE:
+      return IlpPacket.deserializeIlqpBySourceResponse(responsePacket)
+    case IlpPacket.Type.TYPE_ILQP_BY_DESTINATION_RESPONSE:
+      return IlpPacket.deserializeIlqpByDestinationResponse(responsePacket)
+    case IlpPacket.Type.TYPE_ILQP_LIQUIDITY_RESPONSE:
+      return IlpPacket.deserializeIlqpLiquidityResponse(responsePacket)
+    case IlpPacket.Type.TYPE_ILP_ERROR:
+      return IlpPacket.deserializeIlpError(responsePacket)
   }
-  if (requestParams.destinationAmount) {
-    return IlpPacket.deserializeIlqpByDestinationResponse(responsePacket)
-  }
-  return IlpPacket.deserializeIlqpLiquidityResponse(responsePacket)
 }
 
 /**
@@ -93,13 +96,10 @@ function quoteByConnector ({
     if (!response.ilp) throw new Error('Quote response has no packet')
     const responsePacket = Buffer.from(response.ilp, 'base64')
     const responseType = responsePacket[0]
-    if (responseType === IlpPacket.Type.TYPE_ILP_ERROR) {
-      return IlpPacket.deserializeIlpError(responsePacket)
+    if (responseType === requestType + 1 || responseType === IlpPacket.Type.TYPE_ILP_ERROR) {
+      return Object.assign({responseType}, _deserializeQuoteResponse(responsePacket))
     }
-    if (responseType !== requestType + 1) {
-      throw new Error('Quote response packet has incorrect type')
-    }
-    return _deserializeQuoteResponse(quoteQuery, responsePacket)
+    throw new Error('Quote response packet has incorrect type')
   })
 }
 
