@@ -10,7 +10,7 @@ const PSK_ENCRYPTION_STRING = 'ilp_key_encryption'
 
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm'
 const RECEIVER_ID_LENGTH = 8
-const SHARED_SECRET_LENGTH = 16
+const SHARED_SECRET_LENGTH = 32
 const PSK_TOKEN_LENGTH = 16
 
 function getPskToken () {
