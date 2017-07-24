@@ -54,19 +54,6 @@ function _serializeQuoteRequest (requestParams) {
   return IlpPacket.serializeIlqpLiquidityRequest(requestParams)
 }
 
-function _deserializeQuoteResponse (responsePacket) {
-  switch (responsePacket[0]) {
-    case IlpPacket.Type.TYPE_ILQP_BY_SOURCE_RESPONSE:
-      return IlpPacket.deserializeIlqpBySourceResponse(responsePacket)
-    case IlpPacket.Type.TYPE_ILQP_BY_DESTINATION_RESPONSE:
-      return IlpPacket.deserializeIlqpByDestinationResponse(responsePacket)
-    case IlpPacket.Type.TYPE_ILQP_LIQUIDITY_RESPONSE:
-      return IlpPacket.deserializeIlqpLiquidityResponse(responsePacket)
-    case IlpPacket.Type.TYPE_ILP_ERROR:
-      return IlpPacket.deserializeIlpError(responsePacket)
-  }
-}
-
 /**
   * @param {Object} params
   * @param {Object} params.plugin The LedgerPlugin used to send quote request
@@ -97,7 +84,7 @@ function quoteByConnector ({
     const responsePacket = Buffer.from(response.ilp, 'base64')
     const responseType = responsePacket[0]
     if (responseType === requestType + 1 || responseType === IlpPacket.Type.TYPE_ILP_ERROR) {
-      return Object.assign({responseType}, _deserializeQuoteResponse(responsePacket))
+      return Object.assign({responseType}, IlpPacket.deserializeIlpPacket(responsePacket).data)
     }
     throw new Error('Quote response packet has incorrect type')
   })
