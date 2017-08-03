@@ -17,7 +17,10 @@ function _createRequest ({
 }) {
   const statusLineText = statusLine ? 'PSK/1.0\n' : ''
   const headerLines = Object.keys(headers)
-    .map((k) => k + ': ' + headers[k])
+    .map((k) => {
+      validateHeader(k, headers[k])
+      return k + ': ' + headers[k]
+    })
     .join('\n') + DATA_DELIMITER
 
   return Buffer.concat([
@@ -25,6 +28,15 @@ function _createRequest ({
     Buffer.from(headerLines, 'utf8'),
     data || Buffer.from([])
   ])
+}
+
+function validateHeader (name, value) {
+  if (name.indexOf('\n') !== -1 || name.indexOf(':') !== -1) {
+    throw new Error(`Found forbidden characters in header name: ${JSON.stringify(name)}`)
+  }
+  if (value && value.toString().indexOf('\n') !== -1) {
+    throw new Error(`Found forbidden characters in header value: ${JSON.stringify(value)}`)
+  }
 }
 
 function createDetails ({
