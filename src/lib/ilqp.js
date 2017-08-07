@@ -32,7 +32,7 @@ function * _handleConnectorResponses (connectors, promises) {
         throw new Error('got empty quote response: ' + quote)
       }
     } catch (err) {
-      errors.push(connectors[c] + ': ' + err.message)
+      errors.push(connectors[c] + ': ' + (err.message || err))
     }
   }
 
