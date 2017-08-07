@@ -140,6 +140,45 @@ describe('Transport', function () {
       assert.equal(details.headers['header'], 'value')
     })
 
+    it('should throw an error if the header name contains a line feed or colon', function () {
+      this.params.headers = { 'Header-With-\nLine-Feed': 'value' }
+
+      assert.throws(Transport.createPacketAndCondition.bind(null, this.params, 'psk'),
+            /Found forbidden characters in header name: "Header-With-\\nLine-Feed"/)
+
+      this.params.headers = { 'Header-With-:Colon': 'value' }
+
+      assert.throws(Transport.createPacketAndCondition.bind(null, this.params, 'psk'),
+            /Found forbidden characters in header name: "Header-With-:Colon"/)
+    })
+
+    it('should throw an error if header value contains a line feed', function () {
+      this.params.headers = { 'Some-Header': 'value\nX-Header-Injection: Some-Value' }
+
+      assert.throws(Transport.createPacketAndCondition.bind(null, this.params, 'psk'),
+        /Found forbidden characters in header value: "value\\nX-Header-Injection: Some-Value"/)
+    })
+
+    it('should allow unicode characters, SPSP addresses, and URLs in header values', function() {
+      this.params.headers = {
+        sender: 'Pièrre',
+        'source-image-url': 'https://sending-ilpkit.example/pic?user=pierre',
+        'source-identifier': 'pierre@sending-ilpkit.example'
+      }
+
+      const result = Transport.createPacketAndCondition(this.params, 'psk')
+      this.validate(result)
+
+      const details = parsePacketAndDetails({
+        packet: result.packet,
+        secret: this.params.secret
+      })
+
+      assert.equal(details.headers['sender'], 'Pièrre')
+      assert.equal(details.headers['source-image-url'], 'https://sending-ilpkit.example/pic?user=pierre')
+      assert.equal(details.headers['source-identifier'], 'pierre@sending-ilpkit.example')
+    })
+
     it('should allow encryption to be disabled', function () {
       this.params.disableEncryption = true
       const result = Transport.createPacketAndCondition(this.params, 'psk')
