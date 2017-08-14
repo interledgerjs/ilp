@@ -64,6 +64,7 @@ function _accountToSharedSecret ({ account, pluginAccount, receiverSecret }) {
 }
 
 function _reject (plugin, id, reason) {
+  debug('rejecting incoming transfer:', id, reason)
   return plugin
     .rejectIncomingTransfer(id, Object.assign({
       triggered_by: plugin.getAccount(),
@@ -190,6 +191,7 @@ function * _autoFulfillCondition ({
   if (transfer.executionCondition !== cryptoHelper.preimageToCondition(preimage)) {
     debug('notified of transfer where executionCondition does not' +
       ' match the one we generate.' +
+      ' transfer.id=' + transfer.id +
       ' executionCondition=' + transfer.executionCondition +
       ' our condition=' + cryptoHelper.preimageToCondition(preimage))
     return yield _reject(plugin, transfer.id, {
@@ -201,6 +203,7 @@ function * _autoFulfillCondition ({
 
   const fulfillment = cryptoHelper.preimageToFulfillment(preimage)
 
+  debug('calling callback to review transfer:', transfer, details)
   try {
     yield Promise.resolve(callback({
       transfer: transfer,
@@ -212,7 +215,10 @@ function * _autoFulfillCondition ({
       fulfillment,
       fulfill: function () {
         return retryPromise({
-          callback: () => plugin.fulfillCondition(transfer.id, fulfillment),
+          callback: () => {
+            debug('fulfilling transfer:', transfer.id, 'with fulfillment:', fulfillment)
+            return plugin.fulfillCondition(transfer.id, fulfillment)
+          },
           minWait: minFulfillRetryWait || DEFAULT_MIN_FULFILL_RETRY_WAIT,
           maxWait: maxFulfillRetryWait || DEFAULT_MAX_FULFILL_RETRY_WAIT,
           stopWaiting: (new Date(transfer.expiresAt))
@@ -221,6 +227,7 @@ function * _autoFulfillCondition ({
     }))
   } catch (e) {
     // reject immediately and pass the error if review rejects
+    debug('error in review callback for transfer:', transfer.id, e)
 
     return _reject(plugin, transfer.id, {
       code: 'S00',
