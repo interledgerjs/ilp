@@ -23,8 +23,7 @@ function * _handleConnectorResponses (connectors, promises) {
   for (let c = 0; c < connectors.length; ++c) {
     try {
       const quote = yield promises[c]
-      if (quote.code) { // IlpError
-        debug('remote quote error connector=' + connectors[c], 'ilpError=' + JSON.stringify(quote))
+      if (quote.responseType === IlpPacket.Type.TYPE_ILP_ERROR) {
         throw new Error('remote quote error: ' + quote.name)
       } else if (quote) {
         quotes.push(Object.assign({connector: connectors[c]}, quote))
@@ -83,8 +82,13 @@ function quoteByConnector ({
     if (!response.ilp) throw new Error('Quote response has no packet')
     const responsePacket = Buffer.from(response.ilp, 'base64')
     const responseType = responsePacket[0]
-    if (responseType === requestType + 1 || responseType === IlpPacket.Type.TYPE_ILP_ERROR) {
-      return Object.assign({responseType}, IlpPacket.deserializeIlpPacket(responsePacket).data)
+    const packetData = IlpPacket.deserializeIlpPacket(responsePacket).data
+    const isErrorPacket = responseType === IlpPacket.Type.TYPE_ILP_ERROR
+    if (isErrorPacket) {
+      debug('remote quote error connector=' + connector, 'ilpError=' + JSON.stringify(packetData))
+    }
+    if (isErrorPacket || responseType === requestType + 1) {
+      return Object.assign({responseType}, packetData)
     }
     throw new Error('Quote response packet has incorrect type')
   })
