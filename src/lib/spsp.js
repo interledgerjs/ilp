@@ -222,10 +222,10 @@ function * sendPayment (plugin, payment) {
       resolve({ fulfillment })
     }
 
-    function cancel (transfer) {
+    function cancel (transfer, reason) {
       if (transfer.id !== payment.id) return
       remove()
-      reject(new Error('transfer ' + payment.id + ' failed.'))
+      reject(Object.assign(new Error('transfer ' + payment.id + ' failed.'), reason))
     }
 
     plugin.on('outgoing_fulfill', fulfill)
@@ -246,8 +246,6 @@ function * sendPayment (plugin, payment) {
 
   return yield listen
 }
-
-/**
 
 /**
   * Parameters for an SPSP payment
