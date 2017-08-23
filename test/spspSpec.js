@@ -185,7 +185,7 @@ describe('SPSP', function () {
 
       it('should reject if payment times out', function * () {
         this.plugin.sendTransfer = (transfer) => {
-          this.plugin.emit('outgoing_cancel', transfer)
+          this.plugin.emit('outgoing_cancel', transfer, {name: 'Foo'})
           return Promise.resolve(null)
         }
         
@@ -195,12 +195,12 @@ describe('SPSP', function () {
 
       it('should reject if payment is rejected', function * () {
         this.plugin.sendTransfer = (transfer) => {
-          this.plugin.emit('outgoing_reject', transfer)
+          this.plugin.emit('outgoing_reject', transfer, {message: 'override the message'})
           return Promise.resolve(null)
         }
         
         yield expect(SPSP.sendPayment(this.plugin, this.payment))
-          .to.eventually.be.rejectedWith(/transfer .+ failed/)
+          .to.eventually.be.rejectedWith('override the message')
       })
     })
   })
