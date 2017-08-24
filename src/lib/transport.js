@@ -7,6 +7,7 @@ const co = require('co')
 const debug = require('debug')('ilp:transport')
 const assert = require('assert')
 const base64url = require('../utils/base64url')
+const ilpErrors = require('../utils/ilp-errors')
 const BigNumber = require('bignumber.js')
 const { retryPromise, omitUndefined, startsWith, safeConnect } = require('../utils')
 const { createDetails, parseDetails } = require('../utils/details')
@@ -194,11 +195,9 @@ function * _autoFulfillCondition ({
       ' transfer.id=' + transfer.id +
       ' executionCondition=' + transfer.executionCondition +
       ' our condition=' + cryptoHelper.preimageToCondition(preimage))
-    return yield _reject(plugin, transfer.id, {
-      code: 'S05',
-      name: 'Wrong Condition',
+    return yield _reject(plugin, transfer.id, ilpErrors.F05_Wrong_Condition({
       message: 'receiver generated a different condition from the transfer'
-    })
+    }))
   }
 
   const fulfillment = cryptoHelper.preimageToFulfillment(preimage)
@@ -229,12 +228,10 @@ function * _autoFulfillCondition ({
     // reject immediately and pass the error if review rejects
     debug('error in review callback for transfer:', transfer.id, e)
 
-    return _reject(plugin, transfer.id, {
-      code: 'S00',
-      name: 'Bad Request',
+    return _reject(plugin, transfer.id, ilpErrors.F00_Bad_Request({
       message: 'rejected-by-receiver: ' +
         (e.message || 'reason not specified')
-    })
+    }))
   }
 
   return true
@@ -251,29 +248,23 @@ function * _validateOrRejectTransfer ({
 
   if (!transfer.executionCondition) {
     debug('notified of transfer without executionCondition ', transfer)
-    return yield _reject(plugin, transfer.id, {
-      code: 'S00',
-      name: 'Bad Request',
+    return yield _reject(plugin, transfer.id, ilpErrors.F00_Bad_Request({
       message: 'got notification of transfer without executionCondition'
-    })
+    }))
   }
 
   if (!transfer.ilp && !transfer.data) {
     debug('got notification of transfer with no packet attached')
-    return yield _reject(plugin, transfer.id, {
-      code: 'S01',
-      name: 'Invalid Packet',
+    return yield _reject(plugin, transfer.id, ilpErrors.F01_Invalid_Packet({
       message: 'got notification of transfer with no packet attached'
-    })
+    }))
   }
 
   const parsed = Packet.parseFromTransfer(transfer)
   if (parsed === undefined) {
-    return yield _reject(plugin, transfer.id, {
-      code: 'S01',
-      name: 'Invalid Packet',
+    return yield _reject(plugin, transfer.id, ilpErrors.F01_Invalid_Packet({
       message: 'got notification of transfer with invalid ILP packet'
-    })
+    }))
   }
 
   const secret = _accountToSharedSecret({
@@ -315,35 +306,25 @@ function * _validateOrRejectTransfer ({
       e.stack)
 
     if (e.message === 'unsupported status') {
-      return yield _reject(plugin, transfer.id, {
-        code: 'S06',
-        name: 'Unexpected Payment',
+      return yield _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
         message: 'unsupported PSK version or status'
-      })
+      }))
     } else if (e.message === 'missing nonce') {
-      return yield _reject(plugin, transfer.id, {
-        code: 'S06',
-        name: 'Unexpected Payment',
+      return yield _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
         message: 'missing PSK nonce'
-      })
+      }))
     } else if (e.message === 'unsupported key') {
-      return yield _reject(plugin, transfer.id, {
-        code: 'S06',
-        name: 'Unexpected Payment',
+      return yield _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
         message: 'unsupported PSK key derivation'
-      })
+      }))
     } else if (e.message === 'unsupported encryption') {
-      return yield _reject(plugin, transfer.id, {
-        code: 'S06',
-        name: 'Unexpected Payment',
+      return yield _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
         message: 'unsupported PSK encryption method'
-      })
+      }))
     } else {
-      return yield _reject(plugin, transfer.id, {
-        code: 'S06',
-        name: 'Unexpected Payment',
+      return yield _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
         message: 'unspecified PSK error'
-      })
+      }))
     }
   }
 
@@ -354,31 +335,25 @@ function * _validateOrRejectTransfer ({
     debug('notified of transfer amount smaller than packet amount:' +
       ' transfer=' + transfer.amount +
       ' packet=' + destinationAmount)
-    return yield _reject(plugin, transfer.id, {
-      code: 'S04',
-      name: 'Insufficient Destination Amount',
+    return yield _reject(plugin, transfer.id, ilpErrors.F04_Insufficient_Destination_Amount({
       message: 'got notification of transfer where amount is less than expected'
-    })
+    }))
   }
 
   if (!allowOverPayment && amount.greaterThan(destinationAmount)) {
     debug('notified of transfer amount larger than packet amount:' +
       ' transfer=' + transfer.amount +
       ' packet=' + destinationAmount)
-    return yield _reject(plugin, transfer.id, {
-      code: 'S03',
-      name: 'Invalid Amount',
+    return yield _reject(plugin, transfer.id, ilpErrors.F03_Invalid_Amount({
       message: 'got notification of transfer where amount is more than expected'
-    })
+    }))
   }
 
   if (expiresAt && moment().isAfter(expiresAt)) {
     debug('notified of transfer with expired packet:', transfer)
-    return yield _reject(plugin, transfer.id, {
-      code: 'R01',
-      name: 'Transfer Timed Out',
+    return yield _reject(plugin, transfer.id, ilpErrors.R00_Transfer_Timed_Out({
       message: 'got notification of transfer with expired packet'
-    })
+    }))
   }
 }
 
