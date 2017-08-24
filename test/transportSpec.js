@@ -306,7 +306,7 @@ describe('Transport', function () {
       delete this.params.transfer.executionCondition
       assert.deepEqual(
         yield Transport._validateOrRejectTransfer(this.params),
-        { code: 'S00',
+        { code: 'F00',
           message: 'got notification of transfer without executionCondition',
           name: 'Bad Request'
         })
@@ -319,7 +319,7 @@ describe('Transport', function () {
 
       assert.deepEqual(
         yield Transport._validateOrRejectTransfer(this.params),
-        { code: 'S06',
+        { code: 'F06',
           message: 'unspecified PSK error',
           name: 'Unexpected Payment'
         })
@@ -337,7 +337,7 @@ data`, 'utf8')) }))
 
       assert.deepEqual(
         yield Transport._validateOrRejectTransfer(this.params),
-        { code: 'S06',
+        { code: 'F06',
           message: 'unsupported PSK encryption method',
           name: 'Unexpected Payment'
         })
@@ -354,7 +354,7 @@ data`, 'utf8')) }))
 
       assert.deepEqual(
         yield Transport._validateOrRejectTransfer(this.params),
-        { code: 'S06',
+        { code: 'F06',
           message: 'missing PSK nonce',
           name: 'Unexpected Payment'
         })
@@ -373,7 +373,7 @@ data`, 'utf8')) }))
 
       assert.deepEqual(
         yield Transport._validateOrRejectTransfer(this.params),
-        { code: 'S06',
+        { code: 'F06',
           message: 'unsupported PSK key derivation',
           name: 'Unexpected Payment'
         })
@@ -389,7 +389,7 @@ data`, 'utf8')) }))
 
       assert.deepEqual(
         yield Transport._validateOrRejectTransfer(this.params),
-        { code: 'S06',
+        { code: 'F06',
           message: 'unsupported PSK version or status',
           name: 'Unexpected Payment'
         })
@@ -420,7 +420,7 @@ data`, 'utf8')) }))
       this.params.transfer.amount = '0.1'
       assert.deepEqual(
         yield Transport._validateOrRejectTransfer(this.params),
-        { code: 'S04',
+        { code: 'F04',
           message: 'got notification of transfer where amount is less than expected',
           name: 'Insufficient Destination Amount'
         })
@@ -432,7 +432,7 @@ data`, 'utf8')) }))
       this.params.transfer.amount = '1.1'
       assert.deepEqual(
         yield Transport._validateOrRejectTransfer(this.params),
-        { code: 'S03',
+        { code: 'F03',
           message: 'got notification of transfer where amount is more than expected',
           name: 'Invalid Amount'
         })
@@ -462,7 +462,7 @@ data`, 'utf8')) }))
 
       assert.deepEqual(
         yield Transport._validateOrRejectTransfer(this.params),
-        { code: 'R01',
+        { code: 'R00',
           message: 'got notification of transfer with expired packet',
           name: 'Transfer Timed Out'
         })
@@ -608,7 +608,7 @@ data`, 'utf8')) }))
       yield Transport.listen(this.plugin, this.params, this.callback, 'ipr')
       const res = yield this.plugin.emitAsync('incoming_prepare', this.transfer)
       assert.deepEqual(res[0], {
-        code: 'S00',
+        code: 'F00',
         message: 'rejected-by-receiver: I don\'t want that transfer',
         name: 'Bad Request'
       })
@@ -631,7 +631,7 @@ data`, 'utf8')) }))
       yield Transport.listen(this.plugin, this.params, this.callback, 'ipr')
       const res = yield this.plugin.emitAsync('incoming_prepare', this.transfer)
       assert.deepEqual(res[0], {
-        code: 'S00',
+        code: 'F00',
         message: 'rejected-by-receiver: I don\'t want that transfer',
         name: 'Bad Request'
       })
