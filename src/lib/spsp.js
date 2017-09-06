@@ -57,7 +57,7 @@ function validateSPSPResponse (response) {
   assert(typeof response.destination_account === 'string', 'destination_account must be a string')
   assert(typeof response.shared_secret === 'string', 'shared_secret must be a string')
   assert(response.shared_secret.match(/^[A-Za-z0-9_-]+$/), 'shared_secret must be base64url')
-  assert(Buffer.from(response.shared_secret, 'base64').length === 16, 'shared_secret must be 16 bytes')
+  assert(Buffer.from(response.shared_secret, 'base64').length === 32, 'shared_secret must be 32 bytes')
   assert(typeof response.maximum_destination_amount === 'string', 'maximum_destination_amount must be a string')
   assert(typeof response.minimum_destination_amount === 'string', 'minimum_destination_amount must be a string')
   assert(typeof response.ledger_info === 'object', 'ledger_info must be an object')

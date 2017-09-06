@@ -24,7 +24,7 @@ describe('Transport', function () {
     beforeEach(function () {
       this.params = {
         destinationAccount: 'test.example.alice',
-        receiverSecret: Buffer.from('secret')
+        receiverSecret: Buffer.from('7365637265740000000000000000000000000000000000000000', 'hex')
       }
     })
 
@@ -271,7 +271,7 @@ describe('Transport', function () {
       const { packet, condition } = Transport.createPacketAndCondition({
         destinationAmount: '1',
         destinationAccount: 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ',
-        secret: Buffer.from('bo4GhvVNW8nacSz0PvibKA', 'base64'),
+        secret: Buffer.from('6e8e0686f54d5bc9da712cf43ef89b2800000000000000000000000000000000', 'hex'),
         data: Buffer.from('test data'),
         expiresAt: moment().add(1, 'seconds').toISOString(),
       }, 'ipr')
@@ -279,7 +279,7 @@ describe('Transport', function () {
       this.packet = packet
       this.params = {
         plugin: this.plugin,
-        receiverSecret: Buffer.from('secret'),
+        receiverSecret: Buffer.from('7365637265740000000000000000000000000000000000000000', 'hex'),
         transfer: {
           id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
           amount: '1',

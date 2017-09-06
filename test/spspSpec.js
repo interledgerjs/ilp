@@ -132,7 +132,7 @@ describe('SPSP', function () {
         .reply(200, badResponse)
 
       yield expect(SPSP.quote(this.plugin, this.params))
-        .to.eventually.be.rejectedWith(/shared_secret must be 16 bytes/)
+        .to.eventually.be.rejectedWith(/shared_secret must be 32 bytes/)
     })
 
     it('should return an error if webfinger can\'t be reached', function * () {
