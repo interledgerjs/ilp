@@ -14,6 +14,7 @@ const { createDetails, parseDetails } = require('../utils/details')
 
 const DEFAULT_MIN_FULFILL_RETRY_WAIT = 250
 const DEFAULT_MAX_FULFILL_RETRY_WAIT = 1000
+const IGNORE_PACKET_CONDITION_PREFIX = '__________'
 
 function createPacketAndCondition ({
   destinationAmount,
@@ -163,6 +164,11 @@ function * _autoFulfillCondition ({
   maxFulfillRetryWait,
   callback
 }) {
+  // This indicates it's a transfer for some other protocol that we should ignore
+  if (transfer.executionCondition.indexOf(IGNORE_TRANSFER_CONDITION_PREFIX) === 0) {
+    return false
+  }
+
   const account = plugin.getAccount()
 
   // TODO: should this just be included in this function?
