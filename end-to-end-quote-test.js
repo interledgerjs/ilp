@@ -20,10 +20,10 @@ async function main () {
 
   const stopListening = ILQP.listenForEndToEndQuotes(receiver)
 
-  const quote = await ILQP.quoteEndToEnd(sender, {
+  const quote = await ILQP.quote(sender, {
     destinationAccount: receiver.getAccount() + '.sdflkj',
-    sourceAmount: '1000',
-    connector: 'us.usd.red.charles'
+    destinationAmount: '1000',
+    connectors: ['us.usd.red.charles']
   })
   console.log(quote)
 

@@ -10,8 +10,16 @@ const { safeConnect, startsWith, xor, omitUndefined } =
   require('../utils')
 const uuid = require('uuid')
 
-const DEFAULT_MESSAGE_TIMEOUT = 5000
-const DEFAULT_EXPIRY_DURATION = 10
+// The first 10 underscores indicate that other listeners should ignore
+// these transfers unless they specifically recognize the condition
+const QUOTE_CONDITION = '__________ilqp_v2-0________________________'
+const QUOTE_ERROR_CODE = 'F08'
+const QUOTE_ERROR_NAME = 'ILQPv2.0'
+const DEFAULT_QUOTE_TIMEOUT = 10000 // milliseconds
+const DEFAULT_EXPIRY_DURATION = 10 // seconds
+const MAX_UINT64 = '18446744073709551615'
+// TODO how do we set this amount? what if it's not enough to get to the other side?
+const PROBE_SOURCE_AMOUNT = '10000'
 
 function * _handleConnectorResponses (connectors, promises) {
   if (connectors.length === 0) {
@@ -44,16 +52,6 @@ function * _handleConnectorResponses (connectors, promises) {
   return quotes
 }
 
-function _serializeQuoteRequest (requestParams) {
-  if (requestParams.sourceAmount) {
-    return IlpPacket.serializeIlqpBySourceRequest(requestParams)
-  }
-  if (requestParams.destinationAmount) {
-    return IlpPacket.serializeIlqpByDestinationRequest(requestParams)
-  }
-  return IlpPacket.serializeIlqpLiquidityRequest(requestParams)
-}
-
 /**
   * @param {Object} params
   * @param {Object} params.plugin The LedgerPlugin used to send quote request
@@ -68,31 +66,83 @@ function quoteByConnector ({
   quoteQuery,
   timeout
 }) {
-  const prefix = plugin.getInfo().prefix
-  const requestPacket = _serializeQuoteRequest(quoteQuery)
-  const requestType = requestPacket[0]
+  debug('quote by connector: ', connector, quoteQuery)
+  const isSourceQuote = quoteQuery.hasOwnProperty('sourceAmount')
 
-  debug('remote quote connector=' + connector, 'query=' + JSON.stringify(quoteQuery))
-  return plugin.sendRequest({
-    ledger: prefix,
-    from: plugin.getAccount(),
+  const sourceAmount = isSourceQuote ? quoteQuery.sourceAmount : PROBE_SOURCE_AMOUNT
+  // TODO add an option to specify the sourceExpiryDuration instead of the destination
+  // TODO maybe increase timeout if the first attempt fails
+  const quoteTransferTimeout = timeout || DEFAULT_QUOTE_TIMEOUT
+  const ilp = IlpPacket.serializeIlpPayment({
+    amount: MAX_UINT64,
+    account: quoteQuery.destinationAccount,
+  }).toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+  const quoteTransfer = {
+    id: uuid(),
+    amount: sourceAmount,
     to: connector,
-    ilp: requestPacket.toString('base64'),
-    timeout: timeout || DEFAULT_MESSAGE_TIMEOUT
-  }).then((response) => {
-    if (!response.ilp) throw new Error('Quote response has no packet')
-    const responsePacket = Buffer.from(response.ilp, 'base64')
-    const responseType = responsePacket[0]
-    const packetData = IlpPacket.deserializeIlpPacket(responsePacket).data
-    const isErrorPacket = responseType === IlpPacket.Type.TYPE_ILP_ERROR
-    if (isErrorPacket) {
-      debug('remote quote error connector=' + connector, 'ilpError=' + JSON.stringify(packetData))
+    ilp,
+    expiresAt: new Date(Date.now() + quoteTransferTimeout).toISOString(),
+    executionCondition: QUOTE_CONDITION
+  }
+
+  const quoteResponsePromise = new Promise((resolve, reject) => {
+    function onReject (transfer, rejectionReason) {
+      if (transfer.id !== quoteTransfer.id) {
+        return
+      }
+
+      debug('quote transfer rejected with message:', rejectionReason)
+
+      if (rejectionReason.code === QUOTE_ERROR_CODE && rejectionReason.name === QUOTE_ERROR_NAME) {
+        debug('got quote response')
+        // TODO should the quote be encrypted?
+        // TODO handle parsing errors
+        const response = JSON.parse(rejectionReason.message)
+        const sourceHoldDuration = quoteTransferTimeout + quoteQuery.destinationHoldDuration - response.timeToExpiry
+
+        if (isSourceQuote) {
+          resolve({
+            sourceAmount: quoteQuery.sourceAmount,
+            destinationAmount: response.amount,
+            sourceHoldDuration
+          })
+        } else {
+          const sourceAmount = new BigNumber(quoteQuery.destinationAmount)
+            .dividedBy(response.amount)
+            .times(PROBE_SOURCE_AMOUNT)
+            .round(0, BigNumber.ROUND_UP)
+            .toString(10)
+          resolve({
+            sourceAmount,
+            destinationAmount: quoteQuery.destinationAmount,
+            sourceHoldDuration
+          })
+        }
+      } else if (rejectionReason.code === 'R00') {
+        reject(new Error('Quote request timed out'))
+      } else {
+        reject(new Error('Quote request failed. Got error:' + rejectionReason.code + ' ' + rejectionReason.name + ': ' + rejectionReason.message))
+      }
     }
-    if (isErrorPacket || responseType === requestType + 1) {
-      return Object.assign({responseType}, packetData)
-    }
-    throw new Error('Quote response packet has incorrect type')
+    plugin.on('outgoing_reject', onReject)
+    plugin.on('outgoing_cancel', onReject)
+
+    setTimeout(() => {
+      plugin.removeListener('outgoing_reject', onReject)
+      plugin.removeListener('outgoing_cancel', onReject)
+      reject(new Error('Quote request timed out'))
+    }, quoteTransferTimeout + 100) // TODO don't use hardcoded value here
   })
+  return plugin.sendTransfer(quoteTransfer)
+    .then(() => quoteResponsePromise)
+    .then((quoteResponse) => {
+      debug('quote response:', quoteResponse)
+      return quoteResponse
+    })
 }
 
 function _getCheaperQuote (quote1, quote2) {
@@ -113,8 +163,8 @@ function _getCheaperQuote (quote1, quote2) {
 /**
   * @param {Object} plugin The LedgerPlugin used to send quote request
   * @param {Object} query
-  * @param {String} query.sourceAddress Sender's address
-  * @param {String} query.destinationAddress Recipient's address
+  * @param {String} query.sourceAccount Sender's address
+  * @param {String} query.destinationAccount Recipient's address
   * @param {String} [query.sourceAmount] Either the sourceAmount or destinationAmount must be specified. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger.
   * @param {String} [query.destinationAmount] Either the sourceAmount or destinationAmount must be specified. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger.
   * @param {String|Number} [query.destinationExpiryDuration] Number of seconds between when the destination transfer is proposed and when it expires.
@@ -122,8 +172,8 @@ function _getCheaperQuote (quote1, quote2) {
   * @returns {Promise<Quote>}
   */
 function * quote (plugin, {
-  sourceAddress,
-  destinationAddress,
+  sourceAccount,
+  destinationAccount,
   sourceAmount,
   destinationAmount,
   destinationExpiryDuration,
@@ -140,11 +190,11 @@ function * quote (plugin, {
   const amount = sourceAmount || destinationAmount
   const destinationHoldDuration = +(destinationExpiryDuration || DEFAULT_EXPIRY_DURATION)
 
-  if (startsWith(prefix, destinationAddress)) {
-    debug('returning a local transfer to', destinationAddress, 'for', amount)
+  if (startsWith(prefix, destinationAccount)) {
+    debug('returning a local transfer to', destinationAccount, 'for', amount)
     return omitUndefined({
       // send directly to the destination
-      connectorAccount: destinationAddress,
+      connectorAccount: destinationAccount,
       sourceAmount: amount,
       destinationAmount: amount,
       sourceExpiryDuration: destinationHoldDuration.toString()
@@ -152,7 +202,7 @@ function * quote (plugin, {
   }
 
   const quoteQuery = omitUndefined({
-    destinationAccount: destinationAddress,
+    destinationAccount: destinationAccount,
     destinationHoldDuration: destinationHoldDuration * 1000,
     sourceAmount,
     destinationAmount
@@ -161,7 +211,7 @@ function * quote (plugin, {
   const quoteConnectors = connectors || plugin.getInfo().connectors || []
   debug('quoting', amount,
     (sourceAmount ? '(source amount)' : '(destination amount)'),
-    'to', destinationAddress, 'via', quoteConnectors)
+    'to', destinationAccount, 'via', quoteConnectors)
 
   // handle connector responses will return all successful quotes, or
   // throw all errors if there were none.
@@ -195,77 +245,14 @@ function * quoteByPacket (plugin, packet) {
   })
 }
 
-const END_TO_END_QUOTE_CONDITION = 'quotequotequotequotequotequotequotequotequo'
-const QUOTE_ERROR_CODE = 'F08'
-const QUOTE_ERROR_NAME = 'Quote'
-
-// TODO make quoteSourceAmount and quoteDestinationAmount by multiplying the rate by the amount
-// Returns destinationAmount
-function quoteEndToEnd (plugin, {
-  sourceAmount,
-  destinationAccount,
-  connector,
-  sourceExpiryDuration
-}) {
-  // TODO handle if he don't know connector
-  const connectorToUse = connector || plugin.getInfo().connectors[0]
-  const timeout = sourceExpiryDuration || 10000
-
-  const quoteTransfer = {
-    id: uuid(),
-    amount: sourceAmount,
-    to: connectorToUse,
-    ilp: IlpPacket.serializeIlpPayment({
-      // TODO what if the amount is bigger than the destination ledger precision?
-      amount: '999999', // '18446744073709551615', // max unsigned 64-bit integer
-      account: destinationAccount,
-    }),
-    // TODO we should get the recipient to tell us how much time they saw the payment before the timeout
-    expiresAt: new Date(Date.now() + timeout).toISOString(),
-    // TODO should we hide the fact that we're requesting a quote?
-    executionCondition: END_TO_END_QUOTE_CONDITION
-  }
-
-  const quoteResponsePromise = new Promise((resolve, reject) => {
-    function onReject (transfer, rejectionReason) {
-      if (transfer.id !== quoteTransfer.id) {
-        return
-      }
-
-      if (rejectionReason.code === QUOTE_ERROR_CODE) {
-        // TODO should the quote be encrypted?
-        // TODO handle parsing errors
-        const response = JSON.parse(rejectionReason.message)
-        resolve({
-          destinationAmount: response.amount,
-          // TODO should we return something more like destinationHoldDuration?
-          destinationExpiryDuration: response.timeToExpiry
-        })
-      } else if (rejectionReason.code === 'R00') {
-        reject(new Error('Quote request timed out'))
-      } else {
-        reject(new Error('Quote request failed. Got error:' + rejectionReason.code + ' ' + rejectionReason.name + ': ' + rejectionReason.message))
-      }
-    }
-    plugin.on('outgoing_reject', onReject)
-    plugin.on('outgoing_cancel', onReject)
-
-    setTimeout(() => {
-      plugin.removeListener('outgoing_reject', onReject)
-      plugin.removeListener('outgoing_cancel', onReject)
-      reject(new Error('Quote request timed out'))
-    }, timeout)
-  })
-  return plugin.sendTransfer(quoteTransfer)
-    .then(() => quoteResponsePromise)
-}
-
-
 function listenForEndToEndQuotes (plugin) {
   function _onQuote (transfer) {
-    if (transfer.executionCondition !== END_TO_END_QUOTE_CONDITION) {
+    if (transfer.executionCondition !== QUOTE_CONDITION) {
       return
     }
+
+    // TODO handle parsing errors or if packet is not present
+    const packet = IlpPacket.deserializeIlpPayment(Buffer.from(transfer.ilp, 'base64'))
 
     // TODO binary representation
     // TODO would you want to send any other data back?
@@ -297,7 +284,5 @@ module.exports = {
   quoteByConnector,
   quote: co.wrap(quote),
   quoteByPacket: co.wrap(quoteByPacket),
-  listenForEndToEndQuotes,
-  quoteEndToEnd
-
+  listenForEndToEndQuotes
 }
