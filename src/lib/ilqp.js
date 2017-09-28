@@ -8,6 +8,7 @@ const moment = require('moment')
 const BigNumber = require('bignumber.js')
 const { safeConnect, startsWith, xor, omitUndefined } =
   require('../utils')
+const uuid = require('uuid')
 
 const DEFAULT_MESSAGE_TIMEOUT = 5000
 const DEFAULT_EXPIRY_DURATION = 10
@@ -194,9 +195,109 @@ function * quoteByPacket (plugin, packet) {
   })
 }
 
+const END_TO_END_QUOTE_CONDITION = 'quotequotequotequotequotequotequotequotequo'
+const QUOTE_ERROR_CODE = 'F08'
+const QUOTE_ERROR_NAME = 'Quote'
+
+// TODO make quoteSourceAmount and quoteDestinationAmount by multiplying the rate by the amount
+// Returns destinationAmount
+function quoteEndToEnd (plugin, {
+  sourceAmount,
+  destinationAccount,
+  connector,
+  sourceExpiryDuration
+}) {
+  // TODO handle if he don't know connector
+  const connectorToUse = connector || plugin.getInfo().connectors[0]
+  const timeout = sourceExpiryDuration || 10000
+
+  const quoteTransfer = {
+    id: uuid(),
+    amount: sourceAmount,
+    to: connectorToUse,
+    ilp: IlpPacket.serializeIlpPayment({
+      // TODO what if the amount is bigger than the destination ledger precision?
+      amount: '999999', // '18446744073709551615', // max unsigned 64-bit integer
+      account: destinationAccount,
+    }),
+    // TODO we should get the recipient to tell us how much time they saw the payment before the timeout
+    expiresAt: new Date(Date.now() + timeout).toISOString(),
+    // TODO should we hide the fact that we're requesting a quote?
+    executionCondition: END_TO_END_QUOTE_CONDITION
+  }
+
+  const quoteResponsePromise = new Promise((resolve, reject) => {
+    function onReject (transfer, rejectionReason) {
+      if (transfer.id !== quoteTransfer.id) {
+        return
+      }
+
+      if (rejectionReason.code === QUOTE_ERROR_CODE) {
+        // TODO should the quote be encrypted?
+        // TODO handle parsing errors
+        const response = JSON.parse(rejectionReason.message)
+        resolve({
+          destinationAmount: response.amount,
+          // TODO should we return something more like destinationHoldDuration?
+          destinationExpiryDuration: response.timeToExpiry
+        })
+      } else if (rejectionReason.code === 'R00') {
+        reject(new Error('Quote request timed out'))
+      } else {
+        reject(new Error('Quote request failed. Got error:' + rejectionReason.code + ' ' + rejectionReason.name + ': ' + rejectionReason.message))
+      }
+    }
+    plugin.on('outgoing_reject', onReject)
+    plugin.on('outgoing_cancel', onReject)
+
+    setTimeout(() => {
+      plugin.removeListener('outgoing_reject', onReject)
+      plugin.removeListener('outgoing_cancel', onReject)
+      reject(new Error('Quote request timed out'))
+    }, timeout)
+  })
+  return plugin.sendTransfer(quoteTransfer)
+    .then(() => quoteResponsePromise)
+}
+
+
+function listenForEndToEndQuotes (plugin) {
+  function _onQuote (transfer) {
+    if (transfer.executionCondition !== END_TO_END_QUOTE_CONDITION) {
+      return
+    }
+
+    // TODO binary representation
+    // TODO would you want to send any other data back?
+    const response = JSON.stringify({
+      amount: transfer.amount,
+      timeToExpiry: Date.parse(transfer.expiresAt) - Date.now()
+    })
+    // TODO how do we make sure another receiver listening on the account doesn't reject the transfer first?
+    plugin.rejectIncomingTransfer(transfer.id, {
+      code: QUOTE_ERROR_CODE,
+      name: QUOTE_ERROR_NAME,
+      message: response,
+      // TODO are these values supposed to be snake_case? inconsistent with rest of interface
+      triggered_by: plugin.getAccount(),
+      //triggered_at: new Date().toISOString(),
+      additional_info: {}
+    }).catch(err => console.log('error rejecting transfer', err))
+  }
+
+  plugin.on('incoming_prepare', _onQuote)
+
+  return () => {
+    plugin.removeListener('incoming_prepare', _onQuote)
+  }
+}
+
 module.exports = {
   _getCheaperQuote,
   quoteByConnector,
   quote: co.wrap(quote),
-  quoteByPacket: co.wrap(quoteByPacket)
+  quoteByPacket: co.wrap(quoteByPacket),
+  listenForEndToEndQuotes,
+  quoteEndToEnd
+
 }
