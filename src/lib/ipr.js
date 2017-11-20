@@ -137,7 +137,7 @@ function createIPR (params) {
   * @param {Object} plugin Ledger plugin to listen on
   * @param {Object} params Parameters for creating payment request
   * @param {Buffer} params.secret Secret to generate fulfillments with
-  * @param {Buffer} [params.allowOverPayment=false] Accept payments with higher amounts than expected
+  * @param {Buffer} [params.allowOverPayment=true] Accept payments with higher amounts than expected
   * @param {IncomingCallback} callback Called after an incoming payment is validated.
   *
   * @return {Object} Payment request
@@ -152,7 +152,7 @@ function listen (plugin, params, callback) {
   * @param {Object} factory Plugin bells factory to listen on
   * @param {Object} params Parameters for creating payment request
   * @param {Function} params.generateReceiverSecret function that returns receiver secret for a given username
-  * @param {Boolean} [params.allowOverPayment=false] Accept payments with higher amounts than expected
+  * @param {Boolean} [params.allowOverPayment=true] Accept payments with higher amounts than expected
   * @param {IncomingCallback} callback Called after an incoming payment is validated.
   *
   * @return {Object} Payment request

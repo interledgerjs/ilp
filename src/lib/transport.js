@@ -77,7 +77,7 @@ function _reject (plugin, id, reason) {
 
 function * listen (plugin, {
   receiverSecret,
-  allowOverPayment,
+  allowOverPayment = true,
   minFulfillRetryWait,
   maxFulfillRetryWait
 }, callback) {
@@ -108,7 +108,7 @@ function * listen (plugin, {
 
 function * listenAll (factory, {
   generateReceiverSecret,
-  allowOverPayment,
+  allowOverPayment = true,
   minFulfillRetryWait,
   maxFulfillRetryWait
 }, callback) {

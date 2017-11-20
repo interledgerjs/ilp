@@ -519,11 +519,32 @@ data`, 'utf8')) }))
       yield this.fulfilled
     })
 
+    it('should call fulfillCondition on an overpaid valid incoming transfer', function * () {
+      yield Transport.listen(this.plugin, this.params, this.callback, 'ipr')
+
+      // listener returns true for debug purposes
+      this.transfer.amount += 100
+      const res = yield this.plugin.emitAsync('incoming_prepare', this.transfer)
+      assert.isTrue(res[0])
+
+      yield this.fulfilled
+    })
+
     it('should reject when it generates the wrong fulfillment', function * () {
       this.transfer.executionCondition = 'garbage'
       yield Transport.listen(this.plugin, this.params, this.callback, 'ipr')
 
       // listener returns false for debug purposes
+      yield this.plugin.emitAsync('incoming_prepare', this.transfer)
+      yield this.rejected
+    })
+
+    it('should reject on an overpaid incoming transfer if allowOverPayment is off', function * () {
+      this.params.allowOverPayment = false
+      yield Transport.listen(this.plugin, this.params, this.callback, 'ipr')
+
+      // listener returns false for debug purposes
+      this.transfer.amount += 100
       yield this.plugin.emitAsync('incoming_prepare', this.transfer)
       yield this.rejected
     })
