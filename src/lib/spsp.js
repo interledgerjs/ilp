@@ -69,17 +69,17 @@ function validateSPSPResponse (response) {
 const _createPayment = (plugin, spsp, quote, id) => {
   const sourceAmount =
     toDecimal(quote.sourceAmount, plugin.getInfo().currencyScale)
-  const destinationAmount =
-    toDecimal(quote.destinationAmount, spsp.ledger_info.currency_scale)
+  const destinationAmount = (quote.destinationAmount ?
+    toDecimal(quote.destinationAmount, spsp.ledger_info.currency_scale) : undefined)
 
   return {
     id: id || uuid(),
-    sourceAmount: sourceAmount,
-    destinationAmount: destinationAmount,
+    sourceAmount,
+    destinationAmount,
     destinationAccount: spsp.destination_account,
     connectorAccount: quote.connectorAccount,
     sourceExpiryDuration: quote.sourceExpiryDuration,
-    spsp: spsp
+    spsp
   }
 }
 
@@ -163,7 +163,7 @@ const quote = function * (plugin, {
 }
 
 /**
-  * Quote to an SPSP receiver
+  * Send payment to an SPSP receiver
   *
   * @param {Object} plugin Ledger plugin used for quoting.
   * @param {SpspPayment} payment SPSP Payment returned from SPSP.quote.
@@ -179,7 +179,6 @@ function * sendPayment (plugin, payment) {
   assert(payment, 'missing payment')
   assert(payment.spsp, 'missing SPSP response in payment')
   assert(payment.spsp.shared_secret, 'missing SPSP shared_secret')
-  assert(payment.destinationAmount, 'missing destinationAmount')
   assert(payment.sourceAmount, 'missing sourceAmount')
   assert(payment.destinationAccount, 'missing destinationAccount')
   assert(payment.sourceExpiryDuration, 'missing sourceExpiryDuration')
@@ -191,8 +190,8 @@ function * sendPayment (plugin, payment) {
 
   const data = JSON.stringify(payment.memo || {})
   const destinationScale = payment.spsp.ledger_info.currency_scale
-  const integerDestinationAmount =
-    toInteger(payment.destinationAmount, destinationScale)
+  const integerDestinationAmount = (payment.destinationAmount ?
+    toInteger(payment.destinationAmount, destinationScale) : undefined)
 
   const { packet, condition } = PSK.createPacketAndCondition({
     sharedSecret: Buffer.from(payment.spsp.shared_secret, 'base64'),

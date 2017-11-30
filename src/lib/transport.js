@@ -331,7 +331,7 @@ function * _validateOrRejectTransfer ({
   const expiresAt = details.headers['expires-at']
   const amount = new BigNumber(transfer.amount)
 
-  if (amount.lessThan(destinationAmount)) {
+  if (destinationAmount && amount.lessThan(destinationAmount)) {
     debug('notified of transfer amount smaller than packet amount:' +
       ' transfer=' + transfer.amount +
       ' packet=' + destinationAmount)
@@ -340,7 +340,7 @@ function * _validateOrRejectTransfer ({
     }))
   }
 
-  if (!allowOverPayment && amount.greaterThan(destinationAmount)) {
+  if (!allowOverPayment && destinationAmount && amount.greaterThan(destinationAmount)) {
     debug('notified of transfer amount larger than packet amount:' +
       ' transfer=' + transfer.amount +
       ' packet=' + destinationAmount)
