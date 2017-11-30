@@ -141,6 +141,11 @@ const receiver = new FiveBellsLedgerPlugin({
     destinationAccount,
     destinationAmount: '10', // denominated in the ledger's base unit
   })
+  // the sender may also generate a forwarded payment, by omitting the destinationAmount:
+  // const { packet, condition } = ILP.PSK.createPacketAndCondition({
+  //   sharedSecret,
+  //   destinationAccount
+  // })
 
   const quote = await ILP.ILQP.quoteByPacket(sender, packet)
   console.log('got quote:', quote)
@@ -356,7 +361,7 @@ Create a payment request using a Pre-Shared Key (PSK).
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
 | params | <code>Object</code> |  | Parameters for creating payment request |
-| params.destinationAmount | <code>String</code> |  | Amount that should arrive in the recipient's account. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger. |
+| params.destinationAmount | <code>String</code> |  | (Optional) amount that should arrive in the recipient's account. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger. Leave this parameter undefined to create a forwarded payment packet. |
 | params.destinationAccount | <code>String</code> |  | Target account's ILP address |
 | params.sharedSecret | <code>String</code> |  | Shared secret for PSK protocol |
 | [params.id] | <code>String</code> | <code>uuid.v4()</code> | Unique ID for the request (used to ensure conditions are unique per request) |
@@ -439,7 +444,7 @@ Create a packet and condition
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
 | params | <code>Object</code> |  | Parameters for creating payment request |
-| params.destinationAmount | <code>String</code> |  | Amount that should arrive in the recipient's account. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger. |
+| params.destinationAmount | <code>String</code> |  | (Optional) amount that should arrive in the recipient's account. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger. Leave this parameter undefined to create a forwarded payment packet. |
 | params.destinationAccount | <code>String</code> |  | Target account's ILP address |
 | params.receiverSecret | <code>Buffer</code> |  | Secret for generating IPR packets |
 | [params.id] | <code>String</code> | <code>uuid.v4()</code> | Unique ID for the request (used to ensure conditions are unique per request) |

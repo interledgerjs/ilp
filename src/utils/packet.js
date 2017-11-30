@@ -6,12 +6,16 @@ const debug = require('debug')('ilp:packet')
 const base64url = require('./base64url')
 
 const serialize = (p) => {
-  return base64url(IlpPacket.serializeIlpPayment(p))
+  if (p.amount) {
+    return base64url(IlpPacket.serializeIlpPayment(p))
+  } else {
+    return base64url(IlpPacket.serializeIlpForwardedPayment(p))
+  }
 }
 
 const parse = (packet) => {
   try {
-    return IlpPacket.deserializeIlpPayment(Buffer.from(packet, 'base64'))
+    return IlpPacket.deserializeIlpPacket(Buffer.from(packet, 'base64')).data
   } catch (e) {
     debug('error while parsing packet: ' + e.message)
     return undefined
