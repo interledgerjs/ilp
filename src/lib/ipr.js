@@ -17,7 +17,7 @@ const IPR_VERSION = 2
   * Create a packet and condition
   *
   * @param {Object} params Parameters for creating payment request
-  * @param {String} params.destinationAmount Amount that should arrive in the recipient's account. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger.
+  * @param {String} params.destinationAmount (Optional) amount that should arrive in the recipient's account. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger. Omit this parameter to send a forwarded payment.
   * @param {String} params.destinationAccount Target account's ILP address
   * @param {Buffer} params.receiverSecret Secret for generating IPR packets
   * @param {String} [params.id=uuid.v4()] Unique ID for the request (used to ensure conditions are unique per request)
@@ -105,7 +105,7 @@ function decodeIPR (ipr) {
   * Create a payment request for use in the IPR transport protocol.
   *
   * @param {Object} params Parameters for creating payment request
-  * @param {String} params.destinationAmount Amount that should arrive in the recipient's account. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger.
+  * @param {String} params.destinationAmount (Optional) amount that should arrive in the recipient's account. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger. Omit this parameter to create an IPR request a forwarded payment.
   * @param {String} params.destinationAccount Target account's ILP address
   * @param {Buffer} params.receiverSecret Secret for generating IPR packets
   * @param {String} [params.id=uuid.v4()] Unique ID for the request (used to ensure conditions are unique per request)
@@ -127,7 +127,7 @@ function createIPR (params) {
   * @param {Object} params.transfer Raw transfer object emitted by plugin
   * @param {Object} params.data Decrypted data parsed from transfer
   * @param {String} params.destinationAccount destinationAccount parsed from ILP packet
-  * @param {String} params.destinationAmount destinationAmount parsed from ILP packet
+  * @param {String} params.destinationAmount destinationAmount parsed from ILP packet (if present)
   * @param {Function} params.fulfill async function that fulfills the transfer when it is called
   */
 
