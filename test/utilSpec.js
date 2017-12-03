@@ -8,21 +8,25 @@ const Details = require('../src/utils/details')
 const Utils = require('../src/utils')
 
 describe('Utils', function () {
-  describe('details', function ()  {
+  describe('details', function () {
     it('should not parse an invalid request', function () {
-      assert.throws(() => Details._parseRequest({
-        request: Buffer.from('garbage', 'utf8'),
-        statusLine: true 
-      }),
-        /invalid request:/)
+      assert.throws(
+        () => Details._parseRequest({
+          request: Buffer.from('garbage', 'utf8'),
+          statusLine: true
+        }),
+        /invalid request:/
+      )
     })
 
     it('should not allow the user to specify a nonce', function () {
-      assert.throws(() => Details.createDetails({
-        // make sure it's case insensitive
-        publicHeaders: { nOnce: 'a very bad nonce' }
-      }),
-        /"Nonce" header may not be specified manually/)
+      assert.throws(
+        () => Details.createDetails({
+          // make sure it's case insensitive
+          publicHeaders: { nOnce: 'a very bad nonce' }
+        }),
+        /"Nonce" header may not be specified manually/
+      )
     })
 
     it('should encrypt 64 kilobytes of data', function () {
@@ -34,7 +38,7 @@ describe('Utils', function () {
         data: Buffer.from('0'.repeat(len)),
         secret
       })
-      
+
       const { data } = Details.parseDetails({
         details,
         secret
@@ -49,11 +53,13 @@ Header: stuff
 
 binary data goes here
       `
-      assert.throws(() => Details._parseRequest({
-        request: Buffer.from(request, 'utf8'),
-        statusLine: true
-      }),
-        /unsupported status/)
+      assert.throws(
+        () => Details._parseRequest({
+          request: Buffer.from(request, 'utf8'),
+          statusLine: true
+        }),
+        /unsupported status/
+      )
     })
 
     it('should parse a request with a minor version change', function () {
@@ -77,13 +83,15 @@ Header: stuff
 binary data goes here
       `
 
-      assert.throws(() => {
-        return Details.parseDetails({
-          details: base64url(Buffer.from(request, 'utf8')),
-          secret: Buffer.from('secret', 'utf8')
-        })
-      },
-        /unsupported encryption/)
+      assert.throws(
+        () => {
+          return Details.parseDetails({
+            details: base64url(Buffer.from(request, 'utf8')),
+            secret: Buffer.from('secret', 'utf8')
+          })
+        },
+        /unsupported encryption/
+      )
     })
 
     it('should parse a request', function () {
@@ -119,7 +127,8 @@ binary data goes here`
       const tag = parsed.publicHeaders.encryption.split(' ')[1]
       assert.deepEqual(
         parsed,
-        { publicHeaders: {
+        {
+          publicHeaders: {
             encryption: 'aes-256-gcm ' + tag,
             // the nonce field isn't deterministic
             nonce: parsed.publicHeaders.nonce,
@@ -129,7 +138,8 @@ binary data goes here`
           data: Buffer.from('binary data', 'utf8'),
           account: 'test.alice',
           amount: '1'
-        })
+        }
+      )
     })
   })
 
@@ -142,7 +152,7 @@ binary data goes here`
       this.stopWaiting.setSeconds(this.stopWaiting.getSeconds + 1)
     })
 
-    it('should retry a promise', function * () {
+    it('should retry a promise', async function () {
       let counter = 0
       const callback = () => {
         if (counter++ < 3) {
@@ -151,7 +161,7 @@ binary data goes here`
         return Promise.resolve('success!')
       }
 
-      yield Utils.retryPromise({
+      await Utils.retryPromise({
         callback,
         minWait: this.minWait,
         maxWait: this.maxWait,
@@ -159,8 +169,8 @@ binary data goes here`
       })
     })
 
-    it('should stop retring after expiry', function * () {
-      yield assert.isRejected(Utils.retryPromise({
+    it('should stop retring after expiry', async function () {
+      await assert.isRejected(Utils.retryPromise({
         callback: () => Promise.reject(new Error('please retry')),
         minWait: this.minWait,
         maxWait: this.maxWait,

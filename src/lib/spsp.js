@@ -1,5 +1,4 @@
 'use strict'
-const co = require('co')
 const assert = require('assert')
 const agent = require('superagent')
 const uuid = require('uuid/v4')
@@ -24,21 +23,21 @@ const _getHref = (res, field) => {
   throw new Error(field + ' not found in ' + JSON.stringify(res))
 }
 
-const _getSPSPFromReceiver = function * (receiver) {
+const _getSPSPFromReceiver = async function (receiver) {
   const host = receiver.split('@')[1]
-  const resource = (yield agent
+  const resource = (await agent
     .get('https://' + host + '/.well-known/webfinger?resource=acct:' + receiver)
     .set('Accept', 'application/json')).body
 
   return _getHref(resource, 'https://interledger.org/rel/spsp/v2')
 }
 
-const _querySPSP = function * (receiver) {
+const _querySPSP = async function (receiver) {
   const endpoint = (receiver.indexOf('@') >= 0)
-    ? (yield _getSPSPFromReceiver(receiver))
+    ? (await _getSPSPFromReceiver(receiver))
     : receiver
 
-  const response = (yield agent
+  const response = (await agent
     .get(endpoint)
     .set('Accept', 'application/json')).body
 
@@ -91,7 +90,7 @@ const _createPayment = (plugin, spsp, quote, id) => {
   * @return {Promise<SpspResponse>} SPSP SPSP response from server
   */
 
-const query = co.wrap(_querySPSP)
+const query = _querySPSP
 
 /**
   * Quote to an SPSP receiver
@@ -109,7 +108,7 @@ const query = co.wrap(_querySPSP)
   * @returns {Promise<SpspPayment>} SPSP payment object to be sent.
   */
 
-const quote = function * (plugin, {
+const quote = async function (plugin, {
   receiver,
   sourceAmount,
   destinationAmount,
@@ -129,12 +128,12 @@ const quote = function * (plugin, {
   const integerSourceAmount = sourceAmount &&
     toInteger(sourceAmount, sourceScale)
 
-  const spsp = spspResponse || (yield _querySPSP(receiver))
+  const spsp = spspResponse || (await _querySPSP(receiver))
   const destinationScale = spsp.ledger_info.currency_scale
   const integerDestinationAmount = destinationAmount &&
     toInteger(destinationAmount, destinationScale)
 
-  const quote = yield ILQP.quote(plugin, {
+  const quote = await ILQP.quote(plugin, {
     destinationAddress: spsp.destination_account,
     destinationAmount: integerDestinationAmount,
     sourceAmount: integerSourceAmount,
@@ -172,7 +171,7 @@ const quote = function * (plugin, {
   * @return {String} result.fulfillment The fulfillment of the payment.
   */
 
-function * sendPayment (plugin, payment) {
+async function sendPayment (plugin, payment) {
   // CAUTION1: `destination` here means the final receiver, not the next hop.
   // CAUTION2: `source` here actually means "next" (first) hop, seen from the sender.
   assert(plugin, 'missing plugin')
@@ -233,7 +232,7 @@ function * sendPayment (plugin, payment) {
     plugin.on('outgoing_reject', cancel)
   })
 
-  yield plugin.sendTransfer({
+  await plugin.sendTransfer({
     id: payment.id,
     to: payment.connectorAccount,
     amount: integerSourceAmount,
@@ -244,7 +243,7 @@ function * sendPayment (plugin, payment) {
       .toISOString()
   })
 
-  return yield listen
+  return listen
 }
 
 /**
@@ -279,8 +278,8 @@ module.exports = {
   _getSPSPFromReceiver,
   _querySPSP,
   _createPayment,
-  quote: co.wrap(quote),
-  sendPayment: co.wrap(sendPayment),
+  quote,
+  sendPayment,
   query,
   validateSPSPResponse
 }

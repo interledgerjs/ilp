@@ -2,7 +2,6 @@
 
 const IlpPacket = require('ilp-packet')
 const chai = require('chai')
-const moment = require('moment')
 const assert = chai.assert
 const ILQP = require('..').ILQP
 const Packet = require('../src/utils/packet')
@@ -45,7 +44,8 @@ describe('ILQP', function () {
         destinationAddress: 'test.local.bob',
         sourceAmount: '1',
         destinationExpiryDuration: '10',
-        connectors: [ 'test.example.connie' ]
+        connectors: [ 'test.example.connie' ],
+        timeout: 100
       }
       this.result = {
         sourceAmount: '1',
@@ -62,8 +62,8 @@ describe('ILQP', function () {
       }
     })
 
-    it('should quote by source amount', function * () {
-      const response = yield ILQP.quote(this.plugin, this.params)
+    it('should quote by source amount', async function () {
+      const response = await ILQP.quote(this.plugin, this.params)
       this.result.expiresAt = (new Date(response.expiresAt)).toISOString()
 
       assert.deepEqual(
@@ -71,7 +71,7 @@ describe('ILQP', function () {
         this.result)
     })
 
-    it('should quote by destination amount', function * () {
+    it('should quote by destination amount', async function () {
       this.params.destinationAmount = this.params.sourceAmount
       delete this.params.sourceAmount
 
@@ -84,7 +84,7 @@ describe('ILQP', function () {
         })
       }
 
-      const response = yield ILQP.quote(this.plugin, this.params)
+      const response = await ILQP.quote(this.plugin, this.params)
       this.result.expiresAt = (new Date(response.expiresAt)).toISOString()
 
       assert.deepEqual(
@@ -92,22 +92,22 @@ describe('ILQP', function () {
         this.result)
     })
 
-    it('should remove incoming message listener after response', function * () {
+    it('should remove incoming message listener after response', async function () {
       assert.equal(this.plugin.listeners('incoming_message').length, 0,
         'no listeners should be registered before quote')
 
-      yield ILQP.quote(this.plugin, this.params)
-      yield wait(10)
+      await ILQP.quote(this.plugin, this.params)
+      await wait(10)
 
       assert.equal(this.plugin.listeners('incoming_message').length, 0,
         'no listeners should be registered after quote')
     })
 
-    it('should default to getInfo\'s connectors', function * () {
+    it('should default to getInfo\'s connectors', async function () {
       // remove manually provided connectors
       delete this.params.connectors
 
-      const response = yield ILQP.quote(this.plugin, this.params)
+      const response = await ILQP.quote(this.plugin, this.params)
       this.result.expiresAt = (new Date(response.expiresAt)).toISOString()
 
       assert.deepEqual(
@@ -115,17 +115,17 @@ describe('ILQP', function () {
         this.result)
     })
 
-    it('should reject if getInfo returns no connectors', function * () {
+    it('should reject if getInfo returns no connectors', async function () {
       delete this.params.connectors
       this.plugin.getInfo = () => ({ prefix: 'test.example.' })
 
-      yield expect(ILQP.quote(this.plugin, this.params))
-        .to.be.rejectedWith(/no connectors specified/)    
+      await expect(ILQP.quote(this.plugin, this.params))
+        .to.be.rejectedWith(/no connectors specified/)
     })
 
-    it('should return a local quote if destination is local', function * () {
+    it('should return a local quote if destination is local', async function () {
       this.params.destinationAddress = 'test.example.bob'
-      const response = yield ILQP.quote(this.plugin, this.params)
+      const response = await ILQP.quote(this.plugin, this.params)
 
       // connectorAccount should be set to destination for local ILP payment
       this.result.connectorAccount = this.params.destinationAddress
@@ -135,29 +135,29 @@ describe('ILQP', function () {
         this.result)
     })
 
-    it('should reject if source and dest amounts are defined', function * () {
+    it('should reject if source and dest amounts are defined', async function () {
       this.params.destinationAmount = this.params.sourceAmount = '1'
 
-      yield expect(ILQP.quote(this.plugin, this.params))
+      await expect(ILQP.quote(this.plugin, this.params))
         .to.be.rejectedWith(/provide source or destination amount but not both/)
     })
 
-    it('should reject if there are no connectors', function * () {
+    it('should reject if there are no connectors', async function () {
       this.params.connectors = []
-      yield expect(ILQP.quote(this.plugin, this.params))
-        .to.be.rejectedWith(/no connectors specified/)    
+      await expect(ILQP.quote(this.plugin, this.params))
+        .to.be.rejectedWith(/no connectors specified/)
     })
 
-    it('should reject is sendRequest returns an IlpError', function * () {
+    it('should reject is sendRequest returns an IlpError', async function () {
       this.plugin.sendRequest = (msg) => {
         return Promise.resolve(this.errorResponse)
       }
-      yield expect(ILQP.quote(this.plugin, this.params))
+      await expect(ILQP.quote(this.plugin, this.params))
         .to.be.rejectedWith(/remote quote error: Invalid Packet/)
     })
 
     describe('quoteByPacket', function () {
-      it('should parse quote params from packet', function * () {
+      it('should parse quote params from packet', async function () {
         this.plugin.sendRequest = (msg) => {
           return Promise.resolve({
             ilp: IlpPacket.serializeIlqpByDestinationResponse({
@@ -167,12 +167,15 @@ describe('ILQP', function () {
           })
         }
 
-        const response = yield ILQP.quoteByPacket(
+        const response = await ILQP.quoteByPacket(
           this.plugin,
           Packet.serialize({
             amount: '1',
             account: 'test.local.bob'
-          })
+          }),
+          {
+            timeout: 100
+          }
         )
         this.result.expiresAt = (new Date(response.expiresAt)).toISOString()
 
@@ -196,7 +199,7 @@ describe('ILQP', function () {
       }
     })
 
-    it('should return the data from the message response', function * () {
+    it('should return the data from the message response', async function () {
       this.plugin.sendRequest = (msg) => {
         assert.equal(msg.ledger, 'test.example.')
         assert.equal(msg.to, 'test.example.connie')
@@ -209,27 +212,27 @@ describe('ILQP', function () {
         return Promise.resolve(this.response)
       }
 
-      const response = yield ILQP.quoteByConnector(this.params)
+      const response = await ILQP.quoteByConnector(this.params)
       assert.deepEqual(response,
         Object.assign(
           {responseType: 5},
           IlpPacket.deserializeIlqpBySourceResponse(Buffer.from(this.response.ilp, 'base64'))))
     })
 
-    it('should return an IlpError packet from the message response', function * () {
+    it('should return an IlpError packet from the message response', async function () {
       this.plugin.sendRequest = (msg) => {
         return Promise.resolve(this.errorResponse)
       }
-      assert.deepEqual(yield ILQP.quoteByConnector(this.params),
+      assert.deepEqual(await ILQP.quoteByConnector(this.params),
         Object.assign(
           {responseType: 8},
           IlpPacket.deserializeIlpError(Buffer.from(this.errorResponse.ilp, 'base64'))))
     })
 
-    it('should reject on an error', function * () {
+    it('should reject on an error', async function () {
       this.params.timeout = 10
       this.plugin.sendRequest = () => Promise.reject(new Error('fail'))
-      yield expect(ILQP.quoteByConnector(this.params))
+      await expect(ILQP.quoteByConnector(this.params))
         .to.be.rejectedWith(/fail/)
     })
   })

@@ -21,9 +21,10 @@ const parse = (packet) => {
 function getFromTransfer (transfer) {
   assert(transfer, 'transfer must be defined. got: ' + transfer)
   assert(typeof transfer === 'object', 'got invalid transfer: ' + transfer)
-  assert(typeof transfer.ilp === 'string' &&
-    transfer.ilp.match(/^[0-9A-Za-z-_]+$/),
-    'transfer.ilp must be a base64url string')
+  assert(
+    typeof transfer.ilp === 'string' && transfer.ilp.match(/^[0-9A-Za-z-_]+$/),
+    'transfer.ilp must be a base64url string'
+  )
 
   return transfer.ilp
 }
