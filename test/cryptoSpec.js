@@ -1,12 +1,8 @@
 'use strict'
 
 const chai = require('chai')
-const moment = require('moment')
 const assert = chai.assert
 const crypto = require('../src/utils/crypto')
-const Packet = require('../src/utils/packet')
-const MockPlugin = require('./mocks/mockPlugin')
-const expect = chai.expect
 const chaiAsPromised = require('chai-as-promised')
 chai.use(chaiAsPromised)
 

@@ -156,13 +156,13 @@ function parseDetails ({
 
   const decrypted = encryption
     ? (cryptoHelper
-        .aesDecryptBuffer({
-          secret,
-          nonce,
-          tag: Buffer.from(tagHeader, 'base64'),
-          buffer: publicRequest.data
-        })
-        .content)
+      .aesDecryptBuffer({
+        secret,
+        nonce,
+        tag: Buffer.from(tagHeader, 'base64'),
+        buffer: publicRequest.data
+      })
+      .content)
     : publicRequest.data
 
   const privateRequest = _parseRequest({

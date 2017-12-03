@@ -16,10 +16,6 @@ module.exports = function (wallaby) {
     env: {
       type: 'node',
       runner: 'node'
-    },
-
-    bootstrap: function (wallaby) {
-      require('co-mocha')(wallaby.testFramework.constructor)
     }
   }
 }

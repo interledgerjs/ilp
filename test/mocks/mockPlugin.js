@@ -2,10 +2,6 @@
 const EventEmitter2 = require('eventemitter2')
 
 module.exports = class MockPlugin extends EventEmitter2 {
-  constructor () {
-    super()
-  }
-
   connect () {
     return Promise.resolve(null)
   }

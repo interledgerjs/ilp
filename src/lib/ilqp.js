@@ -1,6 +1,5 @@
 'use strict'
 
-const co = require('co')
 const IlpPacket = require('ilp-packet')
 const Packet = require('../utils/packet')
 const debug = require('debug')('ilp:ilqp')
@@ -12,7 +11,7 @@ const { safeConnect, startsWith, xor, omitUndefined } =
 const DEFAULT_MESSAGE_TIMEOUT = 5000
 const DEFAULT_EXPIRY_DURATION = 10
 
-function * _handleConnectorResponses (connectors, promises) {
+async function _handleConnectorResponses (connectors, promises) {
   if (connectors.length === 0) {
     throw new Error('no connectors specified')
   }
@@ -22,7 +21,7 @@ function * _handleConnectorResponses (connectors, promises) {
 
   for (let c = 0; c < connectors.length; ++c) {
     try {
-      const quote = yield promises[c]
+      const quote = await promises[c]
       if (quote.responseType === IlpPacket.Type.TYPE_ILP_ERROR) {
         throw new Error('remote quote error: ' + quote.name)
       } else if (quote) {
@@ -120,7 +119,7 @@ function _getCheaperQuote (quote1, quote2) {
   * @param {Array} [query.connectors] List of ILP addresses of connectors to use for this quote.
   * @returns {Promise<Quote>}
   */
-function * quote (plugin, {
+async function quote (plugin, {
   sourceAddress,
   destinationAddress,
   sourceAmount,
@@ -134,7 +133,7 @@ function * quote (plugin, {
       ' ' + JSON.stringify({ sourceAmount, destinationAmount }))
   }
 
-  yield safeConnect(plugin)
+  await safeConnect(plugin, timeout)
   const prefix = plugin.getInfo().prefix
   const amount = sourceAmount || destinationAmount
   const destinationHoldDuration = +(destinationExpiryDuration || DEFAULT_EXPIRY_DURATION)
@@ -164,7 +163,7 @@ function * quote (plugin, {
 
   // handle connector responses will return all successful quotes, or
   // throw all errors if there were none.
-  const quotes = yield _handleConnectorResponses(
+  const quotes = await _handleConnectorResponses(
     quoteConnectors,
     quoteConnectors.map((connector) => {
       return quoteByConnector({ plugin, connector, quoteQuery, timeout })
@@ -186,17 +185,17 @@ function * quote (plugin, {
   })
 }
 
-function * quoteByPacket (plugin, packet) {
+async function quoteByPacket (plugin, packet, params) {
   const { account, amount } = Packet.parse(packet)
-  return yield quote(plugin, {
+  return quote(plugin, Object.assign({
     destinationAmount: amount,
     destinationAddress: account
-  })
+  }, params))
 }
 
 module.exports = {
   _getCheaperQuote,
   quoteByConnector,
-  quote: co.wrap(quote),
-  quoteByPacket: co.wrap(quoteByPacket)
+  quote,
+  quoteByPacket
 }

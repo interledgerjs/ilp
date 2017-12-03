@@ -3,7 +3,6 @@
 const Packet = require('../utils/packet')
 const moment = require('moment')
 const cryptoHelper = require('../utils/crypto')
-const co = require('co')
 const debug = require('debug')('ilp:transport')
 const assert = require('assert')
 const base64url = require('../utils/base64url')
@@ -75,19 +74,20 @@ function _reject (plugin, id, reason) {
     .then(() => reason)
 }
 
-function * listen (plugin, {
+async function listen (plugin, {
   receiverSecret,
   allowOverPayment = true,
   minFulfillRetryWait,
-  maxFulfillRetryWait
+  maxFulfillRetryWait,
+  connectTimeout
 }, callback) {
   assert(plugin && typeof plugin === 'object', 'plugin must be an object')
   assert(typeof callback === 'function', 'callback must be a function')
   assert(Buffer.isBuffer(receiverSecret), 'opts.receiverSecret must be a buffer')
 
-  yield safeConnect(plugin)
-  function * autoFulfillCondition (transfer) {
-    return yield _autoFulfillCondition({
+  await safeConnect(plugin, connectTimeout)
+  async function autoFulfillCondition (transfer) {
+    return _autoFulfillCondition({
       transfer,
       plugin,
       receiverSecret,
@@ -98,7 +98,7 @@ function * listen (plugin, {
     })
   }
 
-  const listener = co.wrap(autoFulfillCondition)
+  const listener = autoFulfillCondition
   plugin.on('incoming_prepare', listener)
 
   return function () {
@@ -106,18 +106,19 @@ function * listen (plugin, {
   }
 }
 
-function * listenAll (factory, {
+async function listenAll (factory, {
   generateReceiverSecret,
   allowOverPayment = true,
   minFulfillRetryWait,
-  maxFulfillRetryWait
+  maxFulfillRetryWait,
+  connectTimeout
 }, callback) {
   assert(factory && typeof factory === 'object', 'factory must be an object')
   assert(typeof callback === 'function', 'callback must be a function')
   assert(typeof generateReceiverSecret === 'function', 'opts.generateReceiverSecret must be a function')
 
-  yield safeConnect(factory)
-  function * autoFulfillCondition (username, transfer) {
+  await safeConnect(factory, connectTimeout)
+  async function autoFulfillCondition (username, transfer) {
     const pluginAsUser = {
       getAccount: factory.getAccountAs.bind(factory, username),
       rejectIncomingTransfer: factory.rejectIncomingTransferAs.bind(factory, username),
@@ -125,7 +126,7 @@ function * listenAll (factory, {
     }
 
     const receiverSecret = generateReceiverSecret(pluginAsUser.getAccount())
-    const result = yield _autoFulfillCondition({
+    const result = await _autoFulfillCondition({
       plugin: pluginAsUser,
       transfer,
       receiverSecret,
@@ -138,7 +139,7 @@ function * listenAll (factory, {
     return result
   }
 
-  const listener = co.wrap(autoFulfillCondition)
+  const listener = autoFulfillCondition
   factory.on('incoming_prepare', listener)
 
   return function () {
@@ -154,19 +155,19 @@ function * listenAll (factory, {
   *
   * Note return values are only for testing
   */
-function * _autoFulfillCondition ({
+async function _autoFulfillCondition ({
   transfer,
   plugin,
   receiverSecret,
   allowOverPayment,
   minFulfillRetryWait,
   maxFulfillRetryWait,
-  callback
+  callback: reviewFunction
 }) {
   const account = plugin.getAccount()
 
   // TODO: should this just be included in this function?
-  const err = yield _validateOrRejectTransfer({
+  const err = await _validateOrRejectTransfer({
     plugin,
     transfer,
     allowOverPayment,
@@ -195,7 +196,7 @@ function * _autoFulfillCondition ({
       ' transfer.id=' + transfer.id +
       ' executionCondition=' + transfer.executionCondition +
       ' our condition=' + cryptoHelper.preimageToCondition(preimage))
-    return yield _reject(plugin, transfer.id, ilpErrors.F05_Wrong_Condition({
+    return _reject(plugin, transfer.id, ilpErrors.F05_Wrong_Condition({
       message: 'receiver generated a different condition from the transfer'
     }))
   }
@@ -204,7 +205,7 @@ function * _autoFulfillCondition ({
 
   debug('calling callback to review transfer:', transfer, details)
   try {
-    yield Promise.resolve(callback({
+    await Promise.resolve(reviewFunction({
       transfer: transfer,
       publicHeaders: details.publicHeaders,
       headers: details.headers,
@@ -237,7 +238,7 @@ function * _autoFulfillCondition ({
   return true
 }
 
-function * _validateOrRejectTransfer ({
+async function _validateOrRejectTransfer ({
   plugin,
   transfer,
   allowOverPayment,
@@ -248,21 +249,21 @@ function * _validateOrRejectTransfer ({
 
   if (!transfer.executionCondition) {
     debug('notified of transfer without executionCondition ', transfer)
-    return yield _reject(plugin, transfer.id, ilpErrors.F00_Bad_Request({
+    return _reject(plugin, transfer.id, ilpErrors.F00_Bad_Request({
       message: 'got notification of transfer without executionCondition'
     }))
   }
 
   if (!transfer.ilp && !transfer.data) {
     debug('got notification of transfer with no packet attached')
-    return yield _reject(plugin, transfer.id, ilpErrors.F01_Invalid_Packet({
+    return _reject(plugin, transfer.id, ilpErrors.F01_Invalid_Packet({
       message: 'got notification of transfer with no packet attached'
     }))
   }
 
   const parsed = Packet.parseFromTransfer(transfer)
   if (parsed === undefined) {
-    return yield _reject(plugin, transfer.id, ilpErrors.F01_Invalid_Packet({
+    return _reject(plugin, transfer.id, ilpErrors.F01_Invalid_Packet({
       message: 'got notification of transfer with invalid ILP packet'
     }))
   }
@@ -306,23 +307,23 @@ function * _validateOrRejectTransfer ({
       e.stack)
 
     if (e.message === 'unsupported status') {
-      return yield _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
+      return _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
         message: 'unsupported PSK version or status'
       }))
     } else if (e.message === 'missing nonce') {
-      return yield _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
+      return _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
         message: 'missing PSK nonce'
       }))
     } else if (e.message === 'unsupported key') {
-      return yield _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
+      return _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
         message: 'unsupported PSK key derivation'
       }))
     } else if (e.message === 'unsupported encryption') {
-      return yield _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
+      return _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
         message: 'unsupported PSK encryption method'
       }))
     } else {
-      return yield _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
+      return _reject(plugin, transfer.id, ilpErrors.F06_Unexpected_Payment({
         message: 'unspecified PSK error'
       }))
     }
@@ -335,7 +336,7 @@ function * _validateOrRejectTransfer ({
     debug('notified of transfer amount smaller than packet amount:' +
       ' transfer=' + transfer.amount +
       ' packet=' + destinationAmount)
-    return yield _reject(plugin, transfer.id, ilpErrors.F04_Insufficient_Destination_Amount({
+    return _reject(plugin, transfer.id, ilpErrors.F04_Insufficient_Destination_Amount({
       message: 'got notification of transfer where amount is less than expected'
     }))
   }
@@ -344,14 +345,14 @@ function * _validateOrRejectTransfer ({
     debug('notified of transfer amount larger than packet amount:' +
       ' transfer=' + transfer.amount +
       ' packet=' + destinationAmount)
-    return yield _reject(plugin, transfer.id, ilpErrors.F03_Invalid_Amount({
+    return _reject(plugin, transfer.id, ilpErrors.F03_Invalid_Amount({
       message: 'got notification of transfer where amount is more than expected'
     }))
   }
 
   if (expiresAt && moment().isAfter(expiresAt)) {
     debug('notified of transfer with expired packet:', transfer)
-    return yield _reject(plugin, transfer.id, ilpErrors.R00_Transfer_Timed_Out({
+    return _reject(plugin, transfer.id, ilpErrors.R00_Transfer_Timed_Out({
       message: 'got notification of transfer with expired packet'
     }))
   }
@@ -360,8 +361,8 @@ function * _validateOrRejectTransfer ({
 module.exports = {
   _reject,
   _autoFulfillCondition,
-  _validateOrRejectTransfer: co.wrap(_validateOrRejectTransfer),
+  _validateOrRejectTransfer: _validateOrRejectTransfer,
   createPacketAndCondition,
-  listen: co.wrap(listen),
-  listenAll: co.wrap(listenAll)
+  listen: listen,
+  listenAll: listenAll
 }
