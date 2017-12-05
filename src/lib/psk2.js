@@ -2,12 +2,14 @@
 
 const assert = require('assert')
 const crypto = require('crypto')
-const debug = require('debug')('ilp-psk2')
+const Debug = require('debug')
 const BigNumber = require('bignumber.js')
 const oer = require('oer-utils')
 const uuid = require('uuid')
 const Long = require('long')
 const base64url = require('../utils/base64url')
+const IlpPacket = require('ilp-packet')
+const convertToV2Plugin = require('ilp-compat-plugin')
 
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm'
 const PSK_FULFILLMENT_STRING = 'ilp_psk2_fulfillment'
@@ -15,7 +17,6 @@ const PSK_ENCRYPTION_STRING = 'ilp_psk2_encryption'
 const NONCE_LENGTH = 18
 const AUTH_TAG_LENGTH = 16
 const NULL_CONDITION_BUFFER = Buffer.alloc(32, 0)
-const NULL_CONDITION = NULL_CONDITION_BUFFER.toString('base64')
 const DEFAULT_TRANSFER_TIMEOUT = 2000
 const STARTING_TRANSFER_AMOUNT = 1000
 const TRANSFER_INCREASE = 1.1
@@ -35,42 +36,52 @@ async function quote (plugin, {
   connector,
   randomCondition
 }) {
+  plugin = convertToV2Plugin(plugin)
+  const debug = Debug('ilp-psk2:quote')
   assert(sharedSecret, 'sharedSecret is required')
   assert(Buffer.from(sharedSecret, 'base64').length >= 32, 'sharedSecret must be at least 32 bytes')
   assert(sourceAmount || destinationAmount, 'either sourceAmount or destinationAmount is required')
   assert(!sourceAmount || !destinationAmount, 'cannot supply both sourceAmount and destinationAmount')
-  const executionCondition = (randomCondition ? crypto.randomBytes(32).toString('base64') : NULL_CONDITION)
+  const executionCondition = base64url(randomCondition ? crypto.randomBytes(32) : NULL_CONDITION_BUFFER)
   const sourceQuote = !!sourceAmount
   const amount = sourceAmount || STARTING_TRANSFER_AMOUNT
+
+  debug(`sending transfer with source amount: ${amount}`)
 
   // TODO should we include some junk data to make it as long as the data for a payment?
   const headers = new oer.Writer()
   headers.writeUInt8(TYPE_QUOTE)
   const data = encrypt(sharedSecret, headers.getBuffer())
-  const ilp = base64url(IlpPacket.serializeIlpPayment({
-    amount: '0',
-    account: destination,
-    data
-  }))
 
   const transfer = {
     id: uuid(),
-    to: connector || plugin.getInf().connectors[0],
     amount,
     executionCondition,
     expiresAt: new Date(Date.now() + DEFAULT_TRANSFER_TIMEOUT).toISOString(),
-    ilp
+    destination,
+    data
   }
 
   try {
     await plugin.sendTransfer(transfer)
   } catch (err) {
-    if (err.code !== 'F99') {
+    if (!err.ilpRejection || err.ilpRejection.code !== 'F99') {
       throw err
     }
+    debug(`got quote response:`, err.ilpRejection)
     try {
-      const response = decrypt(sharedSecret, err.data)
-      const amountArrived = readUInt64(response, 0)
+      let additionalInfo = err.ilpRejection.additionalInfo
+      // TODO we probably shouldn't need to do this if additionalInfo is supposed to be an object
+      if (typeof additionalInfo === 'string') {
+        additionalInfo = JSON.parse(additionalInfo)
+      }
+      const decryptedResponse = decrypt(sharedSecret, additionalInfo.message)
+      const responseReader = new oer.Reader(decryptedResponse)
+      const responseHighLow = responseReader.readUInt64()
+      // note that oer-utils returns [high, low], whereas Long expects low first
+      const arrivedLong = Long.fromBits(responseHighLow[1], responseHighLow[0])
+      const amountArrived = new BigNumber(arrivedLong.toString(10))
+      debug(`receiver got: ${amountArrived.toString(10)} when sender sent: ${amount}`)
       if (sourceQuote) {
         return {
           destinationAmount: amountArrived.toString(10)
@@ -85,7 +96,7 @@ async function quote (plugin, {
         }
       }
     } catch (decryptionErr) {
-      debug('error decrypting quote response', err, decryptionErr)
+      debug('error parsing encrypted quote response', decryptionErr)
       throw err
     }
   }
@@ -124,6 +135,7 @@ async function sendChunkedPayment (plugin, {
   destinationAmount,
   connector
 }) {
+  const debug = Debug('ilp-psk2:chunkedPayment')
   const secret = Buffer.from(sharedSecret, 'base64')
   const paymentId = crypto.randomBytes(16)
   let amountSent = new BigNumber(0)
@@ -199,7 +211,8 @@ async function sendChunkedPayment (plugin, {
       timeToWait = 0
       try {
         const decryptedData = decrypt(secret, result.data)
-        const amountReceived = readUInt64(decryptedData, 0)
+        const dataReader = new oer.Reader(decryptedData)
+        const amountReceived = new BigNumber(new Long(dataReader.readUInt64()).toString())
         if (amountReceived.gt(amountDelivered)) {
           amountDelivered = amountReceived
         }
@@ -231,8 +244,12 @@ async function sendChunkedPayment (plugin, {
 function listen (plugin, { secret, notifyEveryChunk }) {
   assert(secret, 'secret is required')
   assert(Buffer.from(secret, 'base64').length >= 32, 'secret must be at least 32 bytes')
+  const debug = Debug('ilp-psk2:listen')
+  plugin = convertToV2Plugin(plugin)
 
   const payments = {}
+
+  plugin.registerTransferHandler(handlePrepare)
 
   async function handlePrepare (transfer) {
     // TODO check that destination matches our address
@@ -242,37 +259,55 @@ function listen (plugin, { secret, notifyEveryChunk }) {
       decryptedData = decrypt(secret, transfer.data)
     } catch (err) {
       debug('error decrypting data:', err)
-      const ilpError = new Error('unable to decrypt data')
-      ilpError.status = 400
-      ilpError.code = 'F01'
-      ilpError.triggeredAt = new Date().toISOString()
-      throw ilpError
+      err.name = 'InterledgerRejectionError'
+      err.ilpRejection = {
+        code: 'F01',
+        name: 'Invalid Packet',
+        message: 'unable to decrypt data',
+        triggeredAt: new Date(),
+        triggeredBy: '',
+        forwardedBy: []
+      }
+      throw err
     }
 
     const headersReader = new oer.Reader(decryptedData)
     const type = headersReader.readUInt8()
+    let err
     if (type === TYPE_QUOTE) {
       debug('responding to quote request')
-      const err = new Error('quote response')
-      err.status = 418
-      err.code = 'F99'
-      err.data = encrypt(secret, writeUInt64(Buffer.alloc(8), transfer.amount, 0)).toString('base64')
-      err.triggeredAt = new Date().toISOString()
+      err = new Error('quote response')
+      err.name = 'InterledgerRejectionError'
+      const responseWriter = new oer.Writer()
+      const amountLong = Long.fromString(transfer.amount)
+      responseWriter.writeUInt64([amountLong.high, amountLong.low])
+      err.ilpRejection = {
+        code: 'F99',
+        name: 'Application Error',
+        triggeredAt: new Date(),
+        additionalInfo: {
+          message: base64url(encrypt(secret, responseWriter.getBuffer()))
+        },
+        triggeredBy: '',
+        forwardedBy: []
+      }
       throw err
     } else if (type === TYPE_CHUNK || type === TYPE_LAST_CHUNK) {
       let fulfillment
       try {
         fulfillment = base64url(dataToFulfillment(secret, transfer.data, transfer.condition))
       } catch (err) {
-        const ilp = base64url(IlpPacket.serializeIlpError({
+        err = new Error('wrong condition')
+        err.name = 'InterledgerRejectionError'
+        err.ilpRejection = {
           code: 'F05',
           name: 'Wrong Condition',
-          triggeredBy: plugin.getAccount(),
-          forwardedBy: [],
           triggeredAt: new Date(),
-          data: ''
-        }))
-        return plugin.rejectIncomingTransfer(transfer.id, ilp)
+          message: 'wrong condition',
+          triggeredBy: '',
+          forwardedBy: []
+        }
+        throw err
       }
       const lastChunk = (type === TYPE_LAST_CHUNK)
       const paymentId = headersReader.read(16)
@@ -296,12 +331,14 @@ function listen (plugin, { secret, notifyEveryChunk }) {
       // TODO make the acceptable overage amount configurable
       if (record.finished || received.gt(record.expected.times(1.01))) {
         debug(`receiver received too much. amount received before this chunk: ${record.received}, this chunk: ${transfer.amount}, expected: ${record.expected}`)
-        const err = {
+        err = new Error('too much arrived')
+        err.name = 'InterledgerRejectionError'
+        err.ilpRejection = {
           code: 'F99',
           name: 'Application Error',
-          triggeredBy: plugin.getAccount(),
-          forwardedBy: [],
-          triggeredAt: new Date()
+          triggeredAt: new Date(),
+          triggeredBy: '',
+          forwardedBy: []
         }
         const responseWriter = new oer.Writer()
         const deltaLong = Long.fromString(record.delta.minus(record.received).toString(10))
@@ -309,9 +346,10 @@ function listen (plugin, { secret, notifyEveryChunk }) {
         const amountLong = Long.fromString(transfer.amount)
         responseWriter.writeUInt64([amountLong.getHighBitsUnsigned(), amountLong.getHighBitsUnsigned()])
         const response = responseWriter.getBuffer()
-        err.data = base64url(encrypt(secret, response))
-        const ilp = base64url(IlpPacket.serializeIlpError(err))
-        return plugin.rejectIncomingTransfer(transfer.id, ilp)
+        err.ilpRejection.additionalInfo = {
+          message: encrypt(secret, response)
+        }
+        throw err
       }
 
       record.finished = (lastChunk || received.gte(record.expected))
@@ -322,24 +360,22 @@ function listen (plugin, { secret, notifyEveryChunk }) {
       const receivedLong = Long.fromString(record.received.toString(10))
       responseWriter.writeUInt64([receivedLong.getHighBitsUnsigned(), receivedLong.getLowBitsUnsigned()])
       const data = encrypt(secret, responseWriter.getBuffer())
-      const ilp = base64url(IlpPacket.serializeIlpFulfillment({
-        data
-      }))
-
-      await plugin.fulfillCondition(transfer.id, fulfillment, ilp)
 
       debug(`got ${record.finished ? 'last ' : ''}chunk of amount ${transfer.amount} for payment: ${paymentId.toString('hex')}. total received: ${received}`)
       record.received = received
 
+      return { fulfillment, data }
+
     } else {
-      const ilp = base64url(IlpPacket.serializeIlpError({
+      err = new Error('unexpected payment')
+      err.ilpRejection = {
         code: 'F06',
         name: 'Unexpected Payment',
-        triggeredBy: plugin.getAccount(),
         triggeredAt: new Date(),
+        triggeredBy: '',
         forwardedBy: []
-      }))
-      return plugin.rejectIncomingTransfer(transfer.id, ilp)
+      }
+      throw err
     }
   }
 }
@@ -402,5 +438,7 @@ function decrypt (secret, data) {
   ])
 }
 
-exports.Sender = PskSender
-exports.receiver = receiver
+exports.quote = quote
+exports.send = send
+exports.deliver = deliver
+exports.listen = listen
