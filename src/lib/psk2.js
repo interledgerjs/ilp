@@ -5,10 +5,8 @@ const crypto = require('crypto')
 const Debug = require('debug')
 const BigNumber = require('bignumber.js')
 const oer = require('oer-utils')
-const uuid = require('uuid')
 const Long = require('long')
 const base64url = require('../utils/base64url')
-const IlpPacket = require('ilp-packet')
 const convertToV2Plugin = require('ilp-compat-plugin')
 
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm'
@@ -54,7 +52,6 @@ async function quote (plugin, {
   const data = encrypt(sharedSecret, headers.getBuffer())
 
   const transfer = {
-    id: uuid(),
     amount,
     executionCondition,
     expiresAt: new Date(Date.now() + DEFAULT_TRANSFER_TIMEOUT).toISOString(),
@@ -77,10 +74,7 @@ async function quote (plugin, {
       }
       const decryptedResponse = decrypt(sharedSecret, additionalInfo.message)
       const responseReader = new oer.Reader(decryptedResponse)
-      const responseHighLow = responseReader.readUInt64()
-      // note that oer-utils returns [high, low], whereas Long expects low first
-      const arrivedLong = Long.fromBits(responseHighLow[1], responseHighLow[0])
-      const amountArrived = new BigNumber(arrivedLong.toString(10))
+      const amountArrived = highLowToBigNumber(responseReader.readUInt64())
       debug(`receiver got: ${amountArrived.toString(10)} when sender sent: ${amount}`)
       if (sourceQuote) {
         return {
@@ -135,6 +129,7 @@ async function sendChunkedPayment (plugin, {
   destinationAmount,
   connector
 }) {
+  plugin = convertToV2Plugin(plugin)
   const debug = Debug('ilp-psk2:chunkedPayment')
   const secret = Buffer.from(sharedSecret, 'base64')
   const paymentId = crypto.randomBytes(16)
@@ -167,7 +162,7 @@ async function sendChunkedPayment (plugin, {
       }
       if (amountSent.gt(0)) {
         const rate = amountDelivered.div(amountSent)
-        amountLeftToSend = amountLeftToDeliver.div(rate).round(0, 3) // round up
+        amountLeftToSend = amountLeftToDeliver.div(rate).round(0, BigNumber.ROUND_CEIL) // round up
       } else {
         // We don't know how much more we need to send
         amountLeftToSend = MAX_UINT_64
@@ -186,20 +181,14 @@ async function sendChunkedPayment (plugin, {
     const data = encrypt(secret, headers)
     const fulfillment = dataToFulfillment(secret, data)
     const executionCondition = base64url(hash(fulfillment))
-    const ilp = base64url(IlpPacket.serializeIlpPayment({
-      amount: '0',
-      account: destination,
-      data
-    }))
 
-    debug(`sending chunk of: ${chunkSize}`)
+    debug(`sending chunk of: ${chunkSize.toString(10)}`)
     const transfer = {
-      id: uuid(),
-      to: connector || plugin.getInfo().connectors[0],
+      destination,
+      data,
       amount: chunkSize.toString(10),
       expiresAt: new Date(Date.now() + DEFAULT_TRANSFER_TIMEOUT).toISOString(),
-      executionCondition,
-      ilp
+      executionCondition
     }
 
     try {
@@ -212,14 +201,15 @@ async function sendChunkedPayment (plugin, {
       try {
         const decryptedData = decrypt(secret, result.data)
         const dataReader = new oer.Reader(decryptedData)
-        const amountReceived = new BigNumber(new Long(dataReader.readUInt64()).toString())
+        const amountReceived = highLowToBigNumber(dataReader.readUInt64())
+        debug(`receiver says they have received: ${amountReceived.toString(10)}`)
         if (amountReceived.gt(amountDelivered)) {
           amountDelivered = amountReceived
         }
       } catch (err) {
         // TODO update amount delivered somehow so not getting the response back
         // doesn't affect our view of the exchange rate
-        debug('error decrypting response data:', err)
+        debug('error decrypting response data:', err, result)
         continue
       }
     } catch (err) {
@@ -233,6 +223,8 @@ async function sendChunkedPayment (plugin, {
       await new Promise((resolve, reject) => setTimeout(resolve, timeToWait))
     }
   }
+
+  debug(`sent payment. source amount: ${amountSent.toString(10)}, destination amount: ${amountDelivered.toString(10)}, number of chunks: ${numChunks}`)
 
   return {
     sourceAmount: amountSent.toString(10),
@@ -352,17 +344,16 @@ function listen (plugin, { secret, notifyEveryChunk }) {
         throw err
       }
 
+      debug(`got ${record.finished ? 'last ' : ''}chunk of amount ${transfer.amount} for payment: ${paymentId.toString('hex')}. total received: ${received}`)
+      record.received = received
       record.finished = (lastChunk || received.gte(record.expected))
 
       // TODO accept user response data
       const response = Buffer.alloc(8, 0)
       const responseWriter = new oer.Writer()
-      const receivedLong = Long.fromString(record.received.toString(10))
+      const receivedLong = Long.fromString(received.toString(10))
       responseWriter.writeUInt64([receivedLong.getHighBitsUnsigned(), receivedLong.getLowBitsUnsigned()])
       const data = encrypt(secret, responseWriter.getBuffer())
-
-      debug(`got ${record.finished ? 'last ' : ''}chunk of amount ${transfer.amount} for payment: ${paymentId.toString('hex')}. total received: ${received}`)
-      record.received = received
 
       return { fulfillment, data }
 
@@ -436,6 +427,13 @@ function decrypt (secret, data) {
     decipher.update(encrypted),
     decipher.final()
   ])
+}
+
+// oer-utils returns [high, low], whereas Long expects low first
+function highLowToBigNumber (highLow) {
+  // TODO use a more efficient method to convert this
+  const long = Long.fromBits(highLow[1], highLow[0])
+  return new BigNumber(long.toString(10))
 }
 
 exports.quote = quote
