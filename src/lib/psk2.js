@@ -42,15 +42,13 @@ async function quote (plugin, {
   assert(sourceAmount || destinationAmount, 'either sourceAmount or destinationAmount is required')
   assert(!sourceAmount || !destinationAmount, 'cannot supply both sourceAmount and destinationAmount')
 
-  debug(`sending transfer with source amount: ${amount}`)
-
   const quoteId = crypto.randomBytes(16)
   const data = serializePskPacket({
     sharedSecret,
     type: TYPE_LAST_CHUNK,
     paymentId: quoteId,
     sequence: 0,
-    paymentAmount: new BigNumber(0),
+    paymentAmount: MAX_UINT64,
     chunkAmount: MAX_UINT64,
   })
   const ilp = IlpPacket.serializeIlpForwardedPayment({
@@ -76,12 +74,8 @@ async function quote (plugin, {
 
     let amountArrived
     try {
-      let additionalInfo = err.ilpRejection.additionalInfo
-      if (typeof additionalInfo === 'string') {
-        additionalInfo = JSON.parse(additionalInfo)
-      }
-      const errorData = additionalInfo.message
-      const quoteResponse = deserializePskPacket(sharedSecret, errorData)
+      const rejection = IlpPacket.deserializeIlpRejection(err.ilpRejection)
+      const quoteResponse = deserializePskPacket(sharedSecret, rejection.data)
 
       // Validate that this is actually the response to our request
       assert(quoteResponse.type === TYPE_ERROR, 'response type must be error')
@@ -150,6 +144,7 @@ async function sendChunkedPayment (plugin, {
   let chunkSize = new BigNumber(STARTING_TRANSFER_AMOUNT)
   let lastChunk = false
   let timeToWait = 0
+  let rate = new BigNumber(0)
 
   while (true) {
     // Figure out if we've sent enough already
@@ -178,6 +173,8 @@ async function sendChunkedPayment (plugin, {
       lastChunk = true
     }
 
+    const minimumChunkAmount = rate.times(chunkSize)
+
     // TODO accept user data also
     const data = serializePskPacket({
       sharedSecret,
@@ -185,7 +182,7 @@ async function sendChunkedPayment (plugin, {
       paymentId,
       sequence,
       paymentAmount: (destinationAmount ? new BigNumber(destinationAmount) : MAX_UINT64),
-      chunkAmount: chunkSize
+      chunkAmount: minimumChunkAmount
     })
     const ilp = IlpPacket.serializeIlpForwardedPayment({
       account: destination,
@@ -224,6 +221,7 @@ async function sendChunkedPayment (plugin, {
         debug(`receiver says they have received: ${amountReceived.toString(10)}`)
         if (amountReceived.gt(amountDelivered)) {
           amountDelivered = amountReceived
+          rate = amountDelivered.div(amountSent)
         } else {
           // TODO should we throw a more serious error here?
           debug(`receiver decreased the amount they say they received. previously: ${amountDelivered.toString(10)}, now: ${amountReceived.toString(10)}`)
@@ -272,21 +270,24 @@ function listen (plugin, {
   async function handlePrepare (transfer) {
     // TODO check that destination matches our address
 
+    // TODO use a different shared secret for each sender
+    const sharedSecret = secret
+
+    let packet
     let request
     let err
     try {
-      request = deserializePskPacket(secret, transfer.data)
+      packet = IlpPacket.deserializeIlpForwardedPayment(transfer.ilp)
+      request = deserializePskPacket(secret, packet.data)
     } catch (err) {
       debug('error decrypting data:', err)
       err = new Error('unable to decrypt data')
       err.name = 'InterledgerRejectionError'
-      err.ilp = IlpPacket.serializeIlpError({
+      err.ilp = IlpPacket.serializeIlpRejection({
         code: 'F01',
-        name: 'Invalid Packet',
-        data: 'unable to decrypt data',
-        triggeredAt: new Date(),
-        triggeredBy: '',
-        forwardedBy: []
+        message: 'unable to decrypt data',
+        data: Buffer.alloc(0),
+        triggeredBy: ''
       })
       throw err
     }
@@ -296,14 +297,12 @@ function listen (plugin, {
       debug(`got unexpected request type: ${request.type}`)
       err = new Error(`unexpected request type: ${request.type}`)
       err.name = 'InterledgerRejectionError'
-      err.ilpRejection = {
+      err.ilpRejection = IlpPacket.serializeIlpRejection({
         code: 'F06',
-        name: 'Unexpected Payment',
         message: 'wrong type',
-        triggeredAt: new Date(),
-        triggeredBy: '',
-        forwardedBy: []
-      }
+        data: Buffer.alloc(0),
+        triggeredBy: ''
+      })
       throw err
     }
 
@@ -332,24 +331,22 @@ function listen (plugin, {
         paymentAmount: record.received,
         chunkAmount: new BigNumber(transfer.amount)
       })
-      err.ilp = IlpPacket.serializeIlpError({
+      err.ilpRejection = IlpPacket.serializeIlpRejection({
         code: 'F99',
-        name: 'Application Error',
         triggeredBy: '',
-        forwardedBy: [],
-        triggeredAt: new Date(),
-        data: data.toString('base64')
+        message: '',
+        data
       })
       throw err
     }
 
     // Transfer amount too low
-    if (request.chunkAmount.lt(transfer.amount)) {
+    if (request.chunkAmount.gt(transfer.amount)) {
       return rejectTransfer(`incoming transfer amount too low. actual: ${transfer.amount}, expected: ${request.chunkAmount.toString(10)}`)
     }
 
     // Already received enough
-    if (record.received.gte(expected)) {
+    if (record.received.gte(record.expected)) {
       return rejectTransfer(`already received enough for payment. received: ${record.received.toString(10)}, expected: ${record.expected.toString(10)}`)
     }
 
@@ -361,18 +358,16 @@ function listen (plugin, {
     // Check if we can regenerate the correct fulfillment
     let fulfillment
     try {
-      fulfillment = dataToFulfillment(secret, transfer.data, transfer.condition)
+      fulfillment = dataToFulfillment(secret, packet.data, transfer.executionCondition)
     } catch (err) {
       err = new Error('wrong condition')
       err.name = 'InterledgerRejectionError'
-      err.ilpRejection = {
+      err.ilpRejection = IlpPacket.serializeIlpRejection({
         code: 'F05',
-        name: 'Wrong Condition',
-        triggeredAt: new Date(),
         message: 'wrong condition',
-        triggeredBy: '',
-        forwardedBy: []
-      }
+        data: Buffer.alloc(0),
+        triggeredBy: ''
+      })
       throw err
     }
 
@@ -391,7 +386,7 @@ function listen (plugin, {
       chunkAmount: new BigNumber(transfer.amount)
     })
 
-    debug(`got ${record.finished ? 'last ' : ''}chunk of amount ${transfer.amount} for payment: ${paymentId}. total received: ${received}`)
+    debug(`got ${record.finished ? 'last ' : ''}chunk of amount ${transfer.amount} for payment: ${paymentId}. total received: ${record.received.toString(10)}`)
 
     return {
       fulfillment,
@@ -415,7 +410,7 @@ function serializePskPacket ({
   assert(Number.isInteger(sequence) && sequence <= MAX_UINT32, 'sequence must be a UInt32')
   assert(paymentAmount instanceof BigNumber && paymentAmount.lte(MAX_UINT64), 'paymentAmount must be a UInt64')
   assert(chunkAmount instanceof BigNumber && chunkAmount.lte(MAX_UINT64), 'chunkAmount must be a UInt64')
-  assert(Buffer.isBuffer(applicationData) && applicationData.length <= MAX_APPLICATION_DATA, 'applicationData must be a buffer and must not exceed ' + MAX_APPLICATION_DATA + ' bytes')
+  assert(Buffer.isBuffer(applicationData), 'applicationData must be a buffer')
   const writer = new oer.Writer()
   writer.writeUInt8(type)
   writer.writeOctetString(paymentId, 16)
@@ -481,9 +476,12 @@ function decrypt (secret, data) {
 function dataToFulfillment (secret, data, originalCondition) {
   const key = hmac(secret, PSK_FULFILLMENT_STRING)
   const fulfillment = hmac(key, data)
-  const condition = hash(fulfillment)
-  if (originalCondition && !condition.equals(Buffer.from(originalCondition, 'base64'))) {
-    throw new Error('unable to regenerate fulfillment')
+  if (originalCondition) {
+    const condition = hash(fulfillment)
+    if (!condition.equals(Buffer.from(originalCondition, 'base64'))) {
+      throw new Error('unable to regenerate fulfillment')
+    }
+    console.log('xx condition matches', fulfillment.toString('base64'), condition.toString('base64'), Buffer.from(originalCondition || '', 'base64').toString('base64'))
   }
   return fulfillment
 }
@@ -503,13 +501,13 @@ function hash (preimage) {
 // oer-utils returns [high, low], whereas Long expects low first
 function highLowToBigNumber (highLow) {
   // TODO use a more efficient method to convert this
-  const long = Long.fromBits(highLow[1], highLow[0])
+  const long = Long.fromBits(highLow[1], highLow[0], true)
   return new BigNumber(long.toString(10))
 }
 
 function bigNumberToHighLow (bignum) {
-  const long = Long.fromString(bignum.toString(10))
-  return [long[1], long[0]]
+  const long = Long.fromString(bignum.toString(10), true)
+  return [long.getHighBitsUnsigned(), long.getLowBitsUnsigned()]
 }
 
 exports.quote = quote
