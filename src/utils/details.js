@@ -44,6 +44,7 @@ function createDetails ({
   publicHeaders,
   headers,
   secret,
+  nonce,
   data
 }) {
   const caseInsensitiveHeaders = Object
@@ -53,7 +54,10 @@ function createDetails ({
     throw new Error('public "Nonce" header may not be specified manually.')
   }
 
-  const nonce = cryptoHelper.getPskToken()
+  if (!nonce) {
+    nonce = cryptoHelper.getPskToken()
+  }
+
   const privateRequest = _createRequest({
     statusLine: false,
     headers,

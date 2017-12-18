@@ -84,7 +84,7 @@ function preimageToCondition (conditionPreimage) {
   const hash = crypto.createHash('sha256')
   hash.update(conditionPreimage)
   const condition = hash.digest()
-  return base64url(condition)
+  return condition
 }
 
 function packetToCondition (secret, packet) {
@@ -92,7 +92,7 @@ function packetToCondition (secret, packet) {
 }
 
 function preimageToFulfillment (conditionPreimage) {
-  return base64url(conditionPreimage)
+  return conditionPreimage
 }
 
 module.exports = {

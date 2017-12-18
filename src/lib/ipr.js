@@ -143,22 +143,26 @@ function createIPR (params) {
   * @return {Object} Payment request
   */
 function listen (plugin, params, callback) {
-  return Transport.listen(plugin, params, callback, 'ipr')
+  return Transport.listen(plugin, params, callback)
 }
 
 /**
-  * Listen on a ILP plugin bells factory for incoming IPR payments, and auto-generate fulfillments.
-  *
-  * @param {Object} factory Plugin bells factory to listen on
-  * @param {Object} params Parameters for creating payment request
-  * @param {Function} params.generateReceiverSecret function that returns receiver secret for a given username
-  * @param {Boolean} [params.allowOverPayment=true] Accept payments with higher amounts than expected
-  * @param {IncomingCallback} callback Called after an incoming payment is validated.
-  *
-  * @return {Object} Payment request
-  */
-function listenAll (factory, params, callback) {
-  return Transport.listenAll(factory, params, callback, 'ipr')
+ * Handle a transfer.
+ *
+ * This can be used for more advanced scenarios like large numbers of "virtual"
+ * receivers where instantiating all of them would be prohibitively expensive in
+ * terms of memory.
+ *
+ * @param {Object} params
+ * @param {Plugin} params.plugin LPI2 plugin
+ * @param {String} params.receiverSecret Private value of the receiver, must be different for each receiver
+ * @param {Boolean} params.allowOverPayment Whether to allow overpayment, default to true
+ * @param {Function} params.callback Function to decide whether to accept the transfer
+ * @param {Transfer} transfer LPI2 Transfer object
+ * @return {Promise<FulfillmentInfo>} Will return fulfillment info or throw if the transfer is rejected
+ */
+function handleTransfer (params, transfer) {
+  return Transport.handleTransfer(params, transfer)
 }
 
 module.exports = {
@@ -167,5 +171,5 @@ module.exports = {
   encodeIPR,
   decodeIPR,
   listen,
-  listenAll
+  handleTransfer
 }
