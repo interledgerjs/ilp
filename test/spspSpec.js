@@ -75,7 +75,6 @@ describe('SPSP', function () {
 
       this.id = '622d0846-2063-45c3-9dc0-ddf5182f833c'
       this.result = {
-        connectorAccount: 'test.example.connie',
         destinationAccount: 'test.other.alice',
         sourceExpiryDuration: '10',
         // amounts are converted according to src and dest scales of 2
@@ -176,34 +175,24 @@ describe('SPSP', function () {
         this.payment = await SPSP.quote(this.plugin, this.params)
       })
 
-      it('should successfuly send a payment', async function () {
+      it('should successfully send a payment', async function () {
         this.plugin.sendTransfer = (transfer) => {
-          this.plugin.emit('outgoing_fulfill', transfer, 'fulfillment')
-          return Promise.resolve(null)
+          return {
+            fulfillment: Buffer.from('fulfillment')
+          }
         }
 
         const result = await SPSP.sendPayment(this.plugin, this.payment)
-        expect(result).to.deep.equal({ fulfillment: 'fulfillment' })
-      })
-
-      it('should reject if payment times out', async function () {
-        this.plugin.sendTransfer = (transfer) => {
-          this.plugin.emit('outgoing_cancel', transfer, {name: 'Foo'})
-          return Promise.resolve(null)
-        }
-
-        await expect(SPSP.sendPayment(this.plugin, this.payment))
-          .to.eventually.be.rejectedWith(/transfer .+ failed/)
+        expect(result).to.deep.equal({ fulfillment: Buffer.from('fulfillment') })
       })
 
       it('should reject if payment is rejected', async function () {
         this.plugin.sendTransfer = (transfer) => {
-          this.plugin.emit('outgoing_reject', transfer, {message: 'override the message'})
-          return Promise.resolve(null)
+          return Promise.reject(new Error('dummy error'))
         }
 
         await expect(SPSP.sendPayment(this.plugin, this.payment))
-          .to.eventually.be.rejectedWith('override the message')
+          .to.eventually.be.rejectedWith(/transfer .* failed: dummy error/)
       })
     })
   })

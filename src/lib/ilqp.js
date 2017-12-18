@@ -7,40 +7,10 @@ const moment = require('moment')
 const BigNumber = require('bignumber.js')
 const { safeConnect, startsWith, xor, omitUndefined } =
   require('../utils')
+const compat = require('ilp-compat-plugin')
 
 const DEFAULT_MESSAGE_TIMEOUT = 5000
 const DEFAULT_EXPIRY_DURATION = 10
-
-async function _handleConnectorResponses (connectors, promises) {
-  if (connectors.length === 0) {
-    throw new Error('no connectors specified')
-  }
-
-  const quotes = []
-  const errors = []
-
-  for (let c = 0; c < connectors.length; ++c) {
-    try {
-      const quote = await promises[c]
-      if (quote.responseType === IlpPacket.Type.TYPE_ILP_ERROR) {
-        throw new Error('remote quote error: ' + quote.name)
-      } else if (quote) {
-        quotes.push(Object.assign({connector: connectors[c]}, quote))
-      } else {
-        throw new Error('got empty quote response: ' + quote)
-      }
-    } catch (err) {
-      errors.push(connectors[c] + ': ' + (err.message || err))
-    }
-  }
-
-  if (quotes.length === 0) {
-    throw new Error('Errors occurred during quoting: ' +
-      errors.join(', '))
-  }
-
-  return quotes
-}
 
 function _serializeQuoteRequest (requestParams) {
   if (requestParams.sourceAmount) {
@@ -55,26 +25,21 @@ function _serializeQuoteRequest (requestParams) {
 /**
   * @param {Object} params
   * @param {Object} params.plugin The LedgerPlugin used to send quote request
-  * @param {String} params.connector The ILP address of the connector to quote from
   * @param {Object} params.quoteQuery ILQP request packet parameters
   * @param {Integer} [params.timeout] Milliseconds
   * @returns {Object} Ilqp{Liquidity,BySourceAmount,ByDestinationAmount}Response or IlpError
   */
 function quoteByConnector ({
   plugin,
-  connector,
   quoteQuery,
   timeout
 }) {
-  const prefix = plugin.getInfo().prefix
+  plugin = compat(plugin)
   const requestPacket = _serializeQuoteRequest(quoteQuery)
   const requestType = requestPacket[0]
 
-  debug('remote quote connector=' + connector, 'query=' + JSON.stringify(quoteQuery))
+  debug('remote quote', 'query=' + JSON.stringify(quoteQuery))
   return plugin.sendRequest({
-    ledger: prefix,
-    from: plugin.getAccount(),
-    to: connector,
     ilp: requestPacket.toString('base64'),
     timeout: timeout || DEFAULT_MESSAGE_TIMEOUT
   }).then((response) => {
@@ -84,7 +49,7 @@ function quoteByConnector ({
     const packetData = IlpPacket.deserializeIlpPacket(responsePacket).data
     const isErrorPacket = responseType === IlpPacket.Type.TYPE_ILP_ERROR
     if (isErrorPacket) {
-      debug('remote quote error connector=' + connector, 'ilpError=' + JSON.stringify(packetData))
+      debug('remote quote error', 'ilpError=' + JSON.stringify(packetData))
     }
     if (isErrorPacket || responseType === requestType + 1) {
       return Object.assign({responseType}, packetData)
@@ -116,7 +81,6 @@ function _getCheaperQuote (quote1, quote2) {
   * @param {String} [query.sourceAmount] Either the sourceAmount or destinationAmount must be specified. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger.
   * @param {String} [query.destinationAmount] Either the sourceAmount or destinationAmount must be specified. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger.
   * @param {String|Number} [query.destinationExpiryDuration] Number of seconds between when the destination transfer is proposed and when it expires.
-  * @param {Array} [query.connectors] List of ILP addresses of connectors to use for this quote.
   * @returns {Promise<Quote>}
   */
 async function quote (plugin, {
@@ -125,9 +89,10 @@ async function quote (plugin, {
   sourceAmount,
   destinationAmount,
   destinationExpiryDuration,
-  connectors,
   timeout
 }) {
+  plugin = compat(plugin)
+
   if (!xor(sourceAmount, destinationAmount)) {
     throw new Error('should provide source or destination amount but not both' +
       ' ' + JSON.stringify({ sourceAmount, destinationAmount }))
@@ -156,27 +121,26 @@ async function quote (plugin, {
     destinationAmount
   })
 
-  const quoteConnectors = connectors || plugin.getInfo().connectors || []
   debug('quoting', amount,
     (sourceAmount ? '(source amount)' : '(destination amount)'),
-    'to', destinationAddress, 'via', quoteConnectors)
+    'to', destinationAddress)
 
   // handle connector responses will return all successful quotes, or
   // throw all errors if there were none.
-  const quotes = await _handleConnectorResponses(
-    quoteConnectors,
-    quoteConnectors.map((connector) => {
-      return quoteByConnector({ plugin, connector, quoteQuery, timeout })
-    }))
+  const quote = await quoteByConnector({ plugin, quoteQuery, timeout })
 
-  const bestQuote = quotes.reduce(_getCheaperQuote)
-  const sourceHoldDuration = bestQuote.sourceHoldDuration / 1000
-  debug('got best quote from connector:', bestQuote.connector, 'quote:', JSON.stringify(bestQuote))
+  if (!quote) {
+    throw new Error('got empty quote response: ' + quote)
+  } else if (quote.responseType === IlpPacket.Type.TYPE_ILP_ERROR) {
+    throw new Error('remote quote error: ' + quote.name)
+  }
+
+  const sourceHoldDuration = quote.sourceHoldDuration / 1000
+  debug('got quote:', JSON.stringify(quote))
 
   return omitUndefined({
-    sourceAmount: sourceAmount || bestQuote.sourceAmount,
-    destinationAmount: destinationAmount || bestQuote.destinationAmount,
-    connectorAccount: bestQuote.connector,
+    sourceAmount: sourceAmount || quote.sourceAmount,
+    destinationAmount: destinationAmount || quote.destinationAmount,
     sourceExpiryDuration: sourceHoldDuration.toString(),
     // current time plus sourceExpiryDuration, for convenience
     expiresAt: moment()

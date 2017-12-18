@@ -4,6 +4,8 @@ const agent = require('superagent')
 const uuid = require('uuid/v4')
 const moment = require('moment')
 const BigNumber = require('bignumber.js')
+const compat = require('ilp-compat-plugin')
+const debug = require('debug')('ilp:spsp')
 
 const ILQP = require('./ilqp')
 const PSK = require('./psk')
@@ -76,7 +78,6 @@ const _createPayment = (plugin, spsp, quote, id) => {
     sourceAmount: sourceAmount,
     destinationAmount: destinationAmount,
     destinationAccount: spsp.destination_account,
-    connectorAccount: quote.connectorAccount,
     sourceExpiryDuration: quote.sourceExpiryDuration,
     spsp: spsp
   }
@@ -117,6 +118,8 @@ const quote = async function (plugin, {
   timeout,
   spspResponse
 }) {
+  plugin = compat(plugin)
+
   assert(plugin, 'missing plugin')
   assert(receiver || spspResponse,
     'receiver or spspResponse must be specified')
@@ -172,9 +175,11 @@ const quote = async function (plugin, {
   */
 
 async function sendPayment (plugin, payment) {
+  assert(plugin, 'missing plugin')
+  plugin = compat(plugin)
+
   // CAUTION1: `destination` here means the final receiver, not the next hop.
   // CAUTION2: `source` here actually means "next" (first) hop, seen from the sender.
-  assert(plugin, 'missing plugin')
   assert(payment, 'missing payment')
   assert(payment.spsp, 'missing SPSP response in payment')
   assert(payment.spsp.shared_secret, 'missing SPSP shared_secret')
@@ -206,44 +211,25 @@ async function sendPayment (plugin, payment) {
     data: Buffer.from(data, 'utf8')
   })
 
-  const listen = new Promise((resolve, reject) => {
-    function remove () {
-      setImmediate(function () {
-        plugin.removeListener('outgoing_fulfill', fulfill)
-        plugin.removeListener('outgoing_cancel', cancel)
-        plugin.removeListener('outgoing_reject', cancel)
-      })
+  try {
+    debug('attempting payment %s with condition %s', payment.id, condition.toString('base64'))
+    const result = await plugin.sendTransfer({
+      amount: integerSourceAmount,
+      ilp: packet,
+      executionCondition: condition,
+      expiresAt: moment()
+        .add(payment.sourceExpiryDuration, 'seconds')
+        .toISOString()
+    })
+    debug('payment %s succeeded', payment.id)
+    return result
+  } catch (err) {
+    debug('payment %s failed: ' + err, payment.id)
+    if (err instanceof Object) {
+      err.message = 'transfer ' + payment.id + ' failed: ' + err.message
     }
-
-    function fulfill (transfer, fulfillment) {
-      if (transfer.id !== payment.id) return
-      remove()
-      resolve({ fulfillment })
-    }
-
-    function cancel (transfer, reason) {
-      if (transfer.id !== payment.id) return
-      remove()
-      reject(Object.assign(new Error('transfer ' + payment.id + ' failed.'), reason))
-    }
-
-    plugin.on('outgoing_fulfill', fulfill)
-    plugin.on('outgoing_cancel', cancel)
-    plugin.on('outgoing_reject', cancel)
-  })
-
-  await plugin.sendTransfer({
-    id: payment.id,
-    to: payment.connectorAccount,
-    amount: integerSourceAmount,
-    ilp: packet,
-    executionCondition: condition,
-    expiresAt: moment()
-      .add(payment.sourceExpiryDuration, 'seconds')
-      .toISOString()
-  })
-
-  return listen
+    throw err
+  }
 }
 
 /**
