@@ -5,8 +5,8 @@ const chaiAsPromised = require('chai-as-promised')
 chai.use(chaiAsPromised)
 const assert = chai.assert
 const expect = chai.expect
+const sinon = require('sinon')
 const moment = require('moment')
-const EventEmitter = require('events')
 
 const ILP = require('..')
 const Transport = require('../src/lib/transport')
@@ -15,6 +15,8 @@ const MockPlugin = require('./mocks/mockPlugin')
 const base64url = require('../src/utils/base64url')
 const { parsePacketAndDetails } = require('../src/utils/details')
 const cryptoHelper = require('../src/utils/crypto')
+
+const START_DATE = 1434412800000 // June 16, 2015 00:00:00 GMT
 
 describe('Transport', function () {
   describe('PSK', function () {
@@ -52,9 +54,9 @@ describe('Transport', function () {
       // version byte at the start
       assert.equal(ipr.slice(0, 1).toString('hex'), '02')
       // condition should come next
-      assert.equal(base64url(ipr.slice(1, 33)), this.params.condition)
+      assert.equal(ipr.slice(1, 33).toString('hex'), this.params.condition.toString('hex'))
       // ignore the two length bytes before the variable octet string
-      assert.equal(base64url(ipr.slice(35)), this.params.packet)
+      assert.equal(ipr.slice(35).toString('hex'), this.params.packet.toString('hex'))
     })
 
     it('should not encode an IPR with an invalid condition', function () {
@@ -107,7 +109,7 @@ describe('Transport', function () {
         const receiverId = base64url(cryptoHelper.getReceiverId(this.secret))
 
         // the data is still encrypted, so we can't check it from just parsing
-        assert.isString(data)
+        assert(Buffer.isBuffer(data), 'data should be a buffer')
         assert.equal(amount, '1')
         assert.equal(account, 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ')
         assert.equal(receiverId, 'ebKWcAEB9_A')
@@ -242,9 +244,9 @@ describe('Transport', function () {
 
     it('should remove listeners with its function', async function () {
       const res = await Transport.listen(this.plugin, this.params, () => {})
-      assert.equal(this.plugin.listenerCount('incoming_prepare'), 1)
+      assert(this.plugin._handler, 'a handler must be set')
       res()
-      assert.equal(this.plugin.listenerCount('incoming_prepare'), 0)
+      assert(!this.plugin._handler, 'no handler must be set')
     })
 
     describe('IPR', function () {
@@ -280,21 +282,11 @@ describe('Transport', function () {
         plugin: this.plugin,
         receiverSecret: Buffer.from('secret'),
         transfer: {
-          id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
           amount: '1',
-          to: 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ',
-          from: 'test.example.connie',
           executionCondition: condition,
           ilp: packet
         }
       }
-
-      this.rejected = new Promise((resolve) => {
-        this.plugin.rejectIncomingTransfer = (id, msg) => {
-          resolve(msg)
-          return Promise.resolve()
-        }
-      })
     })
 
     it('should accept a valid transfer', async function () {
@@ -303,96 +295,67 @@ describe('Transport', function () {
 
     it('should ignore transfer without condition', async function () {
       delete this.params.transfer.executionCondition
-      assert.deepEqual(
-        await Transport._validateOrRejectTransfer(this.params),
-        { code: 'F00',
-          message: 'got notification of transfer without executionCondition',
-          name: 'Bad Request'
-        })
+      expect(() => Transport._validateOrRejectTransfer(this.params))
+        .to.throw('got notification of transfer without executionCondition')
     })
 
     it('should reject transfer without PSK data', async function () {
       this.params.transfer.ilp = Packet.serialize(Object.assign(
         Packet.parse(this.packet),
-        { data: 'garbage' }))
+        { data: Buffer.from('garbage') }))
 
-      assert.deepEqual(
-        await Transport._validateOrRejectTransfer(this.params),
-        { code: 'F06',
-          message: 'unspecified PSK error',
-          name: 'Unexpected Payment'
-        })
-      await this.rejected
+      expect(() => Transport._validateOrRejectTransfer(this.params))
+        .to.throw('unspecified PSK error')
     })
 
     it('should reject transfer with unsupported PSK encryption', async function () {
       this.params.transfer.ilp = Packet.serialize(Object.assign(
         Packet.parse(this.packet),
-        { data: base64url(Buffer.from(`PSK/1.0
+        { data: Buffer.from(`PSK/1.0
 Nonce: KxjrC8g5qGQ7mj_ODqBMtw
 Encryption: rot13
 
-data`, 'utf8')) }))
+data`, 'utf8') }))
 
-      assert.deepEqual(
-        await Transport._validateOrRejectTransfer(this.params),
-        { code: 'F06',
-          message: 'unsupported PSK encryption method',
-          name: 'Unexpected Payment'
-        })
-      await this.rejected
+      expect(() => Transport._validateOrRejectTransfer(this.params))
+        .to.throw('unsupported PSK encryption method')
     })
 
     it('should reject transfer without PSK nonce', async function () {
       this.params.transfer.ilp = Packet.serialize(Object.assign(
         Packet.parse(this.packet),
-        { data: base64url(Buffer.from(`PSK/1.0
+        { data: Buffer.from(`PSK/1.0
 Encryption: aes-256-gcm PVWdX4iBjPQg16AOli2CBw
 
-data`, 'utf8')) }))
+data`, 'utf8') }))
 
-      assert.deepEqual(
-        await Transport._validateOrRejectTransfer(this.params),
-        { code: 'F06',
-          message: 'missing PSK nonce',
-          name: 'Unexpected Payment'
-        })
-      await this.rejected
+      expect(() => Transport._validateOrRejectTransfer(this.params))
+        .to.throw('missing PSK nonce') // F06
     })
 
     it('should reject transfer with PSK key header', async function () {
       this.params.transfer.ilp = Packet.serialize(Object.assign(
         Packet.parse(this.packet),
-        { data: base64url(Buffer.from(`PSK/1.0
+        { data: Buffer.from(`PSK/1.0
 Nonce: KxjrC8g5qGQ7mj_ODqBMtw
 Encryption: aes-256-gcm PVWdX4iBjPQg16AOli2CBw
 Key: ed25519-ecdh
 
-data`, 'utf8')) }))
+data`, 'utf8') }))
 
-      assert.deepEqual(
-        await Transport._validateOrRejectTransfer(this.params),
-        { code: 'F06',
-          message: 'unsupported PSK key derivation',
-          name: 'Unexpected Payment'
-        })
-      await this.rejected
+      expect(() => Transport._validateOrRejectTransfer(this.params))
+        .to.throw('unsupported PSK key derivation') // F06
     })
 
     it('should reject transfer withbad PSK status line', async function () {
       this.params.transfer.ilp = Packet.serialize(Object.assign(
         Packet.parse(this.packet),
-        { data: base64url(Buffer.from(`PSK/2.0
+        { data: Buffer.from(`PSK/2.0
 
-data`, 'utf8')) }))
+data`, 'utf8') }))
 
-      assert.deepEqual(
-        await Transport._validateOrRejectTransfer(this.params),
-        { code: 'F06',
-          message: 'unsupported PSK version or status',
-          name: 'Unexpected Payment'
-        })
-      await this.rejected
+      expect(() => Transport._validateOrRejectTransfer(this.params))
+        .to.throw('unsupported PSK version or status') // F06
     })
 
     it('should ignore transfer for other account', async function () {
@@ -400,51 +363,37 @@ data`, 'utf8')) }))
         Packet.parse(this.packet),
         { account: 'test.example.garbage' }))
 
-      assert.equal(
-        await Transport._validateOrRejectTransfer(this.params),
-        'not-my-packet')
+      expect(() => Transport._validateOrRejectTransfer(this.params))
+        .to.throw('received payment for another account') // F06
     })
 
-    it('should not accept transfer for other receiver', async function () {
+    it('should reject transfer for other receiver', async function () {
       this.params.transfer.ilp = Packet.serialize(Object.assign(
         Packet.parse(this.packet),
         { account: 'test.example.alice.garbage' }))
 
-      assert.equal(
-        await Transport._validateOrRejectTransfer(this.params),
-        'not-my-packet')
+      expect(() => Transport._validateOrRejectTransfer(this.params))
+        .to.throw('received payment for another receiver') // F06
     })
 
     it('should reject transfer for too little money', async function () {
       this.params.transfer.amount = '0.1'
-      assert.deepEqual(
-        await Transport._validateOrRejectTransfer(this.params),
-        { code: 'F04',
-          message: 'got notification of transfer where amount is less than expected',
-          name: 'Insufficient Destination Amount'
-        })
 
-      await this.rejected
+      expect(() => Transport._validateOrRejectTransfer(this.params))
+        .to.throw('got notification of transfer where amount is less than expected') // F04
     })
 
-    it('should reject transfer for too much money', async function () {
+    it('should accept extra money', async function () {
       this.params.transfer.amount = '1.1'
-      assert.deepEqual(
-        await Transport._validateOrRejectTransfer(this.params),
-        { code: 'F03',
-          message: 'got notification of transfer where amount is more than expected',
-          name: 'Invalid Amount'
-        })
-
-      await this.rejected
+      assert.isNotOk(Transport._validateOrRejectTransfer(this.params))
     })
 
-    it('should accept extra money with "allowOverPayment"', async function () {
+    it('should reject transfer for too much money if allowOverPayment == false', async function () {
       this.params.transfer.amount = '1.1'
-      this.params.allowOverPayment = true
-      // no error-code is returned on success
-      assert.isNotOk(
-        await Transport._validateOrRejectTransfer(this.params))
+      this.params.allowOverPayment = false
+
+      expect(() => Transport._validateOrRejectTransfer(this.params))
+        .to.throw('got notification of transfer where amount is more than expected') // F03
     })
 
     it('should not accept late transfer', async function () {
@@ -455,118 +404,82 @@ data`, 'utf8')) }))
         data: Buffer.from('test data'),
         id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
         expiresAt: moment().add(-1, 'seconds').toISOString()
-      }, 'ipr')
+      })
 
       this.params.transfer.ilp = packet
 
-      assert.deepEqual(
-        await Transport._validateOrRejectTransfer(this.params),
-        { code: 'R00',
-          message: 'got notification of transfer with expired packet',
-          name: 'Transfer Timed Out'
-        })
-
-      await this.rejected
+      expect(() => Transport._validateOrRejectTransfer(this.params))
+        .to.throw('got notification of transfer with expired packet') // R00
     })
   })
 
-  describe('autoFulfillCondition', function () {
+  describe('handleTransfer', function () {
     beforeEach(function () {
+      this.clock = sinon.useFakeTimers(START_DATE)
+
       const { packet, condition } = Transport.createPacketAndCondition({
         destinationAmount: '1',
         destinationAccount: 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ',
         secret: Buffer.from('bo4GhvVNW8nacSz0PvibKA', 'base64'),
         data: Buffer.from('test data'),
         id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
-        expiresAt: moment().add(1, 'seconds').toISOString()
+        expiresAt: moment().add(1, 'seconds').toISOString(),
+        nonce: Buffer.from('KVwyXszKSl3PCZdOUGjPQg==', 'base64')
       })
 
+      this.callback = (details) => {
+        return details.fulfill()
+      }
+
       this.params = {
-        id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
+        plugin: this.plugin,
         receiverSecret: Buffer.from('secret'),
-        connectTimeout: 100
+        callback: this.callback
       }
 
       this.transfer = {
-        id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
         amount: '1',
-        to: 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ',
-        from: 'test.example.connie',
         executionCondition: condition,
         ilp: packet
       }
-
-      // detect when autofulfill promise has resolved
-      this.fulfilled = new Promise((resolve) => {
-        this.callback = resolve
-      })
-
-      this.rejected = new Promise((resolve) => {
-        this.plugin.rejectIncomingTransfer = (id, msg) => {
-          resolve(msg)
-          return Promise.resolve()
-        }
-      })
     })
 
-    it('should call fulfillCondition on a valid incoming transfer', async function () {
-      await Transport.listen(this.plugin, this.params, this.callback, 'ipr')
+    it('should fulfill on a valid incoming transfer', async function () {
+      const result = await Transport.handleTransfer(this.params, this.transfer)
 
-      // listener returns true for debug purposes
-      const res = await this.plugin.emitAsync('incoming_prepare', this.transfer)
-      assert.isTrue(res[0])
-
-      await this.fulfilled
+      assert.equal(result.fulfillment.toString('base64'), 'AX7EYPqPeG5JI3rv6b+RfGZ3D1Y1pSjj/QJFJ556Dpg=')
     })
 
-    it('should call fulfillCondition on an overpaid valid incoming transfer', async function () {
-      await Transport.listen(this.plugin, this.params, this.callback, 'ipr')
-
-      // listener returns true for debug purposes
+    it('should fulfill on an overpaid valid incoming transfer', async function () {
       this.transfer.amount += 100
-      const res = await this.plugin.emitAsync('incoming_prepare', this.transfer)
-      assert.isTrue(res[0])
+      const result = await Transport.handleTransfer(this.params, this.transfer)
 
-      await this.fulfilled
+      assert.equal(result.fulfillment.toString('base64'), 'AX7EYPqPeG5JI3rv6b+RfGZ3D1Y1pSjj/QJFJ556Dpg=')
     })
 
     it('should reject when it generates the wrong fulfillment', async function () {
-      this.transfer.executionCondition = 'garbage'
-      await Transport.listen(this.plugin, this.params, this.callback, 'ipr')
+      this.transfer.executionCondition = Buffer.from('garbage')
 
-      // listener returns false for debug purposes
-      await this.plugin.emitAsync('incoming_prepare', this.transfer)
-      await this.rejected
+      await expect(Transport.handleTransfer(this.params, this.transfer))
+        .to.rejectedWith('receiver generated a different condition from the transfer')
     })
 
     it('should reject on an overpaid incoming transfer if allowOverPayment is off', async function () {
       this.params.allowOverPayment = false
-      await Transport.listen(this.plugin, this.params, this.callback, 'ipr')
-
-      // listener returns false for debug purposes
       this.transfer.amount += 100
-      await this.plugin.emitAsync('incoming_prepare', this.transfer)
-      await this.rejected
+      await expect(Transport.handleTransfer(this.params, this.transfer))
+        .to.rejectedWith('got notification of transfer where amount is more than expected')
     })
 
     it('should reject when packet details have been changed', async function () {
-      this.transfer.ilp = this.transfer.ilp + 'garbage'
-      await Transport.listen(this.plugin, this.params, this.callback, 'ipr')
+      this.transfer.ilp = Buffer.concat([this.transfer.ilp, Buffer.from('garbage')])
 
-      // listener returns false for debug purposes
-      await this.plugin.emitAsync('incoming_prepare', this.transfer)
-      await this.rejected
+      await expect(Transport.handleTransfer(this.params, this.transfer))
+        .to.rejectedWith('receiver generated a different condition from the transfer')
     })
 
     it('should pass the fulfill function, transfer, decrypted data, destinationAmount, and destinationAccount to the callback', async function () {
-      const fulfilled = new Promise((resolve) => {
-        this.plugin.fulfillCondition = () => {
-          resolve()
-          return Promise.resolve()
-        }
-      })
-
-      this.callback = (details) => {
+      this.params.callback = sinon.spy((details) => {
         assert.isObject(details.transfer, 'must pass in transfer')
         assert.isObject(details.headers, 'must pass in headers')
         assert.isString(details.headers['expires-at'], 'must pass in Expires-At header')
@@ -574,156 +487,34 @@ data`, 'utf8')) }))
         assert.equal(details.data.toString('utf8'), 'test data', 'must pass in decrypted data')
         assert.isString(details.destinationAccount, 'must pass in account')
         assert.isString(details.destinationAmount, 'must pass in amount')
-        assert.isString(details.fulfillment, 'must pass in fulfillment')
+        assert(Buffer.isBuffer(details.fulfillment), 'must pass in fulfillment')
+        assert.equal(details.fulfillment.toString('base64'), 'AX7EYPqPeG5JI3rv6b+RfGZ3D1Y1pSjj/QJFJ556Dpg=')
         assert.isFunction(details.fulfill, 'fulfill callback must be a function')
-        details.fulfill()
-      }
-
-      await Transport.listen(this.plugin, this.params, this.callback, 'ipr')
-      const res = await this.plugin.emitAsync('incoming_prepare', this.transfer)
-      if (typeof res[0] === 'object') {
-        throw new Error('got error code: ' + JSON.stringify(res))
-      }
-
-      await fulfilled
-    })
-
-    it('should retry fulfillCondition if it fails', async function () {
-      const fulfilled = new Promise((resolve) => {
-        let counter = 0
-        this.plugin.fulfillCondition = () => {
-          if (counter++ < 3) {
-            return Promise.reject(new Error('you\'d better retry this'))
-          }
-          resolve()
-          return Promise.resolve()
-        }
+        return details.fulfill()
       })
 
-      this.callback = (details) => {
-        return details.fulfill()
-      }
+      const result = await Transport.handleTransfer(this.params, this.transfer)
 
-      this.params.maxFulfillRetryWait = 10
-      await Transport.listen(this.plugin, this.params, this.callback, 'ipr')
-      const res = await this.plugin.emitAsync('incoming_prepare', this.transfer)
-      if (typeof res[0] === 'object') {
-        throw new Error('got error code: ' + JSON.stringify(res))
-      }
-
-      await fulfilled
+      assert.equal(result.fulfillment.toString('base64'), 'AX7EYPqPeG5JI3rv6b+RfGZ3D1Y1pSjj/QJFJ556Dpg=')
+      assert(this.params.callback.calledOnce)
     })
 
     it('should reject if the listen callback throws', async function () {
-      const rejected = new Promise((resolve) => {
-        this.plugin.rejectIncomingTransfer = () => {
-          resolve()
-          return Promise.resolve()
-        }
-      })
-
-      this.callback = (details) => {
+      this.params.callback = (details) => {
         throw new Error('I don\'t want that transfer')
       }
 
-      await Transport.listen(this.plugin, this.params, this.callback, 'ipr')
-      const res = await this.plugin.emitAsync('incoming_prepare', this.transfer)
-      assert.deepEqual(res[0], {
-        code: 'F00',
-        message: 'rejected-by-receiver: I don\'t want that transfer',
-        name: 'Bad Request'
-      })
-
-      await rejected
+      await expect(Transport.handleTransfer(this.params, this.transfer))
+        .to.rejectedWith('rejected-by-receiver: I don\'t want that transfer')
     })
 
     it('should reject if the listen callback rejects', async function () {
-      const rejected = new Promise((resolve) => {
-        this.plugin.rejectIncomingTransfer = () => {
-          resolve()
-          return Promise.resolve()
-        }
-      })
-
-      this.callback = (details) => {
+      this.params.callback = (details) => {
         return Promise.reject(new Error('I don\'t want that transfer'))
       }
 
-      await Transport.listen(this.plugin, this.params, this.callback, 'ipr')
-      const res = await this.plugin.emitAsync('incoming_prepare', this.transfer)
-      assert.deepEqual(res[0], {
-        code: 'F00',
-        message: 'rejected-by-receiver: I don\'t want that transfer',
-        name: 'Bad Request'
-      })
-
-      await rejected
-    })
-
-    describe('listenAll', function () {
-      beforeEach(function () {
-        this.factory = new EventEmitter()
-        this.factory.connect = () => Promise.resolve()
-        this.factory.getAccountAs = function (as) {
-          return 'test.example.' + as
-        }
-
-        this.fulfilled = new Promise((resolve) => {
-          this.factory.fulfillConditionAs = function () {
-            resolve()
-            return Promise.resolve()
-          }
-        })
-
-        this.rejected = new Promise((resolve) => {
-          this.factory.rejectIncomingTransferAs = function () {
-            resolve()
-            return Promise.resolve()
-          }
-        })
-
-        const secret = this.params.receiverSecret
-        this.params = {
-          generateReceiverSecret: () => secret,
-          connectTimeout: 100
-        }
-      })
-
-      it('should listenAll', async function () {
-        this.callback = async function ({ fulfill }) {
-          await fulfill()
-        }
-
-        await Transport.listenAll(this.factory, this.params, this.callback)
-
-        this.factory.emit('incoming_prepare', 'alice', this.transfer)
-
-        await this.fulfilled
-        const fulfilledAgain = new Promise((resolve) => {
-          this.factory.fulfillConditionAs = function () {
-            resolve()
-            return Promise.resolve()
-          }
-        })
-
-        // prepare packet and condition for next transfer, on separate account but
-        // with the same listener
-        this.transfer.to = 'test.example.bob.ebKWcAEB9_AqIqs_1-hu7YPOz6y5YI8KQ'
-        const { packet, condition } = Transport.createPacketAndCondition({
-          destinationAmount: '1',
-          destinationAccount: 'test.example.bob.ebKWcAEB9_AqIqs_1-hu7YPOz6y5YI8KQ',
-          secret: Buffer.from('ozYOKjEbNc7gnsNcfiL0NA', 'base64'),
-          data: Buffer.from('test data'),
-          id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
-          expiresAt: moment().add(10).toISOString()
-        })
-        this.transfer.ilp = packet
-        this.transfer.executionCondition = condition
-
-        this.factory.emit('incoming_prepare', 'bob', this.transfer)
-
-        await fulfilledAgain
-      })
+      await expect(Transport.handleTransfer(this.params, this.transfer))
+        .to.rejectedWith('rejected-by-receiver: I don\'t want that transfer')
     })
   })
 })

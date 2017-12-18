@@ -5,7 +5,6 @@ const assert = chai.assert
 const base64url = require('../src/utils/base64url')
 const Packet = require('../src/utils/packet')
 const Details = require('../src/utils/details')
-const Utils = require('../src/utils')
 
 describe('Utils', function () {
   describe('details', function () {
@@ -115,12 +114,12 @@ binary data goes here`
       const packet = Packet.serialize({
         account: 'test.alice',
         amount: '1',
-        data: base64url(Details.createDetails({
+        data: Details.createDetails({
           headers: { header: 'value' },
           publicHeaders: { unsafeHeader: 'value' },
           data: Buffer.from('binary data', 'utf8'),
           secret
-        }))
+        })
       })
 
       const parsed = Details.parsePacketAndDetails({ packet, secret })
@@ -140,42 +139,6 @@ binary data goes here`
           amount: '1'
         }
       )
-    })
-  })
-
-  describe('retryPromise', () => {
-    beforeEach(function () {
-      this.minWait = 10
-      this.maxWait = 10
-
-      this.stopWaiting = new Date()
-      this.stopWaiting.setSeconds(this.stopWaiting.getSeconds + 1)
-    })
-
-    it('should retry a promise', async function () {
-      let counter = 0
-      const callback = () => {
-        if (counter++ < 3) {
-          return Promise.reject(new Error('please retry'))
-        }
-        return Promise.resolve('success!')
-      }
-
-      await Utils.retryPromise({
-        callback,
-        minWait: this.minWait,
-        maxWait: this.maxWait,
-        stopWaiting: this.stopWaiting
-      })
-    })
-
-    it('should stop retring after expiry', async function () {
-      await assert.isRejected(Utils.retryPromise({
-        callback: () => Promise.reject(new Error('please retry')),
-        minWait: this.minWait,
-        maxWait: this.maxWait,
-        stopWaiting: (new Date())
-      }), /retry expiry of .* reached/)
     })
   })
 })

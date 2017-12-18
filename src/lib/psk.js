@@ -84,33 +84,29 @@ function listen (plugin, rawParams, callback) {
 }
 
 /**
-  * Listen on a ILP plugin bells factory for incoming PSK payments, and auto-generate fulfillments.
-  *
-  * @param {Object} factory Plugin bells factory to listen on
-  * @param {Object} params Parameters for creating payment request
-  * @param {Buffer} params.receiverSecret secret used to generate the shared secret and the extra segments of destinationAccount
-  * @param {Boolean} [params.allowOverPayment=true] Accept payments with higher amounts than expected
-  * @param {IncomingCallback} callback Called after an incoming payment is validated.
-  *
-  * @return {Object} Payment request
-  */
-function listenAll (factory, rawParams, callback) {
-  assert(Buffer.isBuffer(rawParams.receiverSecret), 'params.receiverSecret must be a buffer')
-
-  function generateReceiverSecret (address) {
-    // The listen code already calls accountToSharedSecret
-    return rawParams.receiverSecret
-  }
-
-  const params = Object.assign({}, rawParams, { generateReceiverSecret })
-  return Transport.listenAll(factory, params, callback, 'psk')
+ * Handle a transfer.
+ *
+ * This can be used for more advanced scenarios like large numbers of "virtual"
+ * receivers where instantiating all of them would be prohibitively expensive in
+ * terms of memory.
+ *
+ * @param {Object} params
+ * @param {Plugin} params.plugin LPI2 plugin
+ * @param {String} params.receiverSecret Private value of the receiver, must be different for each receiver
+ * @param {Boolean} params.allowOverPayment Whether to allow overpayment, default to true
+ * @param {Function} params.callback Function to decide whether to accept the transfer
+ * @param {Transfer} transfer LPI2 Transfer object
+ * @return {Promise<FulfillmentInfo>} Will return fulfillment info or throw if the transfer is rejected
+ */
+function handleTransfer (params, transfer) {
+  return Transport.handleTransfer(params, transfer)
 }
 
 module.exports = {
   createPacketAndCondition,
   generateParams,
   listen,
-  listenAll,
+  handleTransfer,
   parseDetails: Details.parseDetails,
   createDetails: Details.createDetails,
   parsePacketAndDetails: Details.parsePacketAndDetails

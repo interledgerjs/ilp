@@ -44,19 +44,15 @@ describe('ILQP', function () {
         destinationAddress: 'test.local.bob',
         sourceAmount: '1',
         destinationExpiryDuration: '10',
-        connectors: [ 'test.example.connie' ],
         timeout: 100
       }
       this.result = {
         sourceAmount: '1',
         destinationAmount: '1',
-        connectorAccount: 'test.example.connie',
         sourceExpiryDuration: '5'
       }
 
       this.plugin.sendRequest = (msg) => {
-        assert.equal(msg.ledger, 'test.example.')
-        assert.equal(msg.to, 'test.example.connie')
         assert.isObject(IlpPacket.deserializeIlqpBySourceRequest(Buffer.from(msg.ilp, 'base64')))
         return Promise.resolve(this.response)
       }
@@ -103,38 +99,6 @@ describe('ILQP', function () {
         'no listeners should be registered after quote')
     })
 
-    it('should default to getInfo\'s connectors', async function () {
-      // remove manually provided connectors
-      delete this.params.connectors
-
-      const response = await ILQP.quote(this.plugin, this.params)
-      this.result.expiresAt = (new Date(response.expiresAt)).toISOString()
-
-      assert.deepEqual(
-        response,
-        this.result)
-    })
-
-    it('should reject if getInfo returns no connectors', async function () {
-      delete this.params.connectors
-      this.plugin.getInfo = () => ({ prefix: 'test.example.' })
-
-      await expect(ILQP.quote(this.plugin, this.params))
-        .to.be.rejectedWith(/no connectors specified/)
-    })
-
-    it('should return a local quote if destination is local', async function () {
-      this.params.destinationAddress = 'test.example.bob'
-      const response = await ILQP.quote(this.plugin, this.params)
-
-      // connectorAccount should be set to destination for local ILP payment
-      this.result.connectorAccount = this.params.destinationAddress
-      this.result.sourceExpiryDuration = '10'
-
-      assert.deepEqual(response,
-        this.result)
-    })
-
     it('should reject if source and dest amounts are defined', async function () {
       this.params.destinationAmount = this.params.sourceAmount = '1'
 
@@ -142,16 +106,11 @@ describe('ILQP', function () {
         .to.be.rejectedWith(/provide source or destination amount but not both/)
     })
 
-    it('should reject if there are no connectors', async function () {
-      this.params.connectors = []
-      await expect(ILQP.quote(this.plugin, this.params))
-        .to.be.rejectedWith(/no connectors specified/)
-    })
-
-    it('should reject is sendRequest returns an IlpError', async function () {
+    it('should reject if sendRequest returns an IlpError', async function () {
       this.plugin.sendRequest = (msg) => {
         return Promise.resolve(this.errorResponse)
       }
+
       await expect(ILQP.quote(this.plugin, this.params))
         .to.be.rejectedWith(/remote quote error: Invalid Packet/)
     })
@@ -201,8 +160,6 @@ describe('ILQP', function () {
 
     it('should return the data from the message response', async function () {
       this.plugin.sendRequest = (msg) => {
-        assert.equal(msg.ledger, 'test.example.')
-        assert.equal(msg.to, 'test.example.connie')
         assert.deepEqual(IlpPacket.deserializeIlqpBySourceRequest(Buffer.from(msg.ilp, 'base64')), {
           destinationAccount: 'test.example.bob',
           sourceAmount: '1',
