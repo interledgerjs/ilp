@@ -88,7 +88,7 @@ async function quote (plugin, {
       throw err
     }
 
-    debug(`receiver got: ${amountArrived.toString(10)} when sender sent: ${amount}`)
+    debug(`receiver got: ${amountArrived.toString(10)} when sender sent: ${amount} (rate: ${amountArrived.div(amount).toString(10)})`)
     if (sourceAmount) {
       return {
         destinationAmount: amountArrived.toString(10)
@@ -128,6 +128,7 @@ async function deliver (plugin, {
 }
 
 // TODO add option not to chunk the payment
+// TODO accept user data also
 async function sendChunkedPayment (plugin, {
   sharedSecret,
   destination,
@@ -174,14 +175,17 @@ async function sendChunkedPayment (plugin, {
     // Figure out if we've sent enough already
     let amountLeftToSend
     if (sourceAmount) {
+      // Fixed source amount
       amountLeftToSend = new BigNumber(sourceAmount).minus(amountSent)
       debug(`amount left to send: ${amountLeftToSend.toString(10)}`)
     } else {
+      // Fixed destination amount
       const amountLeftToDeliver = new BigNumber(destinationAmount).minus(amountDelivered)
       if (amountLeftToDeliver.lte(0)) {
         debug('amount left to deliver: 0')
         break
       }
+      // Use the path exchange rate to figure out the amount left to send
       if (amountSent.gt(0)) {
         const rate = amountDelivered.div(amountSent)
         amountLeftToSend = amountLeftToDeliver.div(rate).round(0, BigNumber.ROUND_CEIL) // round up
@@ -193,24 +197,28 @@ async function sendChunkedPayment (plugin, {
       }
     }
 
+    // Stop if we've already sent enough
     if (amountLeftToSend.lte(0)) {
       break
-    } else if (amountLeftToSend.lte(chunkSize)) {
+    }
+
+    // If there's only one more chunk to send, communicate that to the receiver
+    if (amountLeftToSend.lte(chunkSize)) {
       debug('sending last chunk')
       chunkSize = amountLeftToSend
       lastChunk = true
     }
 
-    const minimumChunkAmount = rate.times(chunkSize)
+    // TODO should we allow the rate to fluctuate more?
+    const minimumAmountReceiverShouldAccept = rate.times(chunkSize)
 
-    // TODO accept user data also
     const data = serializePskPacket({
       sharedSecret,
       type: (lastChunk ? TYPE_LAST_CHUNK : TYPE_CHUNK),
       paymentId,
       sequence,
       paymentAmount: (destinationAmount ? new BigNumber(destinationAmount) : MAX_UINT64),
-      chunkAmount: minimumChunkAmount
+      chunkAmount: minimumAmountReceiverShouldAccept
     })
     const ilp = IlpPacket.serializeIlpForwardedPayment({
       account: destination,
@@ -231,9 +239,6 @@ async function sendChunkedPayment (plugin, {
     try {
       const result = await plugin.sendTransfer(transfer)
       amountSent = amountSent.plus(transfer.amount)
-      chunkSize = chunkSize.times(TRANSFER_INCREASE).round(0)
-      debug('transfer was successful, increasing chunk size to:', chunkSize.toString(10))
-      timeToWait = 0
 
       handleReceiverResponse({
         encrypted: result.ilp,
@@ -241,40 +246,53 @@ async function sendChunkedPayment (plugin, {
         expectedSequence: sequence
       })
 
+      chunkSize = chunkSize.times(TRANSFER_INCREASE).round(0)
+      debug('transfer was successful, increasing chunk size to:', chunkSize.toString(10))
+      timeToWait = 0
+
       if (lastChunk) {
         break
       } else {
         sequence++
       }
     } catch (err) {
-      if (err.ilpRejection) {
-        try {
-          const ilpRejection = IlpPacket.deserializeIlpRejection(err.ilpRejection)
-          if (ilpRejection.code === 'F99') {
-            handleReceiverResponse({
-              encrypted: ilpRejection.data,
-              expectedType: TYPE_ERROR,
-              expectedSequence: sequence
-            })
-          } else if (ilpRejection.code[0] === 'T') {
-            chunkSize = chunkSize.times(TRANSFER_DECREASE).round(0)
-            if (chunkSize.lt(1)) {
-              chunkSize = new BigNumber(1)
-            }
-            timeToWait = Math.max(timeToWait * 2, 100)
-            debug(`got temporary ILP rejection: ${ilpRejection.code}, reducing chunk size to: ${chunkSize.toString(10)} and waiting: ${timeToWait}ms`)
-            await new Promise((resolve, reject) => setTimeout(resolve, timeToWait))
-          } else {
-            debug('got ILP rejection that is unlikely to be resolved soon:', JSON.stringify(ilpRejection))
-            // TODO what do we do here?
-          }
-        } catch (err) {
-          // TODO what do we do here?
-        }
-      } else {
-        // TODO handle errors without rejections attached?
-        debug('got error sending payment chunk:', err)
+      if (err.name !== 'InterledgerRejectionError' || !err.ilpRejection) {
+        debug('got error other than an InterledgerRejectionError:', err)
         throw err
+      }
+
+      let ilpRejection
+      try {
+        ilpRejection = IlpPacket.deserializeIlpRejection(err.ilpRejection)
+      } catch (err) {
+        debug('error parsing IlpRejection from receiver:', err && err.stack)
+        throw new Error('Error parsing IlpRejection from receiver: ' + err.message)
+      }
+
+      if (ilpRejection.code === 'F99') {
+        // Handle if the receiver rejects the transfer with a PSK packet
+        handleReceiverResponse({
+          encrypted: ilpRejection.data,
+          expectedType: TYPE_ERROR,
+          expectedSequence: sequence
+        })
+      } else if (ilpRejection.code[0] === 'T' || ilpRejection.code[0] === 'R') {
+        // Handle temporary and relative errors
+        // TODO is this the right behavior in this situation?
+        // TODO don't retry forever
+        chunkSize = chunkSize
+          .times(TRANSFER_DECREASE)
+          .round(0)
+        if (chunkSize.lt(1)) {
+          chunkSize = new BigNumber(1)
+        }
+        timeToWait = Math.max(timeToWait * 2, 100)
+        debug(`got temporary ILP rejection: ${ilpRejection.code}, reducing chunk size to: ${chunkSize.toString(10)} and waiting: ${timeToWait}ms`)
+        await new Promise((resolve, reject) => setTimeout(resolve, timeToWait))
+      } else {
+        // TODO is it ever worth retrying here?
+        debug('got ILP rejection with final error:', JSON.stringify(ilpRejection))
+        throw new Error(`Transfer rejected with final error: ${ilpRejection.code}${(ilpRejection.message ? ': ' + ilpRejection.message : '')}`)
       }
     }
   }
