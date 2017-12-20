@@ -37,7 +37,7 @@
     "bignumber.js": "^2.4.0",
     "co": "^4.6.0",
     "debug": "^2.2.0",
-    "ilp-compat-plugin": "git+https://github.com/interledgerjs/ilp-compat-plugin.git",
+    "ilp-compat-plugin": "^1.0.0",
     "ilp-packet": "^2.0.0",
     "long": "^3.2.0",
     "moment": "^2.14.1",
