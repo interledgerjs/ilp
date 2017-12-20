@@ -37,10 +37,10 @@
     "bignumber.js": "^5.0.0",
     "debug": "^3.1.0",
     "extensible-error": "^1.0.2",
+    "ilp-compat-plugin": "^1.0.0",
     "ilp-packet": "^2.0.0",
-    "ilp-compat-plugin": "interledgerjs/ilp-compat-plugin#refactor/st-lpi2-changes",
     "moment": "^2.14.1",
-    "oer-utils": "^1.3.2",
+    "oer-utils": "^1.3.4",
     "parse-headers": "^2.0.1",
     "superagent": "^3.4.0",
     "uuid": "^3.0.0"
