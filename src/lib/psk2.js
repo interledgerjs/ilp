@@ -56,8 +56,9 @@ async function quote (plugin, {
     data
   })
 
+  const amount = sourceAmount || STARTING_TRANSFER_AMOUNT
   const transfer = {
-    amount: sourceAmount || STARTING_TRANSFER_AMOUNT,
+    amount,
     executionCondition: crypto.randomBytes(32),
     expiresAt: new Date(Date.now() + DEFAULT_TRANSFER_TIMEOUT).toISOString(),
     ilp
@@ -66,7 +67,7 @@ async function quote (plugin, {
   try {
     await plugin.sendTransfer(transfer)
   } catch (err) {
-    if (!err.ilpRejection || err.ilpRejection.code !== 'F99') {
+    if (!err.ilpRejection) {
       throw err
     }
 
@@ -146,22 +147,49 @@ async function sendChunkedPayment (plugin, {
   let timeToWait = 0
   let rate = new BigNumber(0)
 
+  function handleReceiverResponse ({ encrypted, expectedType, expectedSequence }) {
+    try {
+      const response = deserializePskPacket(secret, encrypted)
+
+      assert(expectedType === response.type, `unexpected packet type. expected: ${expectedType}, actual: ${response.type}`)
+      assert(paymentId.equals(response.paymentId), `response does not correspond to request. payment id does not match. actual: ${response.paymentId.toString('hex')}, expected: ${paymentId.toString('hex')}`)
+      assert(expectedSequence === response.sequence, `response does not correspond to request. sequence does not match. actual: ${response.sequence}, expected: ${sequence - 1}`)
+
+      const amountReceived = response.paymentAmount
+      debug(`receiver says they have received: ${amountReceived.toString(10)}`)
+      if (amountReceived.gt(amountDelivered)) {
+        amountDelivered = amountReceived
+        rate = amountDelivered.div(amountSent)
+      } else {
+        // TODO should we throw a more serious error here?
+        debug(`receiver decreased the amount they say they received. previously: ${amountDelivered.toString(10)}, now: ${amountReceived.toString(10)}`)
+      }
+    } catch (err) {
+      debug('error decrypting response data:', err, encrypted.toString('base64'))
+      throw new Error('Got bad response from receiver: ' + err.message)
+    }
+  }
+
   while (true) {
     // Figure out if we've sent enough already
     let amountLeftToSend
     if (sourceAmount) {
       amountLeftToSend = new BigNumber(sourceAmount).minus(amountSent)
+      debug(`amount left to send: ${amountLeftToSend.toString(10)}`)
     } else {
       const amountLeftToDeliver = new BigNumber(destinationAmount).minus(amountDelivered)
       if (amountLeftToDeliver.lte(0)) {
+        debug('amount left to deliver: 0')
         break
       }
       if (amountSent.gt(0)) {
         const rate = amountDelivered.div(amountSent)
         amountLeftToSend = amountLeftToDeliver.div(rate).round(0, BigNumber.ROUND_CEIL) // round up
+        debug(`amount left to send: ${amountLeftToSend.toString(10)} (amount left to deliver: ${amountLeftToDeliver.toString(10)}, rate: ${rate.toString(10)})`)
       } else {
         // We don't know how much more we need to send
         amountLeftToSend = MAX_UINT64
+        debug('amount left to send: unknown')
       }
     }
 
@@ -203,44 +231,51 @@ async function sendChunkedPayment (plugin, {
     try {
       const result = await plugin.sendTransfer(transfer)
       amountSent = amountSent.plus(transfer.amount)
-      sequence++
       chunkSize = chunkSize.times(TRANSFER_INCREASE).round(0)
       debug('transfer was successful, increasing chunk size to:', chunkSize.toString(10))
       timeToWait = 0
 
-      // Parse receiver's response
-      try {
-        const response = deserializePskPacket(secret, result.data)
+      handleReceiverResponse({
+        encrypted: result.ilp,
+        expectedType: TYPE_FULFILLMENT,
+        expectedSequence: sequence
+      })
 
-        assert(TYPE_FULFILLMENT === response.type, `response is not a fulfillment response packet, got type: ${response.type}`)
-        assert(paymentId.equals(response.paymentId), `response does not correspond to request. payment id does not match. actual: ${response.paymentId.toString('hex')}, expected: ${paymentId.toString('hex')}`)
-        // uses sequence - 1 because we've already called sequence++ above
-        assert(sequence - 1 === response.sequence, `response does not correspond to request. sequence does not match. actual: ${response.sequence}, expected: ${sequence - 1}`)
-
-        const amountReceived = response.paymentAmount
-        debug(`receiver says they have received: ${amountReceived.toString(10)}`)
-        if (amountReceived.gt(amountDelivered)) {
-          amountDelivered = amountReceived
-          rate = amountDelivered.div(amountSent)
-        } else {
-          // TODO should we throw a more serious error here?
-          debug(`receiver decreased the amount they say they received. previously: ${amountDelivered.toString(10)}, now: ${amountReceived.toString(10)}`)
-        }
-      } catch (err) {
-        // TODO update amount delivered somehow so not getting the response back
-        // doesn't affect our view of the exchange rate
-        debug('error decrypting response data:', err, result)
-        continue
+      if (lastChunk) {
+        break
+      } else {
+        sequence++
       }
     } catch (err) {
-      // TODO handle specific receiver errors
-      debug('got error sending payment chunk:', err)
-      chunkSize = chunkSize.times(TRANSFER_DECREASE).round(0)
-      if (chunkSize.lt(1)) {
-        chunkSize = new BigNumber(1)
+      if (err.ilpRejection) {
+        try {
+          const ilpRejection = IlpPacket.deserializeIlpRejection(err.ilpRejection)
+          if (ilpRejection.code === 'F99') {
+            handleReceiverResponse({
+              encrypted: ilpRejection.data,
+              expectedType: TYPE_ERROR,
+              expectedSequence: sequence
+            })
+          } else if (ilpRejection.code[0] === 'T') {
+            chunkSize = chunkSize.times(TRANSFER_DECREASE).round(0)
+            if (chunkSize.lt(1)) {
+              chunkSize = new BigNumber(1)
+            }
+            timeToWait = Math.max(timeToWait * 2, 100)
+            debug(`got temporary ILP rejection: ${ilpRejection.code}, reducing chunk size to: ${chunkSize.toString(10)} and waiting: ${timeToWait}ms`)
+            await new Promise((resolve, reject) => setTimeout(resolve, timeToWait))
+          } else {
+            debug('got ILP rejection that is unlikely to be resolved soon:', JSON.stringify(ilpRejection))
+            // TODO what do we do here?
+          }
+        } catch (err) {
+          // TODO what do we do here?
+        }
+      } else {
+        // TODO handle errors without rejections attached?
+        debug('got error sending payment chunk:', err)
+        throw err
       }
-      timeToWait = Math.max(timeToWait * 2, 100)
-      await new Promise((resolve, reject) => setTimeout(resolve, timeToWait))
     }
   }
 
