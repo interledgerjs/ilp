@@ -161,8 +161,8 @@ function listen (plugin, params, callback) {
  * @param {Transfer} transfer LPI2 Transfer object
  * @return {Promise<FulfillmentInfo>} Will return fulfillment info or throw if the transfer is rejected
  */
-function handleTransfer (params, transfer) {
-  return Transport.handleTransfer(params, transfer)
+function handleData (params, transfer) {
+  return Transport.handleData(params, transfer)
 }
 
 module.exports = {
@@ -171,5 +171,5 @@ module.exports = {
   encodeIPR,
   decodeIPR,
   listen,
-  handleTransfer
+  handleData
 }
