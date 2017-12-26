@@ -8,9 +8,16 @@ const BigNumber = require('bignumber.js')
 const { safeConnect, startsWith, xor, omitUndefined } =
   require('../utils')
 const compat = require('ilp-compat-plugin')
+const { getAccount } = require('./ildcp')
 
-const DEFAULT_MESSAGE_TIMEOUT = 5000
 const DEFAULT_EXPIRY_DURATION = 10
+const VALID_RESPONSE_TYPES = [
+  IlpPacket.Type.TYPE_ILQP_LIQUIDITY_RESPONSE,
+  IlpPacket.Type.TYPE_ILQP_BY_SOURCE_RESPONSE,
+  IlpPacket.Type.TYPE_ILQP_BY_DESTINATION_RESPONSE,
+  IlpPacket.Type.TYPE_ILP_REJECT,
+  IlpPacket.Type.TYPE_ILP_ERROR
+]
 
 function _serializeQuoteRequest (requestParams) {
   if (requestParams.sourceAmount) {
@@ -36,25 +43,21 @@ function quoteByConnector ({
 }) {
   plugin = compat(plugin)
   const requestPacket = _serializeQuoteRequest(quoteQuery)
-  const requestType = requestPacket[0]
 
   debug('remote quote', 'query=' + JSON.stringify(quoteQuery))
-  return plugin.sendRequest({
-    ilp: requestPacket.toString('base64'),
-    timeout: timeout || DEFAULT_MESSAGE_TIMEOUT
-  }).then((response) => {
-    if (!response.ilp) throw new Error('Quote response has no packet')
-    const responsePacket = Buffer.from(response.ilp, 'base64')
-    const responseType = responsePacket[0]
-    const packetData = IlpPacket.deserializeIlpPacket(responsePacket).data
-    const isErrorPacket = responseType === IlpPacket.Type.TYPE_ILP_ERROR
-    if (isErrorPacket) {
-      debug('remote quote error', 'ilpError=' + JSON.stringify(packetData))
+  return plugin.sendData(requestPacket).then(response => {
+    const ilp = Buffer.from(response.ilp, 'base64')
+    if (VALID_RESPONSE_TYPES.indexOf(ilp[0]) === -1) {
+      throw new Error('quote response packet has incorrect type. type=' + ilp[0])
     }
-    if (isErrorPacket || responseType === requestType + 1) {
-      return Object.assign({responseType}, packetData)
+    const packetData = IlpPacket.deserializeIlpPacket(ilp).data
+
+    if (ilp[0] === IlpPacket.Type.TYPE_ILP_REJECT) {
+      debug('remote quote error. ilpError=%j', packetData)
     }
-    throw new Error('Quote response packet has incorrect type')
+    console.log('packetData', packetData)
+
+    return Object.assign({responseType: ilp[0]}, packetData)
   })
 }
 
@@ -99,7 +102,7 @@ async function quote (plugin, {
   }
 
   await safeConnect(plugin, timeout)
-  const prefix = plugin.getInfo().prefix
+  const prefix = await getAccount(plugin)
   const amount = sourceAmount || destinationAmount
   const destinationHoldDuration = +(destinationExpiryDuration || DEFAULT_EXPIRY_DURATION)
 
@@ -131,8 +134,8 @@ async function quote (plugin, {
 
   if (!quote) {
     throw new Error('got empty quote response: ' + quote)
-  } else if (quote.responseType === IlpPacket.Type.TYPE_ILP_ERROR) {
-    throw new Error('remote quote error: ' + quote.name)
+  } else if (quote.responseType === IlpPacket.Type.TYPE_ILP_ERROR || quote.responseType === IlpPacket.Type.TYPE_ILP_REJECT) {
+    throw new Error('remote quote error: ' + (quote.message || quote.name))
   }
 
   const sourceHoldDuration = quote.sourceHoldDuration / 1000

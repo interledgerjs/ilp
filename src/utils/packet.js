@@ -1,7 +1,6 @@
 'use strict'
 
 const IlpPacket = require('ilp-packet')
-const assert = require('assert')
 const debug = require('debug')('ilp:packet')
 
 const serialize = (p) => {
@@ -17,24 +16,7 @@ const parse = (packet) => {
   }
 }
 
-function getFromTransfer (transfer) {
-  assert(transfer, 'transfer must be defined. got: ' + transfer)
-  assert(typeof transfer === 'object', 'got invalid transfer: ' + transfer)
-  assert(
-    Buffer.isBuffer(transfer.ilp),
-    'transfer.ilp must be a Buffer'
-  )
-
-  return transfer.ilp
-}
-
-function parseFromTransfer (transfer) {
-  return parse(getFromTransfer(transfer))
-}
-
 module.exports = {
   serialize,
-  parse,
-  getFromTransfer,
-  parseFromTransfer
+  parse
 }
