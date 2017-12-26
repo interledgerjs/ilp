@@ -98,15 +98,15 @@ function listen (plugin, rawParams, callback) {
  * @param {Transfer} transfer LPI2 Transfer object
  * @return {Promise<FulfillmentInfo>} Will return fulfillment info or throw if the transfer is rejected
  */
-function handleTransfer (params, transfer) {
-  return Transport.handleTransfer(params, transfer)
+function handleData (params, transfer) {
+  return Transport.handleData(params, transfer)
 }
 
 module.exports = {
   createPacketAndCondition,
   generateParams,
   listen,
-  handleTransfer,
+  handleData,
   parseDetails: Details.parseDetails,
   createDetails: Details.createDetails,
   parsePacketAndDetails: Details.parsePacketAndDetails
