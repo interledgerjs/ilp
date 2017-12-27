@@ -5,6 +5,7 @@ const uuid = require('uuid/v4')
 const moment = require('moment')
 const BigNumber = require('bignumber.js')
 const compat = require('ilp-compat-plugin')
+const IlpPacket = require('ilp-packet')
 const debug = require('debug')('ilp:spsp')
 
 const ILQP = require('./ilqp')
@@ -67,14 +68,15 @@ function validateSPSPResponse (response) {
   assert(typeof response.receiver_info === 'object', 'receiver_info must be an object')
 }
 
-const _createPayment = (plugin, spsp, quote, id) => {
+const _createPayment = (plugin, sourceScale, spsp, quote, id) => {
   const sourceAmount =
-    toDecimal(quote.sourceAmount, plugin.getInfo().currencyScale)
+    toDecimal(quote.sourceAmount, sourceScale)
   const destinationAmount =
     toDecimal(quote.destinationAmount, spsp.ledger_info.currency_scale)
 
   return {
     id: id || uuid(),
+    sourceScale,
     sourceAmount: sourceAmount,
     destinationAmount: destinationAmount,
     destinationAccount: spsp.destination_account,
@@ -112,6 +114,7 @@ const query = _querySPSP
 const quote = async function (plugin, {
   receiver,
   sourceAmount,
+  sourceScale,
   destinationAmount,
   connectors,
   id,
@@ -125,9 +128,9 @@ const quote = async function (plugin, {
     'receiver or spspResponse must be specified')
   assert(xor(sourceAmount, destinationAmount),
     'destinationAmount or sourceAmount must be specified')
+  assert(typeof sourceScale === 'number', 'sourceScale must be specified')
   if (spspResponse) validateSPSPResponse(spspResponse)
 
-  const sourceScale = plugin.getInfo().currencyScale
   const integerSourceAmount = sourceAmount &&
     toInteger(sourceAmount, sourceScale)
 
@@ -161,7 +164,7 @@ const quote = async function (plugin, {
       ']')
   }
 
-  return _createPayment(plugin, spsp, quote, id)
+  return _createPayment(plugin, sourceScale, spsp, quote, id)
 }
 
 /**
@@ -189,7 +192,7 @@ async function sendPayment (plugin, payment) {
   assert(payment.sourceExpiryDuration, 'missing sourceExpiryDuration')
   assert(payment.id, 'payment must have an id')
 
-  const sourceScale = plugin.getInfo().currencyScale
+  const sourceScale = payment.sourceScale
   const integerSourceAmount =
     toInteger(payment.sourceAmount, sourceScale)
 
@@ -213,16 +216,27 @@ async function sendPayment (plugin, payment) {
 
   try {
     debug('attempting payment %s with condition %s', payment.id, condition.toString('base64'))
-    const result = await plugin.sendTransfer({
+    const result = await plugin.sendData(IlpPacket.serializeIlpPrepare({
       amount: integerSourceAmount,
-      ilp: packet,
       executionCondition: condition,
+      destination: payment.destinationAccount,
+      data: packet,
       expiresAt: moment()
         .add(payment.sourceExpiryDuration, 'seconds')
-        .toISOString()
-    })
-    debug('payment %s succeeded', payment.id)
-    return result
+        .toDate()
+    }))
+
+    if (result[0] === IlpPacket.Type.TYPE_ILP_FULFILL) {
+      debug('payment %s succeeded', payment.id)
+      const { fulfillment, data } = IlpPacket.deserializeIlpFulfill(result)
+      return { fulfillment, data }
+    } else if (result[0] === IlpPacket.Type.TYPE_ILP_REJECT) {
+      const { message } = IlpPacket.deserializeIlpReject(result)
+      debug('payment rejected. paymentId=%s errorMessage=%s', payment.id, message)
+      throw new Error('payment rejected: ' + message)
+    } else {
+      throw new Error('invalid packet type returned. type=' + result[0])
+    }
   } catch (err) {
     debug('payment %s failed: ' + err, payment.id)
     if (err instanceof Object) {

@@ -3,6 +3,7 @@
 const Packet = require('../utils/packet')
 const IlpPacket = require('ilp-packet')
 const ILDCP = require('./ildcp')
+const ILQP = require('./ilqp')
 const moment = require('moment')
 const cryptoHelper = require('../utils/crypto')
 const debug = require('debug')('ilp:transport')
@@ -76,6 +77,7 @@ async function listen (plugin, {
   connectTimeout
 }, callback) {
   plugin = compat(plugin)
+  const address = (await ILDCP.get(plugin)).address
 
   assert(plugin && typeof plugin === 'object', 'plugin must be an object')
   assert(typeof callback === 'function', 'callback must be a function')
@@ -84,6 +86,7 @@ async function listen (plugin, {
   await safeConnect(plugin, connectTimeout)
   const dataHandler = handleData.bind(null, {
     plugin,
+    address,
     receiverSecret,
     allowOverPayment,
     callback
@@ -105,11 +108,11 @@ function _parsePacket (packet) {
   // That means that the destination is duplicated. Otherwise it's actually
   // pretty clean.
   let transfer
-  let parsed
+  let parsedPacket
   try {
     transfer = IlpPacket.deserializeIlpPrepare(packet)
-    parsed = IlpPacket.deserializeIlpPayment(transfer.data)
-    return { transfer, parsed }
+    parsedPacket = IlpPacket.deserializeIlpPayment(transfer.data)
+    return { transfer, parsedPacket }
   } catch (e) {
     const errInfo = (e && e instanceof Object && e.stack) ? e.stack : e
     debug('error while parsing incoming packet. error=%s', errInfo)
@@ -128,18 +131,29 @@ function _parsePacket (packet) {
   */
 async function handleData ({
   plugin,
+  address,
   receiverSecret,
   allowOverPayment,
   callback: reviewFunction
 }, packet) {
-  const account = await ILDCP.getAccount(plugin)
-  const { transfer, parsedPacket } = _parsePacket(packet)
-
   try {
+    switch (packet[0]) {
+      case IlpPacket.Type.TYPE_ILP_PREPARE:
+        break // Sharafian said to do it like this
+      case IlpPacket.Type.TYPE_ILQP_LIQUIDITY_REQUEST:
+      case IlpPacket.Type.TYPE_ILQP_BY_SOURCE_REQUEST:
+      case IlpPacket.Type.TYPE_ILQP_BY_DESTINATION_REQUEST:
+        return ILQP._handleReceiverRequest({ packet, address })
+      default:
+        throw new InvalidPacketError('unknown packet type. type=' + packet[0])
+    }
+    const { transfer, parsedPacket } = _parsePacket(packet)
+    debug('incoming packet. amount=%s', transfer.amount)
+
     // TODO: should this just be included in this function?
     await _validateOrRejectTransfer({
       plugin,
-      account,
+      address,
       transfer,
       parsedPacket,
       allowOverPayment,
@@ -149,7 +163,7 @@ async function handleData ({
     const secret = _accountToSharedSecret({
       receiverSecret,
       account: parsedPacket.account,
-      pluginAccount: account
+      pluginAccount: address
     })
     const destinationAmount = parsedPacket.amount
     const destinationAccount = parsedPacket.account
@@ -203,6 +217,7 @@ async function handleData ({
       throw new ReceiverRejectionError('rejected-by-receiver: receiver callback returned invalid fulfillment')
     }
 
+    debug('fulfilling incoming transfer.')
     return IlpPacket.serializeIlpFulfill({
       fulfillment: result.fulfillment,
       data: result.data || Buffer.alloc(0)
@@ -214,12 +229,15 @@ async function handleData ({
       err = new Error('Non-object thrown: ' + e)
     }
 
+    const errInfo = e.stack ? e.stack : e
+
     const code = e.ilpErrorCode || codes.F00_BAD_REQUEST
 
+    debug('rejecting incoming transfer. error=%s', errInfo)
     return IlpPacket.serializeIlpReject({
       code,
       message: err.message || err.name || 'unknown error',
-      triggeredBy: account,
+      triggeredBy: address,
       data: Buffer.alloc(0)
     })
   }
@@ -227,7 +245,7 @@ async function handleData ({
 
 function _validateOrRejectTransfer ({
   plugin,
-  account,
+  address,
   transfer,
   parsedPacket,
   allowOverPayment = true,
@@ -238,21 +256,21 @@ function _validateOrRejectTransfer ({
   const secret = _accountToSharedSecret({
     receiverSecret,
     account: parsedPacket.account,
-    pluginAccount: account
+    pluginAccount: address
   })
   const destinationAmount = parsedPacket.amount
   const destinationAccount = parsedPacket.account
   const data = parsedPacket.data
 
-  if (destinationAccount.indexOf(account) !== 0) {
+  if (destinationAccount.indexOf(address) !== 0) {
     debug('notified of transfer for another account: account=' +
       destinationAccount +
       ' me=' +
-      account)
+      address)
     throw new UnexpectedPaymentError('received payment for another account')
   }
 
-  const localPart = destinationAccount.slice(account.length + 1)
+  const localPart = destinationAccount.slice(address.length + 1)
   const [ addressReceiverId ] = localPart.split('.')
 
   if (!startsWith(receiverId, addressReceiverId)) {
