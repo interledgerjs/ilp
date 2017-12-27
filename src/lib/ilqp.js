@@ -44,7 +44,7 @@ function quoteByConnector ({
   plugin = compat(plugin)
   const requestPacket = _serializeQuoteRequest(quoteQuery)
 
-  debug('remote quote', 'query=' + JSON.stringify(quoteQuery))
+  debug('remote quote. query=%j', quoteQuery)
   return plugin.sendData(requestPacket).then(response => {
     const ilp = Buffer.from(response.ilp, 'base64')
     if (VALID_RESPONSE_TYPES.indexOf(ilp[0]) === -1) {
@@ -55,7 +55,6 @@ function quoteByConnector ({
     if (ilp[0] === IlpPacket.Type.TYPE_ILP_REJECT) {
       debug('remote quote error. ilpError=%j', packetData)
     }
-    console.log('packetData', packetData)
 
     return Object.assign({responseType: ilp[0]}, packetData)
   })

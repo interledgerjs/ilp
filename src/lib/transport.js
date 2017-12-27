@@ -12,7 +12,6 @@ const compat = require('ilp-compat-plugin')
 const { codes } = require('../utils/ilp-errors')
 const WrongConditionError = require('../errors/wrong-condition-error')
 const ReceiverRejectionError = require('../errors/receiver-rejection-error')
-const BadRequestError = require('../errors/bad-request-error')
 const InvalidPacketError = require('../errors/invalid-packet-error')
 const UnexpectedPaymentError = require('../errors/unexpected-payment-error')
 const InsufficientDestinationAmountError = require('../errors/insufficient-destination-amount-error')
@@ -97,6 +96,28 @@ async function listen (plugin, {
   }
 }
 
+function _parsePacket (packet) {
+  // In order to make IPRv2 and PSKv1 work over ILPv4 without a lot of complex
+  // packet reconstruction, we need to transmit the actual ILPv1 packets. An
+  // easy way is to use the legacy packets as the payload for the modern ILPv4
+  // packets.
+  //
+  // That means that the destination is duplicated. Otherwise it's actually
+  // pretty clean.
+  let transfer
+  let parsed
+  try {
+    transfer = IlpPacket.deserializeIlpPrepare(packet)
+    parsed = IlpPacket.deserializeIlpPayment(transfer.data)
+    return { transfer, parsed }
+  } catch (e) {
+    const errInfo = (e && e instanceof Object && e.stack) ? e.stack : e
+    debug('error while parsing incoming packet. error=%s', errInfo)
+
+    throw new InvalidPacketError('failed to parse packet. error=' + e)
+  }
+}
+
 /**
   * When we receive a transfer notification, check the transfer
   * and try to fulfill the condition (which will only work if
@@ -112,29 +133,27 @@ async function handleData ({
   callback: reviewFunction
 }, packet) {
   const account = await ILDCP.getAccount(plugin)
+  const { transfer, parsedPacket } = _parsePacket(packet)
 
   try {
-    const transfer = IlpPacket.deserializeIlpPrepare(packet)
-    const parsed = IlpPacket.deserializeIlpPayment(transfer.data)
-
     // TODO: should this just be included in this function?
     await _validateOrRejectTransfer({
       plugin,
       account,
       transfer,
-      parsedPacket: parsed,
+      parsedPacket,
       allowOverPayment,
       receiverSecret
     })
 
     const secret = _accountToSharedSecret({
       receiverSecret,
-      account: parsed.account,
+      account: parsedPacket.account,
       pluginAccount: account
     })
-    const destinationAmount = parsed.amount
-    const destinationAccount = parsed.account
-    const data = parsed.data
+    const destinationAmount = parsedPacket.amount
+    const destinationAccount = parsedPacket.account
+    const data = parsedPacket.data
     const details = parseDetails({ details: data, secret })
     const preimage = cryptoHelper.packetToPreimage(
       transfer.data,
@@ -215,20 +234,6 @@ function _validateOrRejectTransfer ({
   receiverSecret
 }) {
   const receiverId = base64url(cryptoHelper.getReceiverId(receiverSecret))
-
-  if (!transfer.executionCondition) {
-    debug('notified of transfer without executionCondition ', transfer)
-    throw new BadRequestError('got notification of transfer without executionCondition')
-  }
-
-  if (!transfer.ilp && !transfer.data) {
-    debug('got notification of transfer with no packet attached')
-    throw new InvalidPacketError('got notification of transfer with no packet attached')
-  }
-
-  if (parsedPacket === undefined) {
-    throw new InvalidPacketError('got notification of transfer with invalid ILP packet')
-  }
 
   const secret = _accountToSharedSecret({
     receiverSecret,

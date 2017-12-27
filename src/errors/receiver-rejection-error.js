@@ -7,7 +7,7 @@ class ReceiverRejectionError extends BaseError {
   constructor (message) {
     super(message)
 
-    this.ilpErrorCode = codes.F00_BAD_REQUEST
+    this.ilpErrorCode = codes.F99_APPLICATION_ERROR
   }
 }
 

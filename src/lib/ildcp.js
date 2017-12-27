@@ -12,15 +12,12 @@ const getAccount = async (plugin) => {
   plugin = compat(plugin)
 
   const data = await plugin.sendData(IlpPacket.serializeIlpPrepare({
-    // TODO: Should be zero, but our plugins suck
-    amount: '1',
+    amount: '0',
     executionCondition: PEER_PROTOCOL_CONDITION,
     expiresAt: new Date(Date.now() + PEER_PROTOCOL_EXPIRY_DURATION),
     destination: 'peer.config',
     data: Buffer.alloc(0)
   }))
-
-  console.log('data', data)
 
   if (data[0] === IlpPacket.Type.TYPE_ILP_REJECT) {
     const { triggeredBy, message } = IlpPacket.deserializeIlpReject(data)
