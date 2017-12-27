@@ -5,10 +5,10 @@ const Packet = require('../utils/packet')
 const debug = require('debug')('ilp:ilqp')
 const moment = require('moment')
 const BigNumber = require('bignumber.js')
-const { safeConnect, startsWith, xor, omitUndefined } =
+const { safeConnect, xor, omitUndefined } =
   require('../utils')
 const compat = require('ilp-compat-plugin')
-const { getAccount } = require('./ildcp')
+const InvalidPacketError = require('../errors/invalid-packet-error')
 
 const DEFAULT_EXPIRY_DURATION = 10
 const VALID_RESPONSE_TYPES = [
@@ -19,6 +19,10 @@ const VALID_RESPONSE_TYPES = [
   IlpPacket.Type.TYPE_ILP_ERROR
 ]
 
+const ONE_TO_ONE_CURVE = Buffer.from('010200000000000000000000000000000000ffffffffffffffffffffffffffffffff', 'hex')
+const DEFAULT_RECEIVER_SOURCE_HOLD_DURATION = 3
+const DEFAULT_CURVE_EXPIRY_DURATION = 365 * 24 * 3600
+
 function _serializeQuoteRequest (requestParams) {
   if (requestParams.sourceAmount) {
     return IlpPacket.serializeIlqpBySourceRequest(requestParams)
@@ -27,6 +31,32 @@ function _serializeQuoteRequest (requestParams) {
     return IlpPacket.serializeIlqpByDestinationRequest(requestParams)
   }
   return IlpPacket.serializeIlqpLiquidityRequest(requestParams)
+}
+
+function _handleReceiverRequest ({ packet, address }) {
+  const request = IlpPacket.deserializeIlpPacket(packet).data
+
+  switch (packet[0]) {
+    case IlpPacket.Type.TYPE_ILQP_LIQUIDITY_REQUEST:
+      return IlpPacket.serializeIlqpLiquidityResponse({
+        liquidityCurve: ONE_TO_ONE_CURVE,
+        appliesToPrefix: address,
+        sourceHoldDuration: DEFAULT_RECEIVER_SOURCE_HOLD_DURATION,
+        expiresAt: new Date(Date.now() + DEFAULT_CURVE_EXPIRY_DURATION * 1000)
+      })
+    case IlpPacket.Type.TYPE_ILQP_BY_SOURCE_REQUEST:
+      return IlpPacket.serializeIlqpBySourceResponse({
+        destinationAmount: request.sourceAmount,
+        sourceHoldDuration: DEFAULT_RECEIVER_SOURCE_HOLD_DURATION
+      })
+    case IlpPacket.Type.TYPE_ILQP_BY_DESTINATION_REQUEST:
+      return IlpPacket.serializeIlqpByDestinationResponse({
+        sourceAmount: request.destinationAmount,
+        sourceHoldDuration: DEFAULT_RECEIVER_SOURCE_HOLD_DURATION
+      })
+    default:
+      throw new InvalidPacketError('not an ilqp packet. type=' + packet[0])
+  }
 }
 
 /**
@@ -45,8 +75,7 @@ function quoteByConnector ({
   const requestPacket = _serializeQuoteRequest(quoteQuery)
 
   debug('remote quote. query=%j', quoteQuery)
-  return plugin.sendData(requestPacket).then(response => {
-    const ilp = Buffer.from(response.ilp, 'base64')
+  return plugin.sendData(requestPacket).then(ilp => {
     if (VALID_RESPONSE_TYPES.indexOf(ilp[0]) === -1) {
       throw new Error('quote response packet has incorrect type. type=' + ilp[0])
     }
@@ -101,20 +130,8 @@ async function quote (plugin, {
   }
 
   await safeConnect(plugin, timeout)
-  const prefix = await getAccount(plugin)
   const amount = sourceAmount || destinationAmount
   const destinationHoldDuration = +(destinationExpiryDuration || DEFAULT_EXPIRY_DURATION)
-
-  if (startsWith(prefix, destinationAddress)) {
-    debug('returning a local transfer to', destinationAddress, 'for', amount)
-    return omitUndefined({
-      // send directly to the destination
-      connectorAccount: destinationAddress,
-      sourceAmount: amount,
-      destinationAmount: amount,
-      sourceExpiryDuration: destinationHoldDuration.toString()
-    })
-  }
 
   const quoteQuery = omitUndefined({
     destinationAccount: destinationAddress,
@@ -161,6 +178,7 @@ async function quoteByPacket (plugin, packet, params) {
 
 module.exports = {
   _getCheaperQuote,
+  _handleReceiverRequest,
   quoteByConnector,
   quote,
   quoteByPacket

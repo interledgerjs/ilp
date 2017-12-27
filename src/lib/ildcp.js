@@ -8,7 +8,7 @@ const debug = require('debug')('ilp:ildcp')
 const PEER_PROTOCOL_CONDITION = Buffer.from('Zmh6rfhivXdsj8GLjp+OIAiXFIVu4jOzkCpZHQ1fKSU=', 'base64')
 const PEER_PROTOCOL_EXPIRY_DURATION = 60000
 
-const getAccount = async (plugin) => {
+const get = async (plugin) => {
   plugin = compat(plugin)
 
   const data = await plugin.sendData(IlpPacket.serializeIlpPrepare({
@@ -30,13 +30,16 @@ const getAccount = async (plugin) => {
 
   const reader = Reader.from(IlpPacket.deserializeIlpFulfill(data).data)
 
-  const clientName = reader.readVarOctetString().toString('ascii')
+  const address = reader.readVarOctetString().toString('ascii')
 
-  debug('received client name ' + clientName)
+  const currencyScale = reader.readUInt8()
+  const currencyCode = reader.readVarOctetString().toString('utf8')
 
-  return clientName
+  debug('received client info. address=%s currencyScale=%s currencyCode=%s', address, currencyScale, currencyCode)
+
+  return { address, currencyScale, currencyCode }
 }
 
 module.exports = {
-  getAccount
+  get
 }
