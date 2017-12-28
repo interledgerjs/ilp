@@ -14,26 +14,14 @@ chai.use(chaiAsPromised)
 describe('ILQP', function () {
   beforeEach(function () {
     this.plugin = new MockPlugin()
-    // quote response
-    this.response = {
-      ilp: IlpPacket.serializeIlqpBySourceResponse({
+
+    // default data handler - some tests will override this
+    this.plugin.dataHandler = msg => {
+      assert.isObject(IlpPacket.deserializeIlqpBySourceRequest(msg))
+      return Promise.resolve(IlpPacket.serializeIlqpBySourceResponse({
         destinationAmount: '1',
         sourceHoldDuration: 5000
-      })
-    }
-
-    this.errorResponse = {
-      ilp: IlpPacket.serializeIlpError({
-        code: 'F01',
-        name: 'Invalid Packet',
-        triggeredBy: 'example.us.ledger3.bob',
-        forwardedBy: [
-          'example.us.ledger2.connie',
-          'example.us.ledger1.conrad'
-        ],
-        triggeredAt: new Date(),
-        data: JSON.stringify({foo: 'bar'})
-      })
+      }))
     }
   })
 
@@ -51,11 +39,6 @@ describe('ILQP', function () {
         destinationAmount: '1',
         sourceExpiryDuration: '5'
       }
-
-      this.plugin.sendRequest = (msg) => {
-        assert.isObject(IlpPacket.deserializeIlqpBySourceRequest(Buffer.from(msg.ilp, 'base64')))
-        return Promise.resolve(this.response)
-      }
     })
 
     it('should quote by source amount', async function () {
@@ -71,13 +54,12 @@ describe('ILQP', function () {
       this.params.destinationAmount = this.params.sourceAmount
       delete this.params.sourceAmount
 
-      this.plugin.sendRequest = (msg) => {
-        return Promise.resolve({
-          ilp: IlpPacket.serializeIlqpByDestinationResponse({
-            sourceAmount: '1',
-            sourceHoldDuration: 5000
-          })
-        })
+      this.plugin.dataHandler = async msg => {
+        assert.isObject(IlpPacket.deserializeIlqpByDestinationRequest(msg))
+        return Promise.resolve(IlpPacket.serializeIlqpByDestinationResponse({
+          sourceAmount: '1',
+          sourceHoldDuration: 5000
+        }))
       }
 
       const response = await ILQP.quote(this.plugin, this.params)
@@ -88,17 +70,6 @@ describe('ILQP', function () {
         this.result)
     })
 
-    it('should remove incoming message listener after response', async function () {
-      assert.equal(this.plugin.listeners('incoming_message').length, 0,
-        'no listeners should be registered before quote')
-
-      await ILQP.quote(this.plugin, this.params)
-      await wait(10)
-
-      assert.equal(this.plugin.listeners('incoming_message').length, 0,
-        'no listeners should be registered after quote')
-    })
-
     it('should reject if source and dest amounts are defined', async function () {
       this.params.destinationAmount = this.params.sourceAmount = '1'
 
@@ -107,23 +78,45 @@ describe('ILQP', function () {
     })
 
     it('should reject if sendRequest returns an IlpError', async function () {
-      this.plugin.sendRequest = (msg) => {
-        return Promise.resolve(this.errorResponse)
+      this.plugin.dataHandler = (msg) => {
+        return Promise.resolve(IlpPacket.serializeIlpError({
+          code: 'F01',
+          name: 'Invalid Packet',
+          triggeredBy: 'example.us.ledger3.bob',
+          forwardedBy: [
+            'example.us.ledger2.connie',
+            'example.us.ledger1.conrad'
+          ],
+          triggeredAt: new Date(),
+          data: JSON.stringify({foo: 'bar'})
+        }))
       }
 
       await expect(ILQP.quote(this.plugin, this.params))
         .to.be.rejectedWith(/remote quote error: Invalid Packet/)
     })
 
+    it('should reject if sendRequest returns an IlpReject', async function () {
+      this.plugin.dataHandler = (msg) => {
+        return Promise.resolve(IlpPacket.serializeIlpReject({
+          code: 'F01',
+          message: 'invalid packet.',
+          triggeredBy: 'example.us.ledger3.bob',
+          data: Buffer.alloc(0)
+        }))
+      }
+
+      await expect(ILQP.quote(this.plugin, this.params))
+        .to.be.rejectedWith(/remote quote error: invalid packet./)
+    })
+
     describe('quoteByPacket', function () {
       it('should parse quote params from packet', async function () {
-        this.plugin.sendRequest = (msg) => {
-          return Promise.resolve({
-            ilp: IlpPacket.serializeIlqpByDestinationResponse({
-              sourceAmount: '1',
-              sourceHoldDuration: 5000
-            })
-          })
+        this.plugin.dataHandler = (packet) => {
+          return Promise.resolve(IlpPacket.serializeIlqpByDestinationResponse({
+            sourceAmount: '1',
+            sourceHoldDuration: 5000
+          }))
         }
 
         const response = await ILQP.quoteByPacket(
@@ -159,36 +152,46 @@ describe('ILQP', function () {
     })
 
     it('should return the data from the message response', async function () {
-      this.plugin.sendRequest = (msg) => {
-        assert.deepEqual(IlpPacket.deserializeIlqpBySourceRequest(Buffer.from(msg.ilp, 'base64')), {
+      const responseData = {
+        destinationAmount: '1',
+        sourceHoldDuration: 5000
+      }
+
+      this.plugin.dataHandler = (msg) => {
+        assert.deepEqual(IlpPacket.deserializeIlqpBySourceRequest(msg), {
           destinationAccount: 'test.example.bob',
           sourceAmount: '1',
           destinationHoldDuration: 3000
         })
-        assert.equal(msg.timeout, 5000)
-        return Promise.resolve(this.response)
+        return Promise.resolve(IlpPacket.serializeIlqpBySourceResponse(responseData))
       }
 
       const response = await ILQP.quoteByConnector(this.params)
       assert.deepEqual(response,
         Object.assign(
           {responseType: 5},
-          IlpPacket.deserializeIlqpBySourceResponse(Buffer.from(this.response.ilp, 'base64'))))
+          responseData))
     })
 
     it('should return an IlpError packet from the message response', async function () {
-      this.plugin.sendRequest = (msg) => {
-        return Promise.resolve(this.errorResponse)
+      const errorResponse = {
+        code: 'F01',
+        message: 'invalid packet.',
+        triggeredBy: 'example.us.ledger3.bob',
+        data: Buffer.alloc(0)
+      }
+      this.plugin.dataHandler = (msg) => {
+        return Promise.resolve(IlpPacket.serializeIlpReject(errorResponse))
       }
       assert.deepEqual(await ILQP.quoteByConnector(this.params),
         Object.assign(
-          {responseType: 8},
-          IlpPacket.deserializeIlpError(Buffer.from(this.errorResponse.ilp, 'base64'))))
+          {responseType: 14},
+          errorResponse))
     })
 
     it('should reject on an error', async function () {
       this.params.timeout = 10
-      this.plugin.sendRequest = () => Promise.reject(new Error('fail'))
+      this.plugin.sendData = () => Promise.reject(new Error('fail'))
       await expect(ILQP.quoteByConnector(this.params))
         .to.be.rejectedWith(/fail/)
     })
