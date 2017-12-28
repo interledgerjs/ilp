@@ -2,7 +2,6 @@
 
 const Packet = require('../utils/packet')
 const IlpPacket = require('ilp-packet')
-const ILDCP = require('./ildcp')
 const ILQP = require('./ilqp')
 const moment = require('moment')
 const cryptoHelper = require('../utils/crypto')
@@ -72,12 +71,12 @@ function _accountToSharedSecret ({ account, pluginAccount, receiverSecret }) {
 }
 
 async function listen (plugin, {
+  address,
   receiverSecret,
   allowOverPayment,
   connectTimeout
 }, callback) {
   plugin = compat(plugin)
-  const address = (await ILDCP.get(plugin)).address
 
   assert(plugin && typeof plugin === 'object', 'plugin must be an object')
   assert(typeof callback === 'function', 'callback must be a function')

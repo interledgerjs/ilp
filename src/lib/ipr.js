@@ -4,6 +4,7 @@ const Transport = require('./transport')
 const oer = require('oer-utils')
 const assert = require('assert')
 const moment = require('moment')
+const ILDCP = require('./ildcp')
 const base64url = require('../utils/base64url')
 const cryptoHelper = require('../utils/crypto')
 
@@ -136,14 +137,15 @@ function createIPR (params) {
   *
   * @param {Object} plugin Ledger plugin to listen on
   * @param {Object} params Parameters for creating payment request
-  * @param {Buffer} params.secret Secret to generate fulfillments with
+  * @param {Buffer} params.receiverSecret Secret to generate fulfillments with
   * @param {Buffer} [params.allowOverPayment=true] Accept payments with higher amounts than expected
   * @param {IncomingCallback} callback Called after an incoming payment is validated.
   *
   * @return {Object} Payment request
   */
-function listen (plugin, params, callback) {
-  return Transport.listen(plugin, params, callback)
+async function listen (plugin, params, callback) {
+  const address = (await ILDCP.get(plugin)).address
+  return Transport.listen(plugin, Object.assign({ address }, params), callback)
 }
 
 /**
