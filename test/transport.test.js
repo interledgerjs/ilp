@@ -263,7 +263,10 @@ describe('Transport', function () {
         delete this.params.secret
 
         const res = await ILP.PSK.listen(this.plugin, this.params, () => {})
-        assert.isFunction(res, 'should return a function')
+        assert.isObject(res, 'should return an object')
+        assert.isFunction(res.close, 'should have a close method')
+        assert.isString(res.sharedSecret, 'should have a shared secret')
+        assert.isString(res.destinationAccount, 'should have a destination account')
       })
     })
   })
