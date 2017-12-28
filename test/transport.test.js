@@ -7,6 +7,7 @@ const assert = chai.assert
 const expect = chai.expect
 const sinon = require('sinon')
 const moment = require('moment')
+const IlpPacket = require('ilp-packet')
 
 const ILP = require('..')
 const Transport = require('../src/lib/transport')
@@ -244,9 +245,9 @@ describe('Transport', function () {
 
     it('should remove listeners with its function', async function () {
       const res = await Transport.listen(this.plugin, this.params, () => {})
-      assert(this.plugin._handler, 'a handler must be set')
+      assert(this.plugin._dataHandler, 'a handler must be set')
       res()
-      assert(!this.plugin._handler, 'no handler must be set')
+      assert(!this.plugin._dataHandler, 'no handler must be set')
     })
 
     describe('IPR', function () {
@@ -280,12 +281,14 @@ describe('Transport', function () {
       this.packet = packet
       this.params = {
         plugin: this.plugin,
+        address: 'test.example.alice',
         receiverSecret: Buffer.from('secret'),
         transfer: {
           amount: '1',
           executionCondition: condition,
           ilp: packet
-        }
+        },
+        parsedPacket: IlpPacket.deserializeIlpPayment(packet)
       }
     })
 
@@ -293,84 +296,64 @@ describe('Transport', function () {
       await Transport._validateOrRejectTransfer(this.params)
     })
 
-    it('should ignore transfer without condition', async function () {
-      delete this.params.transfer.executionCondition
-      expect(() => Transport._validateOrRejectTransfer(this.params))
-        .to.throw('got notification of transfer without executionCondition')
-    })
-
     it('should reject transfer without PSK data', async function () {
-      this.params.transfer.ilp = Packet.serialize(Object.assign(
-        Packet.parse(this.packet),
-        { data: Buffer.from('garbage') }))
+      this.params.parsedPacket.data = Buffer.from('garbage')
 
       expect(() => Transport._validateOrRejectTransfer(this.params))
         .to.throw('unspecified PSK error')
     })
 
     it('should reject transfer with unsupported PSK encryption', async function () {
-      this.params.transfer.ilp = Packet.serialize(Object.assign(
-        Packet.parse(this.packet),
-        { data: Buffer.from(`PSK/1.0
+      this.params.parsedPacket.data = Buffer.from(`PSK/1.0
 Nonce: KxjrC8g5qGQ7mj_ODqBMtw
 Encryption: rot13
 
-data`, 'utf8') }))
+data`, 'utf8')
 
       expect(() => Transport._validateOrRejectTransfer(this.params))
         .to.throw('unsupported PSK encryption method')
     })
 
     it('should reject transfer without PSK nonce', async function () {
-      this.params.transfer.ilp = Packet.serialize(Object.assign(
-        Packet.parse(this.packet),
-        { data: Buffer.from(`PSK/1.0
+      this.params.parsedPacket.data = Buffer.from(`PSK/1.0
 Encryption: aes-256-gcm PVWdX4iBjPQg16AOli2CBw
 
-data`, 'utf8') }))
+data`, 'utf8')
 
       expect(() => Transport._validateOrRejectTransfer(this.params))
         .to.throw('missing PSK nonce') // F06
     })
 
     it('should reject transfer with PSK key header', async function () {
-      this.params.transfer.ilp = Packet.serialize(Object.assign(
-        Packet.parse(this.packet),
-        { data: Buffer.from(`PSK/1.0
+      this.params.parsedPacket.data = Buffer.from(`PSK/1.0
 Nonce: KxjrC8g5qGQ7mj_ODqBMtw
 Encryption: aes-256-gcm PVWdX4iBjPQg16AOli2CBw
 Key: ed25519-ecdh
 
-data`, 'utf8') }))
+data`, 'utf8')
 
       expect(() => Transport._validateOrRejectTransfer(this.params))
         .to.throw('unsupported PSK key derivation') // F06
     })
 
     it('should reject transfer withbad PSK status line', async function () {
-      this.params.transfer.ilp = Packet.serialize(Object.assign(
-        Packet.parse(this.packet),
-        { data: Buffer.from(`PSK/2.0
+      this.params.parsedPacket.data = Buffer.from(`PSK/2.0
 
-data`, 'utf8') }))
+data`, 'utf8')
 
       expect(() => Transport._validateOrRejectTransfer(this.params))
         .to.throw('unsupported PSK version or status') // F06
     })
 
     it('should ignore transfer for other account', async function () {
-      this.params.transfer.ilp = Packet.serialize(Object.assign(
-        Packet.parse(this.packet),
-        { account: 'test.example.garbage' }))
+      this.params.parsedPacket.account = 'test.example.garbage'
 
       expect(() => Transport._validateOrRejectTransfer(this.params))
         .to.throw('received payment for another account') // F06
     })
 
     it('should reject transfer for other receiver', async function () {
-      this.params.transfer.ilp = Packet.serialize(Object.assign(
-        Packet.parse(this.packet),
-        { account: 'test.example.alice.garbage' }))
+      this.params.parsedPacket.account = 'test.example.alice.garbage'
 
       expect(() => Transport._validateOrRejectTransfer(this.params))
         .to.throw('received payment for another receiver') // F06
@@ -406,24 +389,27 @@ data`, 'utf8') }))
         expiresAt: moment().add(-1, 'seconds').toISOString()
       })
 
-      this.params.transfer.ilp = packet
+      this.params.parsedPacket = IlpPacket.deserializeIlpPayment(packet)
 
       expect(() => Transport._validateOrRejectTransfer(this.params))
         .to.throw('got notification of transfer with expired packet') // R00
     })
   })
 
-  describe('handleTransfer', function () {
+  describe('handleData', function () {
     beforeEach(function () {
       this.clock = sinon.useFakeTimers(START_DATE)
 
+      const expiresAt = moment().add(1, 'seconds').toDate()
+      const destination = 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ'
+
       const { packet, condition } = Transport.createPacketAndCondition({
         destinationAmount: '1',
-        destinationAccount: 'test.example.alice.ebKWcAEB9_AGmeWIX3D1FLwIX0CFvfFSQ',
+        destinationAccount: destination,
         secret: Buffer.from('bo4GhvVNW8nacSz0PvibKA', 'base64'),
         data: Buffer.from('test data'),
         id: 'ee39d171-cdd5-4268-9ec8-acc349666055',
-        expiresAt: moment().add(1, 'seconds').toISOString(),
+        expiresAt: expiresAt.toISOString(),
         nonce: Buffer.from('KVwyXszKSl3PCZdOUGjPQg==', 'base64')
       })
 
@@ -433,49 +419,83 @@ data`, 'utf8') }))
 
       this.params = {
         plugin: this.plugin,
+        address: 'test.example.alice',
         receiverSecret: Buffer.from('secret'),
         callback: this.callback
       }
 
-      this.transfer = {
+      this.transferProps = {
         amount: '1',
         executionCondition: condition,
-        ilp: packet
+        expiresAt,
+        destination,
+        data: packet
       }
+      this.transfer = IlpPacket.serializeIlpPrepare(this.transferProps)
     })
 
     it('should fulfill on a valid incoming transfer', async function () {
-      const result = await Transport.handleTransfer(this.params, this.transfer)
+      const result = await Transport.handleData(this.params, this.transfer)
 
-      assert.equal(result.fulfillment.toString('base64'), 'AX7EYPqPeG5JI3rv6b+RfGZ3D1Y1pSjj/QJFJ556Dpg=')
+      assert.deepEqual(IlpPacket.deserializeIlpFulfill(result), {
+        fulfillment: Buffer.from('AX7EYPqPeG5JI3rv6b+RfGZ3D1Y1pSjj/QJFJ556Dpg=', 'base64'),
+        data: Buffer.alloc(0)
+      })
     })
 
     it('should fulfill on an overpaid valid incoming transfer', async function () {
-      this.transfer.amount += 100
-      const result = await Transport.handleTransfer(this.params, this.transfer)
+      this.transferProps.amount = '101'
+      this.transfer = IlpPacket.serializeIlpPrepare(this.transferProps)
 
-      assert.equal(result.fulfillment.toString('base64'), 'AX7EYPqPeG5JI3rv6b+RfGZ3D1Y1pSjj/QJFJ556Dpg=')
+      const result = await Transport.handleData(this.params, this.transfer)
+
+      assert.deepEqual(IlpPacket.deserializeIlpFulfill(result), {
+        fulfillment: Buffer.from('AX7EYPqPeG5JI3rv6b+RfGZ3D1Y1pSjj/QJFJ556Dpg=', 'base64'),
+        data: Buffer.alloc(0)
+      })
     })
 
     it('should reject when it generates the wrong fulfillment', async function () {
-      this.transfer.executionCondition = Buffer.from('garbage')
+      this.transferProps.executionCondition = Buffer.alloc(32)
+      this.transfer = IlpPacket.serializeIlpPrepare(this.transferProps)
 
-      await expect(Transport.handleTransfer(this.params, this.transfer))
-        .to.rejectedWith('receiver generated a different condition from the transfer')
+      const result = await Transport.handleData(this.params, this.transfer)
+
+      assert.deepEqual(IlpPacket.deserializeIlpReject(result), {
+        code: 'F05',
+        message: 'receiver generated a different condition from the transfer',
+        triggeredBy: 'test.example.alice',
+        data: Buffer.alloc(0)
+      })
     })
 
     it('should reject on an overpaid incoming transfer if allowOverPayment is off', async function () {
       this.params.allowOverPayment = false
-      this.transfer.amount += 100
-      await expect(Transport.handleTransfer(this.params, this.transfer))
-        .to.rejectedWith('got notification of transfer where amount is more than expected')
+      this.transferProps.amount = '101'
+      this.transfer = IlpPacket.serializeIlpPrepare(this.transferProps)
+
+      const result = await Transport.handleData(this.params, this.transfer)
+
+      assert.deepEqual(IlpPacket.deserializeIlpReject(result), {
+        code: 'F03',
+        message: 'got notification of transfer where amount is more than expected',
+        triggeredBy: 'test.example.alice',
+        data: Buffer.alloc(0)
+      })
     })
 
     it('should reject when packet details have been changed', async function () {
-      this.transfer.ilp = Buffer.concat([this.transfer.ilp, Buffer.from('garbage')])
+      this.transferProps.data = Buffer.concat([this.transferProps.data, Buffer.from('garbage')])
+      this.transfer = IlpPacket.serializeIlpPrepare(this.transferProps)
 
-      await expect(Transport.handleTransfer(this.params, this.transfer))
-        .to.rejectedWith('receiver generated a different condition from the transfer')
+      const result = await Transport.handleData(this.params, this.transfer)
+
+      assert.deepEqual(IlpPacket.deserializeIlpReject(result), {
+        code: 'F05',
+        message: 'receiver generated a different condition from the transfer',
+        triggeredBy: 'test.example.alice',
+        data: Buffer.alloc(0)
+      })
     })
 
     it('should pass the fulfill function, transfer, decrypted data, destinationAmount, and destinationAccount to the callback', async function () {
@@ -493,9 +513,12 @@ data`, 'utf8') }))
         return details.fulfill()
       })
 
-      const result = await Transport.handleTransfer(this.params, this.transfer)
+      const result = await Transport.handleData(this.params, this.transfer)
 
-      assert.equal(result.fulfillment.toString('base64'), 'AX7EYPqPeG5JI3rv6b+RfGZ3D1Y1pSjj/QJFJ556Dpg=')
+      assert.deepEqual(IlpPacket.deserializeIlpFulfill(result), {
+        fulfillment: Buffer.from('AX7EYPqPeG5JI3rv6b+RfGZ3D1Y1pSjj/QJFJ556Dpg=', 'base64'),
+        data: Buffer.alloc(0)
+      })
       assert(this.params.callback.calledOnce)
     })
 
@@ -504,8 +527,14 @@ data`, 'utf8') }))
         throw new Error('I don\'t want that transfer')
       }
 
-      await expect(Transport.handleTransfer(this.params, this.transfer))
-        .to.rejectedWith('rejected-by-receiver: I don\'t want that transfer')
+      const result = await Transport.handleData(this.params, this.transfer)
+
+      assert.deepEqual(IlpPacket.deserializeIlpReject(result), {
+        code: 'F99',
+        message: 'rejected-by-receiver: I don\'t want that transfer',
+        triggeredBy: 'test.example.alice',
+        data: Buffer.alloc(0)
+      })
     })
 
     it('should reject if the listen callback rejects', async function () {
@@ -513,8 +542,14 @@ data`, 'utf8') }))
         return Promise.reject(new Error('I don\'t want that transfer'))
       }
 
-      await expect(Transport.handleTransfer(this.params, this.transfer))
-        .to.rejectedWith('rejected-by-receiver: I don\'t want that transfer')
+      const result = await Transport.handleData(this.params, this.transfer)
+
+      assert.deepEqual(IlpPacket.deserializeIlpReject(result), {
+        code: 'F99',
+        message: 'rejected-by-receiver: I don\'t want that transfer',
+        triggeredBy: 'test.example.alice',
+        data: Buffer.alloc(0)
+      })
     })
   })
 })
