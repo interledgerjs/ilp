@@ -3,6 +3,7 @@
 const Details = require('../utils/details')
 const Transport = require('./transport')
 const cryptoHelper = require('../utils/crypto')
+const ILDCP = require('./ildcp')
 const assert = require('assert')
 
 /**
@@ -68,19 +69,35 @@ function generateParams ({
   */
 
 /**
+ * @typedef {Object} PskListener
+ * @property {Function} close Destroys the listener
+ * @property {String} sharedSecret PSK shared secret
+ * @property {String} destinationAccount ILP address of the receiver
+ */
+
+/**
   * Listen on a plugin for incoming PSK payments, and auto-generate fulfillments.
   *
   * @param {Object} plugin Ledger plugin to listen on
   * @param {Object} params Parameters for creating payment request
-  * @param {Buffer} params.sharedSecret Secret to generate fulfillments with
+  * @param {Buffer} params.receiverSecret Private value of the receiver
   * @param {Buffer} [params.allowOverPayment=true] Accept payments with higher amounts than expected
   * @param {IncomingCallback} callback Called after an incoming payment is validated.
   *
-  * @return {Object} Payment request
+  * @return {PskListener} Object representing an active PSK listener
   */
-function listen (plugin, rawParams, callback) {
-  const params = Object.assign({}, rawParams, { secret: rawParams.sharedSecret })
-  return Transport.listen(plugin, params, callback, 'psk')
+async function listen (plugin, rawParams, callback) {
+  assert(Buffer.isBuffer(rawParams.receiverSecret), 'receiverSecret must be a buffer')
+  const address = rawParams.address || (await ILDCP.get(plugin)).address
+  const listenParams = Object.assign({}, rawParams, {
+    address
+  })
+  const { sharedSecret, destinationAccount } = generateParams({ destinationAccount: address, receiverSecret: rawParams.receiverSecret })
+  return {
+    close: await Transport.listen(plugin, listenParams, callback, 'psk'),
+    sharedSecret,
+    destinationAccount
+  }
 }
 
 /**
@@ -92,6 +109,7 @@ function listen (plugin, rawParams, callback) {
  *
  * @param {Object} params
  * @param {Plugin} params.plugin LPI2 plugin
+ * @param {String} params.address ILP receiving address
  * @param {String} params.receiverSecret Private value of the receiver, must be different for each receiver
  * @param {Boolean} params.allowOverPayment Whether to allow overpayment, default to true
  * @param {Function} params.callback Function to decide whether to accept the transfer
