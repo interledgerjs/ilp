@@ -1,6 +1,7 @@
 'use strict'
 const EventEmitter2 = require('eventemitter2')
 const debug = require('debug')('ilp:mock-plugin')
+const IldcpHelper = require('../helpers/ildcp')
 
 class MockPlugin extends EventEmitter2 {
   constructor () {
@@ -13,35 +14,45 @@ class MockPlugin extends EventEmitter2 {
     return Promise.resolve(null)
   }
 
-  getInfo () {
-    return {
-      currencyScale: 2
+  async sendData (packet) {
+    debug('send data. size=%s', packet.length)
+
+    if (IldcpHelper.isIldcpRequest(packet)) {
+      return IldcpHelper.createIldcpResponse({
+        address: 'test.example.alice',
+        currencyScale: 2,
+        currencyCode: 'USD'
+      })
     }
+
+    return this.dataHandler ? this.dataHandler(packet) : Buffer.alloc(0)
   }
 
-  getAccount () {
-    return 'test.example.alice'
+  sendMoney (amount) {
+    debug('send money. amount=%s', amount)
+    return Promise.resolve()
   }
 
-  sendRequest (request) {
-    debug('send request %j', request)
-    return Promise.resolve(null)
-  }
-
-  sendTransfer (transfer) {
-    debug('send transfer %j', transfer)
-    return Promise.resolve(null)
-  }
-
-  registerTransferHandler (handler) {
-    if (this._handler) {
-      throw new Error('Mock plugin already has a transfer handler')
+  registerDataHandler (handler) {
+    if (this._dataHandler) {
+      throw new Error('Mock plugin already has a data handler')
     }
-    this._handler = handler
+    this._dataHandler = handler
   }
 
-  deregisterTransferHandler (handler) {
-    this._handler = null
+  deregisterDataHandler (handler) {
+    this._dataHandler = null
+  }
+
+  registerMoneyHandler (handler) {
+    if (this._moneyHandler) {
+      throw new Error('Mock plugin already has a money handler')
+    }
+    this._moneyHandler = handler
+  }
+
+  deregisterMoneyHandler (handler) {
+    this._moneyHandler = null
   }
 }
 

@@ -64,12 +64,10 @@ describe('SPSP', function () {
 
   describe('quote', function () {
     beforeEach(function () {
-      this.plugin.sendRequest = (msg) => {
-        return Promise.resolve({
-          ilp: IlpPacket.serializeIlqpByDestinationResponse({
-            sourceAmount: '1',
-            sourceHoldDuration: 10000
-          })
+      this.plugin.dataHandler = (msg) => {
+        return IlpPacket.serializeIlqpByDestinationResponse({
+          sourceAmount: '1',
+          sourceHoldDuration: 10000
         })
       }
 
@@ -78,6 +76,7 @@ describe('SPSP', function () {
         destinationAccount: 'test.other.alice',
         sourceExpiryDuration: '10',
         // amounts are converted according to src and dest scales of 2
+        sourceScale: 2,
         sourceAmount: '0.01',
         destinationAmount: '0.12',
         id: this.id,
@@ -88,6 +87,7 @@ describe('SPSP', function () {
         receiver: 'alice@example.com',
         // amounts are converted according to src and dest scales of 2
         destinationAmount: '0.12',
+        sourceScale: 2,
         timeout: 200,
         id: this.id
       }
@@ -176,23 +176,53 @@ describe('SPSP', function () {
       })
 
       it('should successfully send a payment', async function () {
-        this.plugin.sendTransfer = (transfer) => {
-          return {
-            fulfillment: Buffer.from('fulfillment')
+        const nextDataHandler = this.plugin.dataHandler
+        this.plugin.dataHandler = (packet) => {
+          if (packet[0] === IlpPacket.Type.TYPE_ILP_PREPARE) {
+            return IlpPacket.serializeIlpFulfill({
+              fulfillment: Buffer.alloc(32),
+              data: Buffer.alloc(0)
+            })
+          } else {
+            return nextDataHandler(packet)
           }
         }
 
         const result = await SPSP.sendPayment(this.plugin, this.payment)
-        expect(result).to.deep.equal({ fulfillment: Buffer.from('fulfillment') })
+        expect(result).to.deep.equal({ fulfillment: Buffer.alloc(32), data: Buffer.alloc(0) })
       })
 
       it('should reject if payment is rejected', async function () {
-        this.plugin.sendTransfer = (transfer) => {
-          return Promise.reject(new Error('dummy error'))
+        const nextDataHandler = this.plugin.dataHandler
+        this.plugin.dataHandler = (packet) => {
+          if (packet[0] === IlpPacket.Type.TYPE_ILP_PREPARE) {
+            return IlpPacket.serializeIlpReject({
+              code: '123',
+              message: 'bad payment.',
+              triggeredBy: 'test.grumpy-connector',
+              data: Buffer.alloc(0)
+            })
+          } else {
+            return nextDataHandler(packet)
+          }
         }
 
         await expect(SPSP.sendPayment(this.plugin, this.payment))
-          .to.eventually.be.rejectedWith(/transfer .* failed: dummy error/)
+          .to.eventually.be.rejectedWith(/transfer .* failed: payment rejected: bad payment/)
+      })
+
+      it('should reject if sendData throws', async function () {
+        const nextDataHandler = this.plugin.dataHandler
+        this.plugin.dataHandler = (packet) => {
+          if (packet[0] === IlpPacket.Type.TYPE_ILP_PREPARE) {
+            throw new Error('not feeling like it.')
+          } else {
+            return nextDataHandler(packet)
+          }
+        }
+
+        await expect(SPSP.sendPayment(this.plugin, this.payment))
+          .to.eventually.be.rejectedWith(/transfer .* failed: not feeling like it./)
       })
     })
   })
