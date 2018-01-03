@@ -124,6 +124,8 @@ const quote = async function (plugin, {
 }) {
   plugin = compat(plugin)
 
+  await plugin.connect()
+
   assert(plugin, 'missing plugin')
   assert(receiver || spspResponse,
     'receiver or spspResponse must be specified')
@@ -132,8 +134,8 @@ const quote = async function (plugin, {
   if (spspResponse) validateSPSPResponse(spspResponse)
 
   if (typeof sourceScale !== 'number') {
-    const ildcpInfo = await ILDCP.fetch(plugin.sendData(plugin))
-    sourceScale = ildcpInfo.currencyScale
+    const ildcpInfo = await ILDCP.fetch(plugin.sendData.bind(plugin))
+    sourceScale = ildcpInfo.assetScale
   }
 
   const integerSourceAmount = sourceAmount &&
