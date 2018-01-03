@@ -19,8 +19,7 @@ const VALID_RESPONSE_TYPES = [
   IlpPacket.Type.TYPE_ILP_ERROR
 ]
 
-const ONE_TO_ONE_CURVE = Buffer.from('010200000000000000000000000000000000ffffffffffffffffffffffffffffffff', 'hex')
-const DEFAULT_RECEIVER_SOURCE_HOLD_DURATION = 3
+const ONE_TO_ONE_CURVE = Buffer.from('00000000000000000000000000000000ffffffffffffffffffffffffffffffff', 'hex')
 const DEFAULT_CURVE_EXPIRY_DURATION = 365 * 24 * 3600
 
 function _serializeQuoteRequest (requestParams) {
@@ -41,18 +40,18 @@ function _handleReceiverRequest ({ packet, address }) {
       return IlpPacket.serializeIlqpLiquidityResponse({
         liquidityCurve: ONE_TO_ONE_CURVE,
         appliesToPrefix: address,
-        sourceHoldDuration: DEFAULT_RECEIVER_SOURCE_HOLD_DURATION,
+        sourceHoldDuration: request.destinationHoldDuration,
         expiresAt: new Date(Date.now() + DEFAULT_CURVE_EXPIRY_DURATION * 1000)
       })
     case IlpPacket.Type.TYPE_ILQP_BY_SOURCE_REQUEST:
       return IlpPacket.serializeIlqpBySourceResponse({
         destinationAmount: request.sourceAmount,
-        sourceHoldDuration: DEFAULT_RECEIVER_SOURCE_HOLD_DURATION
+        sourceHoldDuration: request.destinationHoldDuration
       })
     case IlpPacket.Type.TYPE_ILQP_BY_DESTINATION_REQUEST:
       return IlpPacket.serializeIlqpByDestinationResponse({
         sourceAmount: request.destinationAmount,
-        sourceHoldDuration: DEFAULT_RECEIVER_SOURCE_HOLD_DURATION
+        sourceHoldDuration: request.destinationHoldDuration
       })
     default:
       throw new InvalidPacketError('not an ilqp packet. type=' + packet[0])
