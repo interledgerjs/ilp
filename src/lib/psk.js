@@ -3,7 +3,7 @@
 const Details = require('../utils/details')
 const Transport = require('./transport')
 const cryptoHelper = require('../utils/crypto')
-const ILDCP = require('./ildcp')
+const ILDCP = require('ilp-protocol-ildcp')
 const assert = require('assert')
 
 /**
@@ -88,7 +88,7 @@ function generateParams ({
   */
 async function listen (plugin, rawParams, callback) {
   assert(Buffer.isBuffer(rawParams.receiverSecret), 'receiverSecret must be a buffer')
-  const address = rawParams.address || (await ILDCP.get(plugin)).address
+  const address = rawParams.address || (await ILDCP.fetch(plugin.sendData.bind(plugin))).clientAddress
   const listenParams = Object.assign({}, rawParams, {
     address
   })
