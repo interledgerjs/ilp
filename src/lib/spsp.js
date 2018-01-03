@@ -9,7 +9,7 @@ const IlpPacket = require('ilp-packet')
 const debug = require('debug')('ilp:spsp')
 
 const ILQP = require('./ilqp')
-const ILDCP = require('./ildcp')
+const ILDCP = require('ilp-protocol-ildcp')
 const PSK = require('./psk')
 const { xor } = require('../utils')
 
@@ -132,7 +132,7 @@ const quote = async function (plugin, {
   if (spspResponse) validateSPSPResponse(spspResponse)
 
   if (typeof sourceScale !== 'number') {
-    const ildcpInfo = await ILDCP.get(plugin)
+    const ildcpInfo = await ILDCP.fetch(plugin.sendData(plugin))
     sourceScale = ildcpInfo.currencyScale
   }
 
