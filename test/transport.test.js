@@ -446,6 +446,19 @@ data`, 'utf8')
       })
     })
 
+    it('should fulfill (with data) on a valid incoming transfer', async function () {
+      this.params.callback = (details) => {
+        return details.fulfill(Buffer.from([1, 2, 3, 4, 5]))
+      }
+
+      const result = await Transport.handleData(this.params, this.transfer)
+
+      assert.deepEqual(IlpPacket.deserializeIlpFulfill(result), {
+        fulfillment: Buffer.from('AX7EYPqPeG5JI3rv6b+RfGZ3D1Y1pSjj/QJFJ556Dpg=', 'base64'),
+        data: Buffer.from([1, 2, 3, 4, 5])
+      })
+    })
+
     it('should fulfill on an overpaid valid incoming transfer', async function () {
       this.transferProps.amount = '101'
       this.transfer = IlpPacket.serializeIlpPrepare(this.transferProps)
