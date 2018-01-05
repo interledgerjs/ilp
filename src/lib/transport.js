@@ -193,9 +193,10 @@ async function handleData ({
         destinationAccount,
         destinationAmount,
         fulfillment,
-        fulfill: function () {
+        fulfill: function (data) {
           return {
-            fulfillment
+            fulfillment,
+            data
           }
         }
       }))
