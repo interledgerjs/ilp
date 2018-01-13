@@ -48,7 +48,7 @@ describe('SPSP', function () {
   })
 
   describe('query', function () {
-    it('should query the right endpoints', async function () {
+    it('should query the right endpoints (webfinger acct)', async function () {
       nock('https://example.com')
         .get('/.well-known/webfinger?resource=acct:alice@example.com')
         .reply(200, webfinger)
@@ -58,6 +58,24 @@ describe('SPSP', function () {
         .reply(200, spspResponse)
 
       expect(await SPSP.query('alice@example.com'))
+        .to.deep.equal(spspResponse)
+    })
+
+    it('should query the right endpoints (payment-pointer)', async function () {
+      nock('https://example.com')
+        .get('/')
+        .reply(200, spspResponse)
+
+      expect(await SPSP.query('$example.com'))
+        .to.deep.equal(spspResponse)
+    })
+
+    it('should query the right endpoints (raw endpoint)', async function () {
+      nock('https://example.com')
+        .get('/')
+        .reply(200, spspResponse)
+
+      expect(await SPSP.query('https://example.com'))
         .to.deep.equal(spspResponse)
     })
   })

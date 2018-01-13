@@ -37,13 +37,23 @@ const _getSPSPFromReceiver = async function (receiver) {
 }
 
 const _querySPSP = async function (receiver) {
-  const endpoint = (receiver.indexOf('@') >= 0)
-    ? (await _getSPSPFromReceiver(receiver))
-    : receiver
+  let endpoint
+  // email-style webfinger identifier (deprecated)
+  if (receiver.indexOf('@') >= 0) {
+    endpoint = await _getSPSPFromReceiver(receiver)
+  // payment-pointer $ identifier
+  } else if (receiver.indexOf('$') === 0) {
+    endpoint = 'https://' + receiver.substring(1)
+  // raw HTTP endpoint (deprecated)
+  } else {
+    endpoint = receiver
+  }
 
+  // TODO: should both accept headers be set?
   const response = (await agent
     .get(endpoint)
-    .set('Accept', 'application/json')).body
+    .set('Accept', 'application/x-spsp-response,application/json'))
+    .body
 
   validateSPSPResponse(response)
   return response
