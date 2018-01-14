@@ -52,7 +52,7 @@ const _querySPSP = async function (receiver) {
   // TODO: should both accept headers be set?
   const response = (await agent
     .get(endpoint)
-    .set('Accept', 'application/x-spsp-response,application/json'))
+    .set('Accept', 'application/spsp+json'))
     .body
 
   validateSPSPResponse(response)
