@@ -2,4 +2,4 @@
 /coverage/
 docs/*.intermediate.md
 *.log
-
+/integration-test/
