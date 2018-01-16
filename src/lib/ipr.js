@@ -8,6 +8,7 @@ const ILDCP = require('ilp-protocol-ildcp')
 const compat = require('ilp-compat-plugin')
 const base64url = require('../utils/base64url')
 const cryptoHelper = require('../utils/crypto')
+const { safeConnect } = require('../utils')
 
 const IPR_VERSION = 2
 
@@ -147,6 +148,7 @@ function createIPR (params) {
 async function listen (plugin, params, callback) {
   plugin = compat(plugin)
 
+  await safeConnect(plugin)
   const address = (await ILDCP.fetch(plugin.sendData.bind(plugin))).clientAddress
   return Transport.listen(plugin, Object.assign({ address }, params), callback)
 }
