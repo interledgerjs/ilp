@@ -43,7 +43,7 @@ const _querySPSP = async function (receiver) {
     endpoint = await _getSPSPFromReceiver(receiver)
   // payment-pointer $ identifier
   } else if (receiver.indexOf('$') === 0) {
-    endpoint = 'https://' + receiver.substring(1)
+    endpoint = 'https://spsp.' + receiver.substring(1)
   // raw HTTP endpoint (deprecated)
   } else {
     endpoint = receiver
