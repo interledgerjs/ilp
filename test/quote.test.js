@@ -5,7 +5,6 @@ const chai = require('chai')
 const assert = chai.assert
 const ILQP = require('..').ILQP
 const Packet = require('../src/utils/packet')
-const { wait } = require('../src/utils')
 const MockPlugin = require('./mocks/mockPlugin')
 const expect = chai.expect
 const chaiAsPromised = require('chai-as-promised')
