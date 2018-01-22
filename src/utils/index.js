@@ -1,8 +1,5 @@
 'use strict'
 
-const isUndefined = require('lodash/fp/isUndefined')
-const omitUndefined = require('lodash/fp/omitBy')(isUndefined)
-const startsWith = require('lodash/fp/startsWith')
 const DEFAULT_CONNECT_TIMEOUT = 10000
 
 function safeConnect (plugin, timeoutOption) {
@@ -26,11 +23,23 @@ function wait (duration) {
   return new Promise((resolve) => setTimeout(resolve, duration))
 }
 
+function startsWith (subject, prefix) {
+  return typeof subject === 'string' && subject.startsWith(prefix)
+}
+
+function omitUndefined (subject) {
+  return Object.keys(subject).reduce((agg, key) => {
+    if (typeof subject[key] !== 'undefined') {
+      agg[key] = subject[key]
+    }
+    return agg
+  }, {})
+}
+
 module.exports = {
   xor,
   wait,
   startsWith,
   safeConnect,
-  omitUndefined,
-  isUndefined
+  omitUndefined
 }

@@ -61,7 +61,6 @@
     "ghooks": "^2.0.2",
     "istanbul": "^0.4.4",
     "jsdoc-to-markdown": "^3.0.4",
-    "lodash": "^4.13.1",
     "md-toc-filter": "^0.9.0",
     "mocha": "^4.0.1",
     "nock": "^9.0.2",
