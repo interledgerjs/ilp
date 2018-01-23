@@ -272,7 +272,7 @@ function _validateOrRejectTransfer ({
   const localPart = destinationAccount.slice(address.length + 1)
   const [ addressReceiverId ] = localPart.split('.')
 
-  if (!startsWith(receiverId, addressReceiverId)) {
+  if (!startsWith(addressReceiverId, receiverId)) {
     debug('notified of transfer for another receiver: receiver=' +
       addressReceiverId +
       ' me=' +

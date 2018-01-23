@@ -134,8 +134,8 @@ function parseDetails ({
 
   const nonce = Buffer.from(publicRequest.headers['nonce'], 'base64')
   const encryption = startsWith(
-    cryptoHelper.ENCRYPTION_ALGORITHM,
-    publicRequest.headers['encryption'])
+    publicRequest.headers['encryption'],
+    cryptoHelper.ENCRYPTION_ALGORITHM)
 
   if (!encryption && publicRequest.headers['encryption'] !== 'none') {
     debug('unsupported encryption in', JSON.stringify(publicRequest.headers))
