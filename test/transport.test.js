@@ -265,8 +265,12 @@ describe('Transport', function () {
         const res = await ILP.PSK.listen(this.plugin, this.params, () => {})
         assert.isObject(res, 'should return an object')
         assert.isFunction(res.close, 'should have a close method')
-        assert.isString(res.sharedSecret, 'should have a shared secret')
-        assert.isString(res.destinationAccount, 'should have a destination account')
+        assert.isFunction(res.generateParams, 'should have a generateParams method')
+
+        const params = res.generateParams()
+        assert.isObject(params, 'generateParams should return an object')
+        assert.isString(params.sharedSecret, 'params should have a shared secret')
+        assert.isString(params.destinationAccount, 'params should have a destination account')
       })
     })
   })
@@ -552,6 +556,36 @@ data`, 'utf8')
         message: 'rejected-by-receiver: I don\'t want that transfer',
         triggeredBy: 'test.example.alice',
         data: Buffer.alloc(0)
+      })
+    })
+
+    it('should reject if the listen callback returns an invalid fulfillment', async function () {
+      this.params.callback = (details) => {
+        return Promise.resolve(Buffer.alloc(32))
+      }
+
+      const result = await Transport.handleData(this.params, this.transfer)
+
+      assert.deepEqual(IlpPacket.deserializeIlpReject(result), {
+        code: 'F99',
+        message: 'rejected-by-receiver: receiver callback returned invalid fulfillment',
+        triggeredBy: 'test.example.alice',
+        data: Buffer.alloc(0)
+      })
+    })
+
+    it('should handle ilqp liquidity curve request', async function () {
+      const ilqpPacket = IlpPacket.serializeIlqpLiquidityRequest({
+        destinationAccount: 'test.example.alice',
+        destinationHoldDuration: 1000
+      })
+      const result = await Transport.handleData(this.params, ilqpPacket)
+
+      assert.deepEqual(IlpPacket.deserializeIlqpLiquidityResponse(result), {
+        appliesToPrefix: 'test.example.alice',
+        liquidityCurve: Buffer.from('AAAAAAAAAAAAAAAAAAAAAP////////////////////8=', 'base64'),
+        expiresAt: new Date('2016-06-15T00:00:00.000Z'),
+        sourceHoldDuration: 1000
       })
     })
   })
