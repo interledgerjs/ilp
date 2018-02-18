@@ -137,65 +137,6 @@ describe('ILQP', function () {
     })
   })
 
-  describe('quoteByConnector', function () {
-    beforeEach(function () {
-      this.params = {
-        plugin: this.plugin,
-        connector: 'test.example.connie',
-        quoteQuery: {
-          destinationAccount: 'test.example.bob',
-          sourceAmount: '1',
-          destinationHoldDuration: 3000
-        }
-      }
-    })
-
-    it('should return the data from the message response', async function () {
-      const responseData = {
-        destinationAmount: '1',
-        sourceHoldDuration: 5000
-      }
-
-      this.plugin.dataHandler = (msg) => {
-        assert.deepEqual(IlpPacket.deserializeIlqpBySourceRequest(msg), {
-          destinationAccount: 'test.example.bob',
-          sourceAmount: '1',
-          destinationHoldDuration: 3000
-        })
-        return Promise.resolve(IlpPacket.serializeIlqpBySourceResponse(responseData))
-      }
-
-      const response = await ILQP.quoteByConnector(this.params)
-      assert.deepEqual(response,
-        Object.assign(
-          {responseType: 5},
-          responseData))
-    })
-
-    it('should return an IlpError packet from the message response', async function () {
-      const errorResponse = {
-        code: 'F01',
-        message: 'invalid packet.',
-        triggeredBy: 'example.us.ledger3.bob',
-        data: Buffer.alloc(0)
-      }
-      this.plugin.dataHandler = (msg) => {
-        return Promise.resolve(IlpPacket.serializeIlpReject(errorResponse))
-      }
-      assert.deepEqual(await ILQP.quoteByConnector(this.params),
-        Object.assign(
-          {responseType: 14},
-          errorResponse))
-    })
-
-    it('should reject on an error', async function () {
-      this.params.timeout = 10
-      this.plugin.sendData = () => Promise.reject(new Error('fail'))
-      await expect(ILQP.quoteByConnector(this.params))
-        .to.be.rejectedWith(/fail/)
-    })
-  })
-
   describe('_getCheaperQuote', function () {
     it('should choose quote1 if it costs less (source)', function () {
       assert.deepEqual(
