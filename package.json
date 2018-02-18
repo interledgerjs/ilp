@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "lint": "eslint .",
-    "test": "istanbul test -- _mocha",
+    "test": "nyc mocha",
     "docs:api": "jsdoc2md --global-index-format none \"src/**/*.js\" --template docs/README.template.md > docs/README.intermediate.md",
     "docs:toc": "md-toc-filter docs/README.intermediate.md > README.md",
     "docs": "npm run docs:api && npm run docs:toc",
@@ -59,7 +59,7 @@
     "eventemitter2": "^5.0.0",
     "five-bells-integration-test-loader": "^1.3.0",
     "ghooks": "^2.0.2",
-    "istanbul": "^0.4.4",
+    "nyc": "^11.4.1",
     "jsdoc-to-markdown": "^3.0.4",
     "md-toc-filter": "^0.9.0",
     "mocha": "^4.0.1",
@@ -79,5 +79,23 @@
       "module": "five-bells-integration-test",
       "repo": "interledgerjs/five-bells-integration-test"
     }
+  },
+  "nyc": {
+    "check-coverage": true,
+    "lines": 80,
+    "statements": 80,
+    "functions": 80,
+    "branches": 80,
+    "include": [
+      "src/**/*.js"
+    ],
+    "exclude": [
+      "test/**/*.js"
+    ],
+    "reporter": [
+      "lcov",
+      "text-summary"
+    ],
+    "all": true
   }
 }
