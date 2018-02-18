@@ -25,32 +25,29 @@ The Javascript client library for <a href="https://interledger.org">Interledger<
 
 #### The ILP module includes:
 
-* [Simple Payment Setup Protocol (SPSP)](#simple-payment-setup-protocol-spsp), a higher level interface for sending ILP payments, which requires the receiver to have an SPSP server.
-* [Pre-Shared Key (PSK)](#pre-shared-key-psk-transport-protocol) Transport Protocol, a non-interactive protocol in which the sender creates the payment details and uses a shared secret to generate the conditions
-* [Interledger Payment Request (IPR)](#interledger-payment-request-ipr-transport-protocol) Transport Protocol, an interactive protocol in which the receiver specifies the payment details, including the condition
+* [Simple Payment Setup Protocol Version 1 (SPSPv1)](#simple-payment-setup-protocol-version-1-spspv1), a higher level interface for sending ILP payments, which requires the receiver to have an SPSP server.
+* [Pre-Shared Key Version 1 (PSKv1)](#pre-shared-key-version-1-pskv1-transport-protocol) Transport Protocol, a non-interactive protocol in which the sender creates the payment details and uses a shared secret to generate the conditions
+* [Interledger Payment Request Version 2 (IPRv2)](#interledger-payment-request-version-2-iprv2-transport-protocol) Transport Protocol, an interactive protocol in which the receiver specifies the payment details, including the condition
 * Interledger Quoting and the ability to send through multiple ledger types using [Ledger Plugins](https://github.com/interledgerjs?utf8=✓&q=ilp-plugin)
 
 ## Installation
 
-`npm install --save ilp ilp-plugin-bells`
+`npm install --save ilp ilp-plugin
 
-*Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module*
+*Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module.*
 
-## [Simple Payment Setup Protocol (SPSP)](https://github.com/interledger/rfcs/blob/master/0009-simple-payment-setup-protocol/0009-simple-payment-setup-protocol.md)
+## [Simple Payment Setup Protocol Version 1 (SPSPv1)](https://github.com/interledger/rfcs/blob/master/0009-simple-payment-setup-protocol/0009-simple-payment-setup-protocol.md)
 
-If you are sending to an SPSP receiver with a `user@example.com` identifier, the SPSP module
+If you are sending to an SPSPv1 receiver with a `user@example.com` identifier, the SPSPv1 module
 provides a high-level interface:
 
 ```js
 'use strict'
 
 const SPSP = require('ilp').SPSP
-const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
+const Plugin = require('ilp-plugin')
 
-const plugin = new FiveBellsLedgerPlugin({
-  account: 'https://red.ilpdemo.org/ledger/accounts/alice',
-  password: 'alice'
-})
+const plugin = new Plugin()
 
 ;(async function () {
   await plugin.connect()
@@ -72,7 +69,7 @@ const plugin = new FiveBellsLedgerPlugin({
 })()
 ```
 
-## [Pre-Shared Key (PSK) Transport Protocol](https://github.com/interledger/rfcs/blob/master/0016-pre-shared-key/0016-pre-shared-key.md)
+## [Pre-Shared Key Version 1 (PSKv1) Transport Protocol](https://github.com/interledger/rfcs/blob/master/0016-pre-shared-key/0016-pre-shared-key.md)
 
 This is a non-interactive protocol in which the sender chooses the payment
 amount and generates the condition without communicating with the recipient.
@@ -101,39 +98,38 @@ from getting unwanted funds.
 
 const uuid = require('uuid')
 const ILP = require('ilp')
-const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
+const PluginBtp = require('ilp-plugin-btp')
 
-const sender = new FiveBellsLedgerPlugin({
-  account: 'https://red.ilpdemo.org/ledger/accounts/alice',
-  password: 'alice'
+const sender = new PluginBtp({
+  server: 'btp+wss://:alice@btp.connector.example'
 })
 
-const receiver = new FiveBellsLedgerPlugin({
-  account: 'https://blue.ilpdemo.org/ledger/accounts/bob',
-  password: 'bobbob'
+const receiver = new PluginBtp({
+  server: 'btp+wss://:bob@btp.connector.example'
 })
 
 ;(async function () {
+  // --- RECEIVER START ---
   await receiver.connect()
-  console.log('receiver connected')
 
   const receiverSecret = Buffer.from('secret_seed')
-  const { sharedSecret, destinationAccount } = ILP.PSK.generateParams({
-    destinationAccount: receiver.getAccount(),
-    receiverSecret
-  })
 
-  // Note the user of this module must implement the method for
-  // communicating sharedSecret and destinationAccount from the recipient
-  // to the sender
-
-  const stopListening = await ILP.PSK.listen(receiver, { receiverSecret }, (params) => {
+  const listener = await ILP.PSK.listen(receiver, { receiverSecret }, (params) => {
     console.log('got transfer:', params.transfer)
 
     console.log('fulfilling.')
     return params.fulfill()
   })
 
+  console.log('receiver connected')
+
+  // Note the user of this module must implement the method for
+  // communicating sharedSecret and destinationAccount from the recipient
+  // to the sender
+  const { sharedSecret, destinationAccount } = listener.generateParams()
+  // --- RECEIVER END ---
+
+  // --- SENDER START ---
   // the sender can generate these, via the sharedSecret and destinationAccount
   // given to them by the receiver.
   const { packet, condition } = ILP.PSK.createPacketAndCondition({
@@ -158,10 +154,11 @@ const receiver = new FiveBellsLedgerPlugin({
     console.log(transfer.id, 'was fulfilled with', fulfillment)
     stopListening()
   })
+  // --- SENDER END ---
 })()
 ```
 
-## [Interledger Payment Request (IPR) Transport Protocol](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md)
+## [Interledger Payment Request Version 2 (IPRv2) Transport Protocol](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md)
 
 This protocol uses recipient-generated Interledger Payment Requests, which include the condition for the payment. This means that the recipient must first generate a payment request, which the sender then fulfills.
 
@@ -174,16 +171,14 @@ This library handles the generation of payment requests, but **not the communica
 
 const uuid = require('uuid')
 const ILP = require('ilp')
-const FiveBellsLedgerPlugin = require('ilp-plugin-bells')
+const PluginBtp = require('ilp-plugin-btp')
 
-const sender = new FiveBellsLedgerPlugin({
-  account: 'https://red.ilpdemo.org/ledger/accounts/alice',
-  password: 'alice'
+const sender = new PluginBtp({
+  server: 'btp+wss://:alice@btp.connector.example'
 })
 
-const receiver = new FiveBellsLedgerPlugin({
-  account: 'https://blue.ilpdemo.org/ledger/accounts/bob',
-  password: 'bobbob'
+const receiver = new PluginBtp({
+  server: 'btp+wss://:bob@btp.connector.example'
 })
 
 ;(async function () {
@@ -269,7 +264,6 @@ Quote to an SPSP receiver
 | params.receiver | <code>String</code> |  | webfinger account identifier (eg. 'alice@example.com') or URL to SPSP endpoint. |
 | [params.sourceAmount] | <code>String</code> |  | source amount to quote. This is a decimal, NOT an integer. It will be shifted by the sending ledger's scale to get the integer amount. |
 | [params.destinationAmount] | <code>String</code> |  | destination amount to quote. This is a decimal, NOT an integer. It will be shifted by the receiving ledger's scale to get the integer amount. |
-| [params.connectors] | <code>Array</code> | <code>[]</code> | connectors to quote. These will be supplied by plugin.getInfo if left unspecified. |
 | [params.id] | <code>String</code> | <code>uuid()</code> | id to use for payment. sending a payment with the same id twice will be idempotent. If left unspecified, the id will be generated randomly. |
 | [params.timeout] | <code>Number</code> | <code>5000</code> | how long to wait for a quote response (ms). |
 | [params.spspResponse] | <code>SpspResponse</code> | <code>SPSP.query(params.receiver)</code> | SPSP response. The receiver endpoint will be queried automatically if this isn't supplied. |
@@ -302,7 +296,6 @@ Parameters for an SPSP payment
 | source_amount | <code>string</code> |  | Decimal string, representing the amount that will be paid on the sender's ledger. |
 | destination_amount | <code>string</code> |  | Decimal string, representing the amount that the receiver will be credited on their ledger. |
 | destination_account | <code>string</code> |  | Receiver's ILP address. |
-| connector_account | <code>string</code> |  | The connector's account on the sender's ledger. The initial transfer on the sender's ledger is made to this account. |
 | spsp | <code>string</code> |  | SPSP response object, containing details to contruct transfers. |
 | publicHeaders | <code>Object</code> | <code>{}</code> | public headers for PSK data. The key-value pairs represent header names and values. |
 | headers | <code>Object</code> | <code>{}</code> | headers for PSK data. The key-value pairs represent header names and values. |
@@ -342,7 +335,6 @@ SPSP query response
 | [query.sourceAmount] | <code>String</code> | Either the sourceAmount or destinationAmount must be specified. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger. |
 | [query.destinationAmount] | <code>String</code> | Either the sourceAmount or destinationAmount must be specified. This value is a string representation of an integer, expressed in the lowest indivisible unit supported by the ledger. |
 | [query.destinationExpiryDuration] | <code>String</code> &#124; <code>Number</code> | Number of seconds between when the destination transfer is proposed and when it expires. |
-| [query.connectors] | <code>Array</code> | List of ILP addresses of connectors to use for this quote. |
 
 
 <a name="module_PSK..createPacketAndCondition"></a>
@@ -402,8 +394,8 @@ Listen on a plugin for incoming PSK payments, and auto-generate fulfillments.
 ### PSK~listenAll(factory, params, callback) ⇒ <code>Object</code>
 Listen on a ILP plugin bells factory for incoming PSK payments, and auto-generate fulfillments.
 
-**Kind**: inner method of <code>[PSK](#module_PSK)</code>  
-**Returns**: <code>Object</code> - Payment request  
+**Kind**: inner method of <code>[PSK](#module_PSK)</code>
+**Returns**: <code>Object</code> - Payment request
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -519,8 +511,8 @@ Listen on a plugin for incoming IPR payments, and auto-generate fulfillments.
 ### IPR~listenAll(factory, params, callback) ⇒ <code>Object</code>
 Listen on a ILP plugin bells factory for incoming IPR payments, and auto-generate fulfillments.
 
-**Kind**: inner method of <code>[IPR](#module_IPR)</code>  
-**Returns**: <code>Object</code> - Payment request  
+**Kind**: inner method of <code>[IPR](#module_IPR)</code>
+**Returns**: <code>Object</code> - Payment request
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
