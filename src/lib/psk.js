@@ -54,7 +54,7 @@ function generateParams ({
 
   return {
     sharedSecret,
-    destinationAccount: destinationAccount + '.' + receiverId + token
+    destinationAccount: destinationAccount + '.' + receiverId + '.' + token
   }
 }
 
@@ -71,8 +71,7 @@ function generateParams ({
 /**
  * @typedef {Object} PskListener
  * @property {Function} close Destroys the listener
- * @property {String} sharedSecret PSK shared secret
- * @property {String} destinationAccount ILP address of the receiver
+ * @property {Function} generateParams Generate shared secret and ILP address pair
  */
 
 /**
@@ -92,11 +91,9 @@ async function listen (plugin, rawParams, callback) {
   const listenParams = Object.assign({}, rawParams, {
     address
   })
-  const { sharedSecret, destinationAccount } = generateParams({ destinationAccount: address, receiverSecret: rawParams.receiverSecret })
   return {
-    close: await Transport.listen(plugin, listenParams, callback, 'psk'),
-    sharedSecret,
-    destinationAccount
+    close: await Transport.listen(plugin, listenParams, callback),
+    generateParams: () => generateParams({ destinationAccount: address, receiverSecret: rawParams.receiverSecret })
   }
 }
 
