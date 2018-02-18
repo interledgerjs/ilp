@@ -91,17 +91,12 @@ function packetToCondition (secret, packet) {
   return preimageToCondition(packetToPreimage(packet, secret))
 }
 
-function preimageToFulfillment (conditionPreimage) {
-  return conditionPreimage
-}
-
 module.exports = {
   ENCRYPTION_ALGORITHM,
   packetToPreimage,
   packetToCondition,
   generatePskParams,
   preimageToCondition,
-  preimageToFulfillment,
   aesEncryptBuffer,
   aesDecryptBuffer,
   getPskToken,

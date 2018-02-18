@@ -168,19 +168,17 @@ async function handleData ({
     const destinationAccount = parsedPacket.account
     const data = parsedPacket.data
     const details = parseDetails({ details: data, secret })
-    const preimage = cryptoHelper.packetToPreimage(
+    const fulfillment = cryptoHelper.packetToPreimage(
       transfer.data,
       secret)
 
-    if (!transfer.executionCondition.equals(cryptoHelper.preimageToCondition(preimage))) {
+    if (!transfer.executionCondition.equals(cryptoHelper.preimageToCondition(fulfillment))) {
       debug('notified of transfer where executionCondition does not' +
         ' match the one we generate.' +
         ' executionCondition=' + transfer.executionCondition.toString('base64') +
-        ' ourCondition=' + cryptoHelper.preimageToCondition(preimage).toString('base64'))
+        ' ourCondition=' + cryptoHelper.preimageToCondition(fulfillment).toString('base64'))
       throw new WrongConditionError('receiver generated a different condition from the transfer')
     }
-
-    const fulfillment = cryptoHelper.preimageToFulfillment(preimage)
 
     debug('calling callback to review transfer:', transfer, details)
     let result
