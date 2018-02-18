@@ -20,7 +20,7 @@ const VALID_RESPONSE_TYPES = [
 ]
 
 const ONE_TO_ONE_CURVE = Buffer.from('00000000000000000000000000000000ffffffffffffffffffffffffffffffff', 'hex')
-const DEFAULT_CURVE_EXPIRY_DURATION = 365 * 24 * 3600
+const DEFAULT_CURVE_EXPIRY_DURATION = 365 * 24 * 60 * 60
 
 function _serializeQuoteRequest (requestParams) {
   if (requestParams.sourceAmount) {
@@ -56,36 +56,6 @@ function _handleReceiverRequest ({ packet, address }) {
     default:
       throw new InvalidPacketError('not an ilqp packet. type=' + packet[0])
   }
-}
-
-/**
-  * @param {Object} params
-  * @param {Object} params.plugin The LedgerPlugin used to send quote request
-  * @param {Object} params.quoteQuery ILQP request packet parameters
-  * @param {Integer} [params.timeout] Milliseconds
-  * @returns {Object} Ilqp{Liquidity,BySourceAmount,ByDestinationAmount}Response or IlpError
-  */
-function quoteByConnector ({
-  plugin,
-  quoteQuery,
-  timeout
-}) {
-  plugin = compat(plugin)
-  const requestPacket = _serializeQuoteRequest(quoteQuery)
-
-  debug('remote quote. query=%j', quoteQuery)
-  return plugin.sendData(requestPacket).then(ilp => {
-    if (VALID_RESPONSE_TYPES.indexOf(ilp[0]) === -1) {
-      throw new Error('quote response packet has incorrect type. type=' + ilp[0])
-    }
-    const packetData = IlpPacket.deserializeIlpPacket(ilp).data
-
-    if (ilp[0] === IlpPacket.Type.TYPE_ILP_REJECT) {
-      debug('remote quote error. ilpError=%j', packetData)
-    }
-
-    return Object.assign({responseType: ilp[0]}, packetData)
-  })
 }
 
 function _getCheaperQuote (quote1, quote2) {
@@ -145,7 +115,21 @@ async function quote (plugin, {
 
   // handle connector responses will return all successful quotes, or
   // throw all errors if there were none.
-  const quote = await quoteByConnector({ plugin, quoteQuery, timeout })
+  const requestPacket = _serializeQuoteRequest(quoteQuery)
+
+  debug('remote quote. query=%j', quoteQuery)
+  const ilp = await plugin.sendData(requestPacket)
+
+  if (VALID_RESPONSE_TYPES.indexOf(ilp[0]) === -1) {
+    throw new Error('quote response packet has incorrect type. type=' + ilp[0])
+  }
+  const packetData = IlpPacket.deserializeIlpPacket(ilp).data
+
+  if (ilp[0] === IlpPacket.Type.TYPE_ILP_REJECT) {
+    debug('remote quote error. ilpError=%j', packetData)
+  }
+
+  const quote = Object.assign({responseType: ilp[0]}, packetData)
 
   if (!quote) {
     throw new Error('got empty quote response: ' + quote)
@@ -178,7 +162,6 @@ async function quoteByPacket (plugin, packet, params) {
 module.exports = {
   _getCheaperQuote,
   _handleReceiverRequest,
-  quoteByConnector,
   quote,
   quoteByPacket
 }
