@@ -20,11 +20,17 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: if git log -1 --pretty=%B | grep -qF "[skip tests]"; then true; else npm run integration; fi
+      - persist_to_workspace:
+          root: .
+          paths:
+            - .
   deploy:
     docker:
       - image: circleci/node:8
     working_directory: ~/repo
     steps:
+      - attach_workspace:
+          at: .
       - run: mv npmrc-env .npmrc
       - run: if [ $(npm show ilp version) != $(npm ls --depth=-1 2>/dev/null | head -1 | cut -f 1 -d " " | cut -f 2 -d @) ] ; then npm publish ; fi
 workflows:
