@@ -40,7 +40,7 @@ class MockPlugin extends EventEmitter2 {
     this._dataHandler = handler
   }
 
-  deregisterDataHandler (handler) {
+  deregisterDataHandler () {
     this._dataHandler = null
   }
 
@@ -51,7 +51,7 @@ class MockPlugin extends EventEmitter2 {
     this._moneyHandler = handler
   }
 
-  deregisterMoneyHandler (handler) {
+  deregisterMoneyHandler () {
     this._moneyHandler = null
   }
 }
