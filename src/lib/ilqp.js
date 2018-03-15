@@ -8,7 +8,7 @@ const BigNumber = require('bignumber.js')
 const { safeConnect, xor, omitUndefined } =
   require('../utils')
 const compat = require('ilp-compat-plugin')
-const InvalidPacketError = require('../errors/invalid-packet-error')
+const { InvalidPacketError } = IlpPacket.Errors
 
 const DEFAULT_EXPIRY_DURATION = 10
 const VALID_RESPONSE_TYPES = [

@@ -9,17 +9,19 @@ const debug = require('debug')('ilp:transport')
 const assert = require('assert')
 const base64url = require('../utils/base64url')
 const compat = require('ilp-compat-plugin')
-const { codes } = require('../utils/ilp-errors')
-const WrongConditionError = require('../errors/wrong-condition-error')
-const ReceiverRejectionError = require('../errors/receiver-rejection-error')
-const InvalidPacketError = require('../errors/invalid-packet-error')
-const UnexpectedPaymentError = require('../errors/unexpected-payment-error')
-const InsufficientDestinationAmountError = require('../errors/insufficient-destination-amount-error')
-const InvalidAmountError = require('../errors/invalid-amount-error')
-const TransferTimedOutError = require('../errors/transfer-timed-out-error')
 const BigNumber = require('bignumber.js')
 const { omitUndefined, startsWith, safeConnect } = require('../utils')
 const { createDetails, parseDetails } = require('../utils/details')
+const {
+  codes,
+  FinalApplicationError,
+  InsufficientDestinationAmountError,
+  InvalidAmountError,
+  InvalidPacketError,
+  TransferTimedOutError,
+  UnexpectedPaymentError,
+  WrongConditionError
+} = IlpPacket.Errors
 
 function createPacketAndCondition ({
   destinationAmount,
@@ -94,7 +96,7 @@ async function listen (plugin, {
   plugin.registerDataHandler(dataHandler)
 
   return function () {
-    plugin.deregisterDataHandler(dataHandler)
+    plugin.deregisterDataHandler()
   }
 }
 
@@ -202,7 +204,7 @@ async function handleData ({
       const errInfo = (e && e instanceof Object && e.stack) ? e.stack : e
       debug('error in review callback for transfer:', errInfo)
 
-      throw new ReceiverRejectionError('rejected-by-receiver: ' + (e.message || 'reason not specified'))
+      throw new FinalApplicationError('rejected-by-receiver: ' + (e.message || 'reason not specified'))
     }
 
     if (
@@ -211,7 +213,7 @@ async function handleData ({
       !result.fulfillment.equals(fulfillment)
     ) {
       debug('callback returned invalid fulfillment, rejecting transfer')
-      throw new ReceiverRejectionError('rejected-by-receiver: receiver callback returned invalid fulfillment')
+      throw new FinalApplicationError('rejected-by-receiver: receiver callback returned invalid fulfillment')
     }
 
     debug('fulfilling incoming transfer.')
