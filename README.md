@@ -25,6 +25,8 @@ The Javascript client library for <a href="https://interledger.org">Interledger<
 
 #### The ILP module includes:
 
+* [Loopback Transport (LT)](https://github.com/interledger/rfcs/pull/416), a very basic and simplistic ILPv4-based transport layer protocol.
+
 * [Simple Payment Setup Protocol Version 1 (SPSPv1)](#simple-payment-setup-protocol-version-1-spspv1), a higher level interface for sending ILP payments, which requires the receiver to have an SPSP server.
 * [Pre-Shared Key Version 1 (PSKv1)](#pre-shared-key-version-1-pskv1-transport-protocol) Transport Protocol, a non-interactive protocol in which the sender creates the payment details and uses a shared secret to generate the conditions
 * [Interledger Payment Request Version 2 (IPRv2)](#interledger-payment-request-version-2-iprv2-transport-protocol) Transport Protocol, an interactive protocol in which the receiver specifies the payment details, including the condition
@@ -35,6 +37,32 @@ The Javascript client library for <a href="https://interledger.org">Interledger<
 `npm install --save ilp ilp-plugin
 
 *Note that [ledger plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module.*
+
+## [Loopback Transport (LT)](https://github.com/interledger/rfcs/pull/416)
+
+```js
+const PluginBtp = require('ilp-plugin-btp')
+const ILP = require('.')
+
+;(async function test () {
+  const plugin1 = new PluginBtp({ server: 'btp+wss://:plugin1@amundsen.ilpdemo.org:1810/' })
+  const plugin2 = new PluginBtp({ server: 'btp+wss://:plugin2@amundsen.ilpdemo.org:1810/' })
+  await plugin1.connect()
+  await plugin2.connect()
+  const loop = await ILP.LT.createLoop(plugin1, plugin2)
+  const result = await loop.pay({
+    sourceAmount: '10',
+    expiresAt: new Date(new Date().getTime() + 10000),
+    loopbackHandler: (destinationAmount) => {
+      console.log({ destinationAmount })
+      return true
+    }
+  })
+  console.log({ result })
+  await plugin1.disconnect()
+  await plugin2.disconnect()
+})()
+```
 
 ## [Simple Payment Setup Protocol Version 1 (SPSPv1)](https://github.com/interledger/rfcs/blob/master/0009-simple-payment-setup-protocol/0009-simple-payment-setup-protocol.md)
 
