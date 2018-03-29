@@ -7,7 +7,7 @@
 <h4 align="center">
 The Javascript client library for <a href="https://interledger.org">Interledger</a>
 </h4>
-
+ 
 <br>
 
 [![npm][npm-image]][npm-url] [![standard][standard-image]][standard-url] [![circle][circle-image]][circle-url] [![codecov][codecov-image]][codecov-url] [![snyk][snyk-image]][snyk-url]
