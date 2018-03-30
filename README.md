@@ -64,6 +64,8 @@ const ILP = require('.')
 })()
 ```
 
+For a demo of how to route a chunked payment over a connector with a random exchange rate, run `node scripts/rouletteConnector.js` in one window, and `node scripts/rouletteSender.js` in another.
+
 ## [Simple Payment Setup Protocol Version 1 (SPSPv1)](https://github.com/interledger/rfcs/blob/master/0009-simple-payment-setup-protocol/0009-simple-payment-setup-protocol.md)
 
 If you are sending to an SPSPv1 receiver with a `user@example.com` identifier, the SPSPv1 module

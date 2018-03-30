@@ -60,6 +60,7 @@
     "five-bells-integration-test-loader": "^1.3.0",
     "ghooks": "^2.0.2",
     "ilp-plugin-btp": "^1.1.9",
+    "ilp-plugin-mini-accounts": "^3.4.3",
     "jsdoc-to-markdown": "^3.0.4",
     "md-toc-filter": "^0.9.0",
     "mocha": "^4.0.1",
