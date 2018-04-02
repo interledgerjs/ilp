@@ -21,7 +21,7 @@ const INITIAL_OPTIMISM = 2.5
   let numSeen = 0
   let numAccepted = 0
 
-  async function payOnce() {
+  async function payOnce () {
     let destinationAmountSeen
     const result = await loop.pay({
       sourceAmount: '1',
