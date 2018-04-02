@@ -7,12 +7,12 @@ function sha256 (preimage) {
 }
 
 class Loop {
-  constructor (plugin1, plugin2, destination) {
+  constructor ({ pluginOut, pluginIn, destination }) {
     this.pending = {}
     this.destination = destination
-    this.plugin1 = plugin1
-    this.plugin2 = plugin2
-    this.plugin2.registerDataHandler(this._loopbackPrepareHandler.bind(this))
+    this.pluginOut = pluginOut
+    this.pluginIn = pluginIn
+    this.pluginIn.registerDataHandler(this._loopbackPrepareHandler.bind(this))
   }
 
   async _loopbackPrepareHandler (packet) {
@@ -43,20 +43,20 @@ class Loop {
       data: Buffer.from([])
     })
     this.pending[executionCondition] = { fulfillment, loopbackHandler }
-    const resultPacket = await this.plugin1.sendData(packet)
+    const resultPacket = await this.pluginOut.sendData(packet)
     delete this.pending[executionCondition]
     const result = IlpPacket.deserializeIlpPacket(resultPacket)
     return (result.typeString === 'ilp_fulfill')
   }
 }
 
-async function createLoop (plugin1, plugin2) {
-  // use il-dcp on plugin2 to determine the loopback address:
+async function createLoop ({ pluginOut, pluginIn }) {
+  // use il-dcp on pluginIn to determine the loopback address:
   const req = IlDcp.serializeIldcpRequest()
-  const resBuf = await plugin2.sendData(req)
+  const resBuf = await pluginIn.sendData(req)
   const destination = IlDcp.deserializeIldcpResponse(resBuf).clientAddress
 
-  return new Loop(plugin1, plugin2, destination)
+  return new Loop({ pluginOut, pluginIn, destination })
 }
 
 module.exports = {

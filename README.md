@@ -45,11 +45,11 @@ const PluginBtp = require('ilp-plugin-btp')
 const ILP = require('.')
 
 ;(async function test () {
-  const plugin1 = new PluginBtp({ server: 'btp+wss://:plugin1@amundsen.ilpdemo.org:1810/' })
-  const plugin2 = new PluginBtp({ server: 'btp+wss://:plugin2@amundsen.ilpdemo.org:1810/' })
-  await plugin1.connect()
-  await plugin2.connect()
-  const loop = await ILP.LT.createLoop(plugin1, plugin2)
+  const pluginOut = new PluginBtp({ server: 'btp+wss://:plugin1@amundsen.ilpdemo.org:1810/' })
+  const pluginIn = new PluginBtp({ server: 'btp+wss://:plugin2@amundsen.ilpdemo.org:1810/' })
+  await pluginOut.connect()
+  await pluginIn.connect()
+  const loop = await ILP.LT.createLoop({ pluginOut, pluginIn })
   const result = await loop.pay({
     sourceAmount: '10',
     expiresAt: new Date(new Date().getTime() + 10000),
@@ -59,12 +59,12 @@ const ILP = require('.')
     }
   })
   console.log({ result })
-  await plugin1.disconnect()
-  await plugin2.disconnect()
+  await pluginOut.disconnect()
+  await pluginIn.disconnect()
 })()
 ```
 
-For a demo of how to route a chunked payment over a connector with a random exchange rate, run `node scripts/rouletteConnector.js` in one window, and `node scripts/rouletteSender.js` in another.
+For a demo of how to route a chunked payment over a connector with a random exchange rate, run `node scripts/rouletteReceiver.js` in one window, `node scripts/rouletteConnector.js` in another, and `node scripts/rouletteSender.js` in a third.
 
 ## [Simple Payment Setup Protocol Version 1 (SPSPv1)](https://github.com/interledger/rfcs/blob/master/0009-simple-payment-setup-protocol/0009-simple-payment-setup-protocol.md)
 

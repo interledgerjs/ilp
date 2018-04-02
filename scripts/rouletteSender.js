@@ -2,14 +2,14 @@ const PluginBtp = require('ilp-plugin-btp')
 const ILP = require('..')
 
 ;(async function test () {
-  const plugin1 = new PluginBtp({ server: 'btp+ws://:plugin1@localhost:8912/' })
-  const plugin2 = new PluginBtp({ server: 'btp+ws://:plugin2@localhost:8913/' })
+  const pluginOut = new PluginBtp({ server: 'btp+ws://:pluginOut@localhost:8912/' })
+  const pluginIn = new PluginBtp({ server: 'btp+ws://:pluginIn@localhost:8913/' })
   console.log('connecting plugin 2')
-  await plugin2.connect()
+  await pluginIn.connect()
   console.log('connecting plugin 1')
-  await plugin1.connect()
+  await pluginOut.connect()
   console.log('connected plugins')
-  const loop = await ILP.LT.createLoop(plugin1, plugin2)
+  const loop = await ILP.LT.createLoop({ pluginOut, pluginIn })
   let cummSeen = 0
   let numSeen = 0
   let numAccepted = 0
@@ -39,6 +39,6 @@ const ILP = require('..')
     received += await payOnce()
   }
   console.log({ numAccepted, cummSeen, numSeen, avg: (cummSeen / numSeen), received, avgAccepted: (received / numAccepted) })
-  await plugin1.disconnect()
-  await plugin2.disconnect()
+  await pluginOut.disconnect()
+  await pluginIn.disconnect()
 })()
