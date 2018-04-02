@@ -3,9 +3,12 @@ const ILP = require('..')
 
 ;(async function test () {
   const plugin1 = new PluginBtp({ server: 'btp+ws://:plugin1@localhost:8912/' })
-  const plugin2 = new PluginBtp({ server: 'btp+ws://:plugin2@localhost:8912/' })
-  await plugin1.connect()
+  const plugin2 = new PluginBtp({ server: 'btp+ws://:plugin2@localhost:8913/' })
+  console.log('connecting plugin 2')
   await plugin2.connect()
+  console.log('connecting plugin 1')
+  await plugin1.connect()
+  console.log('connected plugins')
   const loop = await ILP.LT.createLoop(plugin1, plugin2)
   let cummSeen = 0
   let numSeen = 0
