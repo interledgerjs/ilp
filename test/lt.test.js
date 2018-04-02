@@ -20,7 +20,10 @@ describe('IT', function () {
 
   describe('createLoop', function () {
     beforeEach(async function () {
-      this.loop = await LT.createLoop(this.plugin1, this.plugin2)
+      this.loop = await LT.createLoop({
+        pluginOut: this.plugin1,
+        pluginIn: this.plugin2
+      })
     })
 
     it('should return an object with a pay function', async function () {
