@@ -3,7 +3,7 @@ const IlpPacket = require('ilp-packet')
 const IlDcp = require('ilp-protocol-ildcp')
 const PORT = 8913
 
-async function run(port) {
+async function run (port) {
   const plugin = new PluginMiniAccounts({
     wsOpts: {
       port

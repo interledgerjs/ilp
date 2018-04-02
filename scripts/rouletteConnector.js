@@ -5,7 +5,7 @@ const IlDcp = require('ilp-protocol-ildcp')
 const PORT = 8912
 const MAX_EXCHANGE_RATE = 10
 
-async function run(port) {
+async function run (port) {
   const pluginIn = new PluginMiniAccounts({
     wsOpts: {
       port
@@ -34,6 +34,5 @@ async function run(port) {
   console.log('connected')
   console.log(`Listening for ILPv4 over BTP/2.0 on port ${port}`)
 }
-
 
 run(PORT)
