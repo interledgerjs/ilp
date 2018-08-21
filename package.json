@@ -1,18 +1,14 @@
 {
   "name": "ilp",
-  "version": "12.0.1",
+  "version": "14.0.0",
   "description": "ILP client library for sending and receiving payments",
   "main": "index.js",
   "scripts": {
-    "lint": "eslint .",
-    "test": "nyc mocha",
-    "docs:api": "jsdoc2md --global-index-format none \"src/**/*.js\" --template docs/README.template.md > docs/README.intermediate.md",
-    "docs:toc": "md-toc-filter docs/README.intermediate.md > README.md",
-    "docs": "npm run docs:api && npm run docs:toc",
+    "test": "istanbul test -- _mocha",
     "integration": "integration-loader && integration all"
   },
   "engines": {
-    "node": ">=6.0.0"
+    "node": ">=8"
   },
   "repository": {
     "type": "git",
@@ -22,7 +18,6 @@
     "interledger",
     "ilp",
     "payment request",
-    "ipr",
     "crypto",
     "condition",
     "payments"
@@ -34,47 +29,26 @@
   },
   "homepage": "https://github.com/interledgerjs/ilp#readme",
   "dependencies": {
-    "bignumber.js": "^5.0.0",
-    "debug": "^3.1.0",
-    "extensible-error": "^1.0.2",
-    "ilp-compat-plugin": "^2.0.3",
-    "ilp-packet": "^2.2.0",
+    "ilp-logger": "^1.0.2",
+    "ilp-packet": "^2.2.1",
+    "ilp-plugin": "^3.1.1",
     "ilp-protocol-ildcp": "^1.0.0",
-    "moment": "^2.14.1",
-    "oer-utils": "^1.3.4",
-    "parse-headers": "^2.0.1",
-    "superagent": "^3.4.0",
-    "uuid": "^3.0.0"
+    "ilp-protocol-spsp": "^2.1.0",
+    "ilp-protocol-stream": "^1.5.0"
   },
   "devDependencies": {
     "chai": "^4.1.2",
-    "chai-as-promised": "^7.1.1",
-    "cz-conventional-changelog": "^2.1.0",
-    "eslint": "^4.12.1",
-    "eslint-config-standard": "^10.2.1",
-    "eslint-plugin-import": "^2.8.0",
-    "eslint-plugin-node": "^5.2.1",
-    "eslint-plugin-promise": "^3.6.0",
-    "eslint-plugin-standard": "^3.0.1",
-    "eventemitter2": "^5.0.0",
-    "five-bells-integration-test-loader": "^1.3.0",
-    "ghooks": "^2.0.2",
-    "nyc": "^11.4.1",
-    "jsdoc-to-markdown": "^3.0.4",
-    "md-toc-filter": "^0.9.0",
-    "mocha": "^4.0.1",
-    "nock": "^9.0.2",
-    "sinon": "^4.1.3",
-    "source-map-support": "^0.5.0",
-    "validate-commit-msg": "^2.6.1"
+    "eslint": "^5.4.0",
+    "eslint-config-standard": "^11.0.0",
+    "eslint-plugin-import": "^2.14.0",
+    "eslint-plugin-node": "^7.0.1",
+    "eslint-plugin-promise": "^4.0.0",
+    "eslint-plugin-standard": "^3.1.0",
+    "five-bells-integration-test-loader": "^1.5.3",
+    "istanbul": "^0.4.5",
+    "mocha": "^5.2.0"
   },
   "config": {
-    "ghooks": {
-      "commit-msg": "validate-commit-msg"
-    },
-    "commitizen": {
-      "path": "./node_modules/cz-conventional-changelog"
-    },
     "five-bells-integration-test-loader": {
       "module": "five-bells-integration-test",
       "repo": "interledgerjs/five-bells-integration-test"

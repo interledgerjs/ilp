@@ -1,8 +1,9 @@
 'use strict'
 
 module.exports = {
-  ILQP: require('./src/lib/ilqp'),
-  PSK: require('./src/lib/psk'),
-  IPR: require('./src/lib/ipr'),
-  SPSP: require('./src/lib/spsp')
+  ILDCP: require('ilp-protocol-ildcp'),
+  SPSP: require('ilp-protocol-spsp'),
+  STREAM: require('ilp-protocol-stream'),
+  createLogger: require('ilp-logger'),
+  getPlugin: require('ilp-plugin')
 }

@@ -1,46 +1,93 @@
+# Javascript Node CircleCI 2.0 configuration file
+#
+# Check https://circleci.com/docs/2.0/language-javascript/ for more details
+#
 version: 2
+
+defaults: &defaults
+  working_directory: ~/repo
+  docker:
+    - image: circleci/node:8.11.3
+
 jobs:
-  build:
-    docker:
-      - image: circleci/node:8
-    working_directory: ~/repo
+  test:
+    <<: *defaults  
     steps:
+
+      - run:
+          name: Setup NPM for global installs to home directory
+          command: npm set prefix=$HOME/npm
+
       - checkout
-      # Download and cache dependencies
+
       - restore_cache:
-          keys:
-          - v1-dependencies-{{ checksum "package.json" }}
-          # fallback to using the latest cache if no exact match is found
-          - v1-dependencies-
-      - run: npm install
+          keys: 
+            # when lock file changes, use increasingly general patterns to restore cache
+            - "node-v1-{{ .Branch }}-{{ checksum \"package-lock.json\" }}"
+            - "node-v1-{{ .Branch }}-"
+            - "node-v1-"
+
+      - run:
+          name: Install Greenkeeper-Lockfile
+          command: npm install -g greenkeeper-lockfile
+
+      - run:
+          name: Update Lockfile (Greenkeeper)
+          command: $HOME/npm/bin/greenkeeper-lockfile-update
+          
+      - run:
+          name: Install
+          command: npm install
+
+      - run:
+          name: Lint
+          command: npm run lint
+
+      - run:
+          name: Test
+          command: npm test
+
+     - run:
+          name: Integration Tests
+          command: if git log -1 --pretty=%B | grep -qF "[skip tests]"; then true; else npm run integration; fi
+     
+      - run:
+          name: Upload Lockfile (Greenkeeper)
+          command: $HOME/npm/bin/greenkeeper-lockfile-upload
+
       - save_cache:
           paths:
             - node_modules
-          key: v1-dependencies-{{ checksum "package.json" }}
-      - run: npm run lint
-      - run: npm test
-      - run: if git log -1 --pretty=%B | grep -qF "[skip tests]"; then true; else npm run integration; fi
+          key: node-v1-{{ .Branch }}-{{ checksum "package-lock.json" }}
+
       - persist_to_workspace:
-          root: .
-          paths:
-            - .
+          root: ~/repo
+          paths: .
   deploy:
-    docker:
-      - image: circleci/node:8
-    working_directory: ~/repo
+    <<: *defaults
     steps:
       - attach_workspace:
-          at: .
-      - run: mv npmrc-env .npmrc
-      - run: if [ $(npm show ilp version) != $(npm ls --depth=-1 2>/dev/null | head -1 | cut -f 1 -d " " | cut -f 2 -d @) ] ; then npm publish ; fi
+          at: ~/repo
+      - run:
+          name: Authenticate with registry
+          command: echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/repo/.npmrc
+      - run:
+          name: Publish package
+          command: npm publish
+            
 workflows:
   version: 2
-  build-deploy:
+  test-deploy:
     jobs:
-      - build
+      - test:
+          filters:
+            tags:
+              only: /^v.*/
       - deploy:
           requires:
-            - build
+            - test
           filters:
+            tags:
+              only: /^v.*/
             branches:
-              only: master
+              ignore: /.*/
