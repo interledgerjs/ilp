@@ -40,15 +40,11 @@ jobs:
           command: npm install
 
       - run:
-          name: Lint
-          command: npm run lint
-
-      - run:
           name: Test
           command: npm test
 
-     - run:
-          name: Integration Tests
+      - run:
+          name: Integration Test
           command: if git log -1 --pretty=%B | grep -qF "[skip tests]"; then true; else npm run integration; fi
      
       - run:
