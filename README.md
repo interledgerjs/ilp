@@ -26,10 +26,13 @@ The Javascript client library for <a href="https://interledger.org">Interledger<
 #### The ILP module includes:
 
 * [Simple Payment Setup Protocol (SPSP)](#simple-payment-setup-protocol-spsp), a higher level interface for sending ILP payments, which requires the receiver to have an SPSP server.
-* [Interledger Dynamic Configuration Protocol (ILDCP)](#dynamic-configuration-protocol), a protocol for exchanging configuration between nodes.
+* [Interledger Dynamic Configuration Protocol (ILDCP)](#interledger-dynamic-configuration-protocol-ildcp), a protocol for exchanging configuration between nodes.
 * [STREAM](#stream), the recommended Transport Protocol to use for most Interledger applications.
 * [createLogger](#create-logger), a function to create a name spaced logger.
-* [getPlugin](#get-plugin), a function to get an ILP plugin from the environment or testnet.
+* [createMiddleware](#create-middleware), a function to create server middleware for an SPSP receiver.
+* [createPlugin](#create-plugin), a function to get an ILP plugin from the environment or testnet.
+* [createServer](#create-server), a function to create a STREAM server listening for new incoming connections.
+* [pay](#pay), a function to make a STREAM payment to either a Payment Pointer or an ILP Address using appropriate shared secret.
 
 ## Installation
 
@@ -37,192 +40,98 @@ The Javascript client library for <a href="https://interledger.org">Interledger<
 
 *Note that [ilp plugins](https://www.npmjs.com/search?q=ilp-plugin) must be installed alongside this module unless you simply use BTP*
 
-# TODO - The following is out of date
+## Create Plugin
 
-## [Simple Payment Setup Protocol Version 1 (SPSPv1)](https://github.com/interledger/rfcs/blob/master/0009-simple-payment-setup-protocol/0009-simple-payment-setup-protocol.md)
+Using `ilp.createPlugin` is an alias for `ilp-plugin.getPlugin`. It creates an instance of a BTP plugin that will attempt to connect to a local `moneyd` instance by default. This can be overridden using environment variables.
 
-If you are sending to an SPSPv1 receiver with a `user@example.com` identifier, the SPSPv1 module
-provides a high-level interface:
+The module looks for `ILP_CREDENTIALS` and `ILP_PLUGIN`. `ILP_CREDENTIALS` must contain a JSON object and will be passed into the constructor of a new plugin instance. The name of the plugin type to instantiate must be stored as a string in the environment variable `ILP_PLUGIN` or it will default to `ilp-plugin-btp`.
+
+By default (i.e. `ILP_CREDENTIALS` and `ILP_PLUGIN` are not set), a random secret will be generated and a new instance of `ilp-plugin-btp` will be configured to connect to btp+ws://localhost:7768.
+
+## [Simple Payment Setup Protocol (SPSP)](https://interledger.org/rfcs/0009-simple-payment-setup-protocol/draft-6.html)
+
+If you are sending to an SPSPv4 receiver using a [Payment Pointer](https://interledger.org/rfcs/0026-payment-pointers), the SPSP module provides a high-level interface to `pay` and `query` the server:
 
 ```js
 'use strict'
 
-const SPSP = require('ilp').SPSP
-const Plugin = require('ilp-plugin')
-
-const plugin = new Plugin()
+const ilp = require('ilp')
 
 ;(async function () {
+  await ilp.SPSP.pay(ilp.createPlugin(), {
+    receiver: '$bob.example.com',
+    sourceAmount: '1000'
+  })
+})()
+```
+
+For more details read the docs for the [SPSP module](https://www.npmjs.com/package/ilp-protocol-spsp).
+
+### Create Middleware
+
+The `ilp` module provides a convenience function to create server middleware that exposes an SPSP endpoint for receiving payments.
+
+```js
+'use strict'
+
+const ilp = require('ilp')
+const app = require('express')()
+
+app.get('/.well-known/pay', ilp.createMiddleware({name: 'Bob'}))
+app.listen(443)
+```
+
+## [Interledger Dynamic Configuration Protocol (ILDCP)](https://github.com/interledger/rfcs/blob/master/0031-dynamic-configuration-protocol/0031-dynamic-configuration-protocol.md)
+
+The ILDCP module allows clients to get their configured address, asset and scale from an upstream parent connector.
+
+```js
+'use strict'
+
+const ilp = require('ilp')
+
+;(async function () {
+  const plugin = ilp.createPlugin()
   await plugin.connect()
-  console.log('plugin connected')
-
-  const payment = await SPSP.quote(plugin, {
-    receiver: 'bob@blue.ilpdemo.org',
-    sourceAmount: '1'
-  })
-
-  console.log('got SPSP payment details:', payment)
-
-  // we can attach an arbitrary JSON object to the payment if we want it
-  // to be sent to the receiver.
-  payment.memo = { message: 'hello!' }
-
-  await SPSP.sendPayment(plugin, payment)
-  console.log('receiver claimed funds!')
+  const { clientAddress, assetScale, assetCode } = await ilp.ILDCP.fetch(plugin.sendData.bind(plugin))
+  console.log(`Plugin connected and configured with address ${clientAddress} using asset ${assetCode} and scale ${assetScale}`)
 })()
 ```
 
-## [Pre-Shared Key Version 1 (PSKv1) Transport Protocol](https://github.com/interledger/rfcs/blob/master/0016-pre-shared-key/0016-pre-shared-key.md)
+## [STREAM](https://interledger.org/rfcs/0029-stream/)
 
-This is a non-interactive protocol in which the sender chooses the payment
-amount and generates the condition without communicating with the recipient.
+The STREAM module provides an API to use the STREAM protocol to send and receive payments. STREAM is the recommended transport protocol for use with ILP.
 
-PSK uses a secret shared between the sender and receiver. The key can be
-generated by the receiver and retrieved by the sender using a higher-level
-protocol such as SPSP, or any other method. In the example below,
-the pre-shared key is simply passed to the sender inside javascript.
+The `ilp` module provides two abstractions over this module that make it simple to send and receive payments.
 
-When sending a payment using PSK, the sender generates an HMAC key from the
-PSK, and HMACs the payment to get the fulfillment, which is hashed to get the
-condition. The sender also encrypts their optional extra data using AES. On
-receipt of the payment, the receiver decrypts the extra data, and HMACs the
-payment to get the fulfillment.
+### Create Server
 
-In order to receive payments using PSK, the receiver must also register a
-`reviewPayment` handler. `reviewPayment` is a callback that returns either a
-promise or a value, and will prevent the receiver from fulfilling a payment if
-it throws an error. This callback is important, because it stops the receiver
-from getting unwanted funds.
+`createServer` creates an instance of a STREAM server wrapped around a given plugin (or calls `createPlugin` if none is provided). It registers event listeners for new connections and streams and writes the events to the debug log.
 
-### PSK Sending and Receiving Example
+### Pay
+
+`pay` will either pay a vlaid SPSP receiver or an ILP address (assuming their is a STREAM server waiting for connections at that address).
+
+To pay using an SPSP receiver, pass the payment pointer as the payee in the form of a string:
 
 ```js
 'use strict'
 
-const uuid = require('uuid')
-const ILP = require('ilp')
-const PluginBtp = require('ilp-plugin-btp')
-
-const sender = new PluginBtp({
-  server: 'btp+wss://:alice@btp.connector.example'
-})
-
-const receiver = new PluginBtp({
-  server: 'btp+wss://:bob@btp.connector.example'
-})
+const ilp = require('ilp')
 
 ;(async function () {
-  // --- RECEIVER START ---
-  await receiver.connect()
-
-  const receiverSecret = Buffer.from('secret_seed')
-
-  const listener = await ILP.PSK.listen(receiver, { receiverSecret }, (params) => {
-    console.log('got transfer:', params.transfer)
-
-    console.log('fulfilling.')
-    return params.fulfill()
-  })
-
-  console.log('receiver connected')
-
-  // Note the user of this module must implement the method for
-  // communicating sharedSecret and destinationAccount from the recipient
-  // to the sender
-  const { sharedSecret, destinationAccount } = listener.generateParams()
-  // --- RECEIVER END ---
-
-  // --- SENDER START ---
-  // the sender can generate these, via the sharedSecret and destinationAccount
-  // given to them by the receiver.
-  const { packet, condition } = ILP.PSK.createPacketAndCondition({
-    sharedSecret,
-    destinationAccount,
-    destinationAmount: '10', // denominated in the ledger's base unit
-  })
-
-  const quote = await ILP.ILQP.quoteByPacket(sender, packet)
-  console.log('got quote:', quote)
-
-  await sender.sendTransfer({
-    id: uuid(),
-    to: quote.connectorAccount,
-    amount: quote.sourceAmount,
-    expiresAt: quote.expiresAt,
-    executionCondition: condition,
-    ilp: packet
-  })
-
-  sender.on('outgoing_fulfill', (transfer, fulfillment) => {
-    console.log(transfer.id, 'was fulfilled with', fulfillment)
-    stopListening()
-  })
-  // --- SENDER END ---
+  await ilp.pay(100, '$bob.example.com')
 })()
 ```
 
-## [Interledger Payment Request Version 2 (IPRv2) Transport Protocol](https://github.com/interledger/rfcs/blob/master/0011-interledger-payment-request/0011-interledger-payment-request.md)
-
-This protocol uses recipient-generated Interledger Payment Requests, which include the condition for the payment. This means that the recipient must first generate a payment request, which the sender then fulfills.
-
-This library handles the generation of payment requests, but **not the communication of the request details from the recipient to the sender**. In some cases, the sender and receiver might be HTTP servers, in which case HTTP would be used. In other cases, they might be using a different medium of communication.
-
-### IPR Sending and Receiving Example
+To pay using a given ILP Address and shared secret pass these in as an object:
 
 ```js
 'use strict'
 
-const uuid = require('uuid')
-const ILP = require('ilp')
-const PluginBtp = require('ilp-plugin-btp')
-
-const sender = new PluginBtp({
-  server: 'btp+wss://:alice@btp.connector.example'
-})
-
-const receiver = new PluginBtp({
-  server: 'btp+wss://:bob@btp.connector.example'
-})
+const ilp = require('ilp')
 
 ;(async function () {
-  const stopListening = await ILP.IPR.listen(receiver, {
-    receiverSecret: Buffer.from('secret', 'utf8')
-  }, async function ({ transfer, fulfill }) {
-    console.log('got transfer:', transfer)
-
-    console.log('claiming incoming funds...')
-    await fulfill()
-    console.log('funds received!')
-  })
-
-  // `ipr` is a buffer with the encoded IPR
-  const ipr = ILP.IPR.createIPR({
-    receiverSecret: Buffer.from('secret', 'utf8'),
-    destinationAccount: receiver.getAccount(),
-    // denominated in the ledger's base unit
-    destinationAmount: '10',
-  })
-
-  // Note the user of this module must implement the method for communicating
-  // packet and condition from the recipient to the sender.
-
-  // In practice, The rest of this example would happen on the sender's side.
-
-  const { packet, condition } = ILP.IPR.decodeIPR(ipr)
-  const quote = await ILP.ILQP.quoteByPacket(sender, packet)
-  console.log('got quote:', quote)
-
-  await sender.sendTransfer({
-    id: uuid(),
-    to: quote.connectorAccount,
-    amount: quote.sourceAmount,
-    expiresAt: quote.expiresAt,
-    executionCondition: condition,
-    ilp: packet
-  })
-
-  sender.on('outgoing_fulfill', (transfer, fulfillment) => {
-    console.log(transfer.id, 'was fulfilled with', fulfillment)
-  })
+  await ilp.pay(100, { destinationAccount: 'g.bob.1234', sharedSecret: Buffer.from('******', 'base64') })
 })()
 ```
