@@ -25,7 +25,7 @@ async function createMiddleware (receiverInfo = {}, plugin = getPlugin()) {
   const { destinationAccount, sharedSecret } = server.generateAddressAndSecret()
 
   return (req, rsp) => {
-    rsp.set('application/spsp4+json')
+    rsp.set('Content-Type', 'application/spsp4+json')
     rsp.send({
       destination_account: destinationAccount,
       shared_secret: sharedSecret.toString('base64'),
