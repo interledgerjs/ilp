@@ -34,7 +34,9 @@ async function createMiddleware (receiverInfo = {}, plugin = getPlugin()) {
 }
 
 /**
- * Create a STREAM server and listen for new connections
+ * Create a STREAM server and listen for new connections.
+ *
+ * Sets the `receiveMax` on any new streams to Infinity so this server will never block incoming money.
  *
  * @param {*} plugin The plugin to use to receive payments
  */
@@ -42,10 +44,9 @@ async function createServer (plugin = getPlugin()) {
   const server = await STREAM.createServer({ plugin })
 
   server.on('connection', (connection) => {
-    log.debug(`incoming connection ${connection.id} opened`)
-
     connection.on('stream', (stream) => {
-      log.debug(`new stream ${stream.id} on connection ${connection.id}`)
+      // Set the maximum amount of money this stream can receive
+      stream.setReceiveMax(Infinity)
 
       stream.on('money', (amount) => {
         log.debug(`got money on stream ${stream.id}: ${amount}`)
@@ -53,10 +54,6 @@ async function createServer (plugin = getPlugin()) {
 
       stream.on('data', (chunk) => {
         log.debug(`got data on stream ${stream.id}: ${chunk.toString('utf8')}`)
-      })
-
-      stream.on('end', () => {
-        log.debug('stream closed')
       })
     })
   })
