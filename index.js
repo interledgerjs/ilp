@@ -22,7 +22,7 @@ const log = createLogger('ilp')
  */
 async function createMiddleware (receiverInfo = {}, plugin = getPlugin()) {
   const server = await createServer(plugin)
-  const { destinationAccount, sharedSecret } = await server(plugin).generateAddressAndSecret
+  const { destinationAccount, sharedSecret } = server.generateAddressAndSecret()
 
   return (req, rsp) => {
     rsp.send({
@@ -39,7 +39,7 @@ async function createMiddleware (receiverInfo = {}, plugin = getPlugin()) {
  * @param {*} plugin The plugin to use to receive payments
  */
 async function createServer (plugin = getPlugin()) {
-  const server = STREAM.createServer({ plugin })
+  const server = await STREAM.createServer({ plugin })
 
   server.on('connection', (connection) => {
     log.debug(`incoming connection ${connection.id} opened`)

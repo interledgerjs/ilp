@@ -74,11 +74,12 @@ The `ilp` module provides a convenience function to create server middleware tha
 ```js
 'use strict'
 
-const ilp = require('ilp')
-const app = require('express')()
-
-app.get('/.well-known/pay', ilp.createMiddleware({name: 'Bob'}))
-app.listen(443)
+;(async function () {
+  const ilp = require('ilp')
+  const app = require('express')()
+  app.get('/.well-known/pay', await ilp.createMiddleware({name: 'Bob'}))
+  app.listen(443)
+})()
 ```
 
 ## [Interledger Dynamic Configuration Protocol (ILDCP)](https://github.com/interledger/rfcs/blob/master/0031-dynamic-configuration-protocol/0031-dynamic-configuration-protocol.md)
