@@ -1,14 +1,17 @@
 'use strict'
 
 const expect = require('chai').expect
-const index = require('..')
+const ilp = require('..')
 
 describe('Index', function () {
-  it('should export ILDCP, SPSP, STREAM, createLogger, and getPlugin functionality', function () {
-    expect(index.ILDCP).to.be.an('object')
-    expect(index.SPSP).to.be.an('object')
-    expect(index.STREAM).to.be.an('object')
-    expect(index.createLogger).to.be.a('function')
-    expect(index.getPlugin).to.be.a('function')
+  it('should export ILDCP, SPSP, STREAM and utility functions', function () {
+    expect(ilp.ILDCP).to.be.an('object')
+    expect(ilp.SPSP).to.be.an('object')
+    expect(ilp.STREAM).to.be.an('object')
+    expect(ilp.createLogger).to.be.a('function')
+    expect(ilp.createMiddleware).to.be.a('function')
+    expect(ilp.createPlugin).to.be.a('function')
+    expect(ilp.createServer).to.be.a('function')
+    expect(ilp.pay).to.be.a('function')
   })
 })
