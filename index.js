@@ -22,9 +22,8 @@ const log = createLogger('ilp')
  */
 async function createMiddleware (receiverInfo = {}, plugin = getPlugin()) {
   const server = await createServer(plugin)
-  const { destinationAccount, sharedSecret } = server.generateAddressAndSecret()
-
   return (req, rsp) => {
+    const { destinationAccount, sharedSecret } = server.generateAddressAndSecret()
     rsp.set('Content-Type', 'application/spsp4+json')
     rsp.send({
       destination_account: destinationAccount,
