@@ -75,7 +75,7 @@ Express example:
 ```js
  const ilp = require('ilp')
  const app = require('express')()
- ilp.createMiddleware({name: 'Bob'}).then(spsp => {
+ ilp.createSpspMiddleware({name: 'Bob'}).then(spsp => {
    app.get('/.well-known/pay', (req, resp) => {
      const {contentType, body} = spsp()
      resp.set('Content-Type', contentType)
@@ -92,7 +92,7 @@ Koa example:
 const ilp = require('ilp')
 const Koa = require('koa')
 const app = new Koa()
-const middleware = ilp.createMiddleware({name: 'Bob'})
+const middleware = ilp.createSpspMiddleware({name: 'Bob'})
 
 app.use(async ctx => {
   const spsp = await middleware
