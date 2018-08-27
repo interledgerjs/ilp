@@ -69,17 +69,38 @@ For more details read the docs for the [SPSP module](https://www.npmjs.com/packa
 
 ### Create Middleware
 
-The `ilp` module provides a convenience function to create server middleware that exposes an SPSP endpoint for receiving payments.
+The `ilp` module provides a convenience function to create server middleware that can be used to host an SPSP endpoint for receiving payments.
 
+Express example:
+```js
+ const ilp = require('ilp')
+ const app = require('express')()
+ ilp.createMiddleware({name: 'Bob'}).then(spsp => {
+   app.get('/.well-known/pay', (req, resp) => {
+     const {contentType, body} = spsp()
+     resp.set('Content-Type', contentType)
+     resp.send(body)
+   })
+   app.listen(3000)
+ })
+```
+
+Koa example:
 ```js
 'use strict'
 
-;(async function () {
-  const ilp = require('ilp')
-  const app = require('express')()
-  app.get('/.well-known/pay', await ilp.createMiddleware({name: 'Bob'}))
-  app.listen(443)
-})()
+const ilp = require('ilp')
+const Koa = require('koa')
+const app = new Koa()
+const middleware = ilp.createMiddleware({name: 'Bob'})
+
+app.use(async ctx => {
+  const spsp = await middleware
+  const {contentType, body} = spsp()
+  ctx.set('Content-Type', contentType)
+  ctx.body = body
+})
+app.listen(3000)
 ```
 
 ## [Interledger Dynamic Configuration Protocol (ILDCP)](https://github.com/interledger/rfcs/blob/master/0031-dynamic-configuration-protocol/0031-dynamic-configuration-protocol.md)

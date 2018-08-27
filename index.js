@@ -14,22 +14,51 @@ const log = createLogger('ilp')
 ```
  const ilp = require('ilp')
  const app = require('express')()
- app.get('/.well-known/pay', ilp.createMiddleware({name: 'Bob'}))
- app.listen(3000)
+ ilp.createMiddleware({name: 'Bob'}).then(spsp => {
+   app.get('/.well-known/pay', (req, resp) => {
+     const {contentType, body} = spsp()
+     resp.set('Content-Type', contentType)
+     resp.send(body)
+   })
+   app.listen(3000)
+ })
+```
+ * Example: To use with Koa
+ *
+```
+const ilp = require('ilp')
+const Koa = require('koa')
+const app = new Koa()
+const middleware = ilp.createMiddleware({name: 'Bob'})
+
+app.use(async ctx => {
+  const spsp = await middleware
+  const {contentType, body} = spsp()
+  ctx.set('Content-Type', contentType)
+  ctx.body = body
+})
+app.listen(3000)
 ```
  * @param {*} receiverInfo The 'receiver_info' object that will be returned in the SPSP response.
  * @param {*} plugin The plugin to use to receive payments
  */
-async function createMiddleware (receiverInfo = {}, plugin = getPlugin()) {
+async function createSpspMiddleware (receiverInfo = {}, plugin = getPlugin()) {
   const server = await createServer(plugin)
-  return (req, rsp) => {
+  return (receiveAmount) => {
     const { destinationAccount, sharedSecret } = server.generateAddressAndSecret()
-    rsp.set('Content-Type', 'application/spsp4+json')
-    rsp.send({
+    const contentType = 'application/spsp4+json'
+    const body = {
       destination_account: destinationAccount,
       shared_secret: sharedSecret.toString('base64'),
       receiver_info: receiverInfo
-    })
+    }
+    if (receiveAmount) {
+      body.balance = `${receiveAmount}`
+    }
+    return {
+      contentType,
+      body
+    }
   }
 }
 
@@ -96,7 +125,7 @@ module.exports = {
   STREAM,
   SPSP,
   createLogger,
-  createMiddleware,
+  createSpspMiddleware,
   createPlugin: getPlugin,
   createServer,
   pay
