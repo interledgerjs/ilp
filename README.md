@@ -65,41 +65,26 @@ const ilp = require('ilp')
 })()
 ```
 
+`ilp.SPSP` replaces the deprecated `ilp-protocol-spsp` module and no longer supports payments to servers using PSK2. Only responses from an SPSP server with the content-type of `application/spsp4+json` are accepted.
+
 ### Create Middleware
 
-The `ilp` module provides a convenience function to create server middleware that can be used to host an SPSP endpoint for receiving payments.
+The `ilp` module provides conveniences functions to create server middleware that can be used to host an SPSP endpoint for receiving payments.
 
 Express example:
 ```js
  const ilp = require('ilp')
  const app = require('express')()
- ilp.createSpspMiddleware({name: 'Bob'}).then(spsp => {
-   app.get('/.well-known/pay', (req, resp) => {
-     const {contentType, body} = spsp()
-     resp.set('Content-Type', contentType)
-     resp.send(body)
-   })
-   app.listen(3000)
- })
+
+ ;(async () => {
+  const spsp = await ilp.express.createMiddleware({receiver_info:{name: 'Bob Smith'}})
+  app.get('/.well-known/pay', spsp)
+  app.listen(3000)
+ })()
+
 ```
 
-Koa example:
-```js
-'use strict'
-
-const ilp = require('ilp')
-const Koa = require('koa')
-const app = new Koa()
-const middleware = ilp.createSpspMiddleware({name: 'Bob'})
-
-app.use(async ctx => {
-  const spsp = await middleware
-  const {contentType, body} = spsp()
-  ctx.set('Content-Type', contentType)
-  ctx.body = body
-})
-app.listen(3000)
-```
+KOA and HAPI support to come...
 
 ## [Interledger Dynamic Configuration Protocol (ILDCP)](https://github.com/interledger/rfcs/blob/master/0031-dynamic-configuration-protocol/0031-dynamic-configuration-protocol.md)
 
@@ -124,13 +109,13 @@ The STREAM module provides an API to use the STREAM protocol to send and receive
 
 The `ilp` module provides two abstractions over this module that make it simple to send and receive payments.
 
-### Create Server
+### Receive
 
-`createServer` creates an instance of a STREAM server wrapped around a given plugin (or calls `createPlugin` if none is provided). It registers event listeners for new connections and streams and writes the events to the debug log.
+`receive` creates an instance of a STREAM server wrapped around a given plugin (or calls `createPlugin` if none is provided). It returns an `Invoice` object which has an `address` and `secret` that can be shared with a sender, and a `receivePayment()` method to wait for the incoming payment.
 
 ### Pay
 
-`pay` will either pay a vlaid SPSP receiver or an ILP address (assuming their is a STREAM server waiting for connections at that address).
+`pay` will either pay a valid SPSP receiver or an ILP address (assuming there is a STREAM server waiting for connections at that address).
 
 To pay using an SPSP receiver, pass the payment pointer as the payee in the form of a string:
 
@@ -155,3 +140,5 @@ const ilp = require('ilp')
   await ilp.pay(100, { destinationAccount: 'g.bob.1234', sharedSecret: Buffer.from('******', 'base64') })
 })()
 ```
+
+Examples are provided in [`example.js`](./example.js).

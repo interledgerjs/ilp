@@ -3,6 +3,7 @@ import BigNumber from 'bignumber.js';
 import * as ILDCP from 'ilp-protocol-ildcp';
 import * as SPSP from './lib/spsp';
 import * as STREAM from 'ilp-protocol-stream';
+import * as express from './extensions/express';
 import { Invoice } from './lib/invoice';
 import { PluginV2 } from './lib/plugin';
 declare const createLogger: any;
@@ -13,4 +14,4 @@ declare function pay(amount: BigNumber.Value, payee: string | {
     destinationAccount: string;
     sharedSecret: Buffer;
 }, plugin?: PluginV2): Promise<BigNumber | SPSP.PayResult>;
-export { ILDCP, STREAM, SPSP, PluginV2, Invoice, createLogger, createPlugin, receive, pay };
+export { ILDCP, STREAM, SPSP, express, PluginV2, Invoice, createLogger, createPlugin, receive, pay };
