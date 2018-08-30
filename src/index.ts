@@ -3,6 +3,7 @@ import * as crypto from 'crypto'
 import * as ILDCP from 'ilp-protocol-ildcp'
 import * as SPSP from './lib/spsp'
 import * as STREAM from 'ilp-protocol-stream'
+import * as express from './extensions/express'
 import { Invoice } from './lib/invoice'
 import { PluginV2 } from './lib/plugin'
 const createLogger = require('ilp-logger')
@@ -134,13 +135,14 @@ async function pay (
 }
 
 export {
-  ILDCP,
-  STREAM,
-  SPSP,
-  PluginV2,
-  Invoice,
-  createLogger,
-  createPlugin,
-  receive,
-  pay
+  ILDCP, // ILDCP Protocol
+  STREAM, // STREAM Protocol
+  SPSP, // SPSP Protocol
+  express, // express extensions
+  PluginV2, // type definitions for plugins
+  Invoice, // a receiver invoice
+  createLogger, // utility logging function
+  createPlugin, // utility plugin initializer
+  receive, // receive a payment (creates an invoice)
+  pay // make a payment
 }

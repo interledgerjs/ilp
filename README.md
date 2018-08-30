@@ -31,7 +31,7 @@ The Javascript client library for <a href="https://interledger.org">Interledger<
 * [createLogger](#create-logger), a function to create a name spaced logger.
 * [createMiddleware](#create-middleware), a function to create server middleware for an SPSP receiver.
 * [createPlugin](#create-plugin), a function to get an ILP plugin from the environment or testnet.
-* [createServer](#create-server), a function to create a STREAM server listening for new incoming connections.
+* [receive](#receive), a function to create an invoice representing a handle to a STREAM server waiting to receive a specific amount.
 * [pay](#pay), a function to make a STREAM payment to either a Payment Pointer or an ILP Address using appropriate shared secret.
 
 ## Installation
@@ -42,11 +42,11 @@ The Javascript client library for <a href="https://interledger.org">Interledger<
 
 ## Create Plugin
 
-Using `ilp.createPlugin` is an alias for `ilp-plugin.getPlugin`. It creates an instance of a BTP plugin that will attempt to connect to a local `moneyd` instance by default. This can be overridden using environment variables.
+Using `ilp.createPlugin` is an alias for the deprecated `ilp-plugin` module. It creates an instance of a BTP plugin that will attempt to connect to a local `moneyd` instance by default. This can be overridden using environment variables.
 
-The module looks for `ILP_CREDENTIALS` and `ILP_PLUGIN`. `ILP_CREDENTIALS` must contain a JSON object and will be passed into the constructor of a new plugin instance. The name of the plugin type to instantiate must be stored as a string in the environment variable `ILP_PLUGIN` or it will default to `ilp-plugin-btp`.
+The module looks for `ILP_PLUGIN_OPTIONS` (or `ILP_CREDENTIALS` however this is deprecated) and `ILP_PLUGIN`. `ILP_PLUGIN_OPTIONS` must contain a JSON object and will be passed into the constructor of a new plugin instance. The name of the plugin type to instantiate must be stored as a string in the environment variable `ILP_PLUGIN` or it will default to `ilp-plugin-btp`.
 
-By default (i.e. `ILP_CREDENTIALS` and `ILP_PLUGIN` are not set), a random secret will be generated and a new instance of `ilp-plugin-btp` will be configured to connect to btp+ws://localhost:7768.
+By default (i.e. `ILP_PLUGIN_OPTIONS` and `ILP_PLUGIN` are not set), a random secret will be generated and a new instance of `ilp-plugin-btp` will be configured to connect to btp+ws:<secret>//localhost:7768.
 
 ## [Simple Payment Setup Protocol (SPSP)](https://interledger.org/rfcs/0009-simple-payment-setup-protocol/draft-6.html)
 
@@ -64,8 +64,6 @@ const ilp = require('ilp')
   })
 })()
 ```
-
-For more details read the docs for the [SPSP module](https://www.npmjs.com/package/ilp-protocol-spsp).
 
 ### Create Middleware
 
