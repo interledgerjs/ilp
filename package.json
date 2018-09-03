@@ -39,7 +39,7 @@
     "bignumber.js": "^7.2.1",
     "ilp-logger": "^1.0.2",
     "ilp-packet": "^3.0.0",
-    "ilp-plugin-btp": "^1.2.0",
+    "ilp-plugin-btp": "^1.2.1",
     "ilp-protocol-ildcp": "^2.0.0",
     "ilp-protocol-stream": "^1.7.2"
   },
