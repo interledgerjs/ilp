@@ -1,13 +1,16 @@
 'use strict'
 
 const expect = require('chai').expect
-const index = require('..')
+const ilp = require('..')
 
 describe('Index', function () {
-  it('should export ILQP, SPSP, IPR, and PSK functionality', function () {
-    expect(index.ILQP).to.be.an('object')
-    expect(index.SPSP).to.be.an('object')
-    expect(index.IPR).to.be.an('object')
-    expect(index.PSK).to.be.an('object')
+  it('should export ILDCP, SPSP, STREAM and utility functions', function () {
+    expect(ilp.ILDCP).to.be.an('object')
+    expect(ilp.SPSP).to.be.an('object')
+    expect(ilp.STREAM).to.be.an('object')
+    expect(ilp.createLogger).to.be.a('function')
+    expect(ilp.createPlugin).to.be.a('function')
+    expect(ilp.receive).to.be.a('function')
+    expect(ilp.pay).to.be.a('function')
   })
 })

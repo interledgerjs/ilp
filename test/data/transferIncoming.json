@@ -1,9 +1,0 @@
-{
-  "id": "2325986c-880b-43e6-813a-bdde8e042992",
-  "direction": "incoming",
-  "account": "https://blue.ilpdemo.org/ledger/accounts/connie",
-  "amount": "1.0000",
-  "ilp": "AYGSAAAAAAAAAAFGaWxwZGVtby5ibHVlLmJvYi5+aXByLlpmaVVkRmotdFZ3LjIyZTMxNWRjLTNmOTktNGY4OS05OTE0LTE5ODdjZWFhOTA2ZEF7ImV4cGlyZXNfYXQiOiIxOTcwLTAxLTAxVDAwOjAwOjEwWiIsImRhdGEiOnsiZm9yIjoidGhhdCB0aGluZyJ9fQA=",
-  "executionCondition": "GfBQTUUGKZZ0919wqrH_IrBoFYlwhfcvfentOmtMR1k",
-  "expiresAt": "1970-01-01T00:00:10.000Z"
-}

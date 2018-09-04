@@ -1,6 +1,11 @@
 /node_modules/
 /.nyc_output/
 /coverage/
-docs/*.intermediate.md
+**/*.js
+**/*.js.map
+**/*.d.ts
+!example.js
+!typedoc.js
+!scripts/*
 *.log
 /integration-test/

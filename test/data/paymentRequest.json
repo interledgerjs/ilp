@@ -1,9 +1,0 @@
-{
-  "address": "ilpdemo.blue.bob.22e315dc-3f99-4f89-9914-1987ceaa906d",
-  "amount": "1",
-  "expires_at": "1970-01-01T00:00:10Z",
-  "data": {
-    "for": "that thing"
-  },
-  "condition": "hd5x8kpaDDLQu-KqMyCrlsg5QJ9g9qaFr9ytTwqyCsw"
-}
