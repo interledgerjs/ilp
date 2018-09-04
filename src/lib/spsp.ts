@@ -1,26 +1,12 @@
 import { createConnection } from 'ilp-protocol-stream'
 import { URL } from 'url'
 import fetch from 'node-fetch'
-import { PluginV2 } from './plugin'
 import BigNumber from 'bignumber.js'
+import { PluginV2 } from './plugin'
+import { Receipt } from './receipt'
+import { JsonInvoice } from './invoice'
 
 export const CONTENT_TYPE = 'application/spsp4+json'
-export interface JsonSpspResponse {
-  destination_account: string
-  shared_secret: string
-  balance?: {
-    maximum: string,
-    current: string
-  }
-  asset_info?: {
-    code: string,
-    scale: number
-  }
-  receiver_info?: {
-    name?: string,
-    image_url?: string
-  }
-}
 
 export interface SpspResponse {
   destinationAccount: string
@@ -64,13 +50,13 @@ export async function query (receiver: string): Promise<SpspResponse> {
       ' message="' + (await response.text()) + '"')
   }
 
-  const json = await response.json()
+  const json = await response.json() as JsonInvoice
 
   return {
     destinationAccount: json.destination_account,
     sharedSecret: Buffer.from(json.shared_secret, 'base64'),
     balance: json.balance,
-    assetInfo: json.ledger_info,
+    assetInfo: json.asset_info,
     receiverInfo: json.receiver_info,
     contentType: response.headers.get('Content-Type') as string
   }
@@ -82,13 +68,7 @@ export interface PayOptions {
   data?: Buffer
 }
 
-export interface PayResult {
-  sent: BigNumber.Value,
-  received: BigNumber.Value,
-  requested?: BigNumber.Value
-}
-
-export async function pay (plugin: PluginV2, options: PayOptions): Promise<PayResult> {
+export async function pay (plugin: PluginV2, options: PayOptions): Promise<Receipt> {
   const { receiver, sourceAmount, data } = options
   const pluginWasConnected = plugin.isConnected
   const [ response ] = await Promise.all([
@@ -115,7 +95,7 @@ export async function pay (plugin: PluginV2, options: PayOptions): Promise<PayRe
       new Promise(resolve => stream.on('end', resolve))
     ])
 
-    const requested = (balance)
+    const requestedAmount = (balance)
     ? new BigNumber(balance.maximum).minus(new BigNumber(balance.current))
     : undefined
 
@@ -126,9 +106,23 @@ export async function pay (plugin: PluginV2, options: PayOptions): Promise<PayRe
     }
 
     return {
-      sent: new BigNumber(streamConnection.totalSent),
-      received: new BigNumber(streamConnection.totalDelivered),
-      requested
+      sourceAccount: streamConnection.sourceAccount,
+      destinationAccount,
+      sent: {
+        amount: new BigNumber(streamConnection.totalSent),
+        assetCode: streamConnection.sourceAssetCode,
+        assetScale: streamConnection.sourceAssetScale
+      },
+      received: {
+        amount: new BigNumber(streamConnection.totalDelivered),
+        assetCode: streamConnection.destinationAssetCode,
+        assetScale: streamConnection.destinationAssetScale
+      },
+      requested: (requestedAmount) ? {
+        amount: requestedAmount,
+        assetCode: streamConnection.destinationAssetCode,
+        assetScale: streamConnection.destinationAssetScale
+      } : undefined
     }
   } else {
     throw new Error(`Unable to send to ${receiver} as it does not support the STREAM protocol.`)

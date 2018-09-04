@@ -4,6 +4,7 @@
   "description": "ILP client library for sending and receiving payments",
   "main": "src/index.js",
   "scripts": {
+    "postinstall": "npm run build",
     "build": "tsc --project .",
     "lint": "tslint --project .",
     "lint:fix": "tslint --fix --project .",
@@ -41,7 +42,7 @@
     "ilp-packet": "^3.0.0",
     "ilp-plugin-btp": "^1.2.1",
     "ilp-protocol-ildcp": "^2.0.0",
-    "ilp-protocol-stream": "^1.7.2"
+    "ilp-protocol-stream": "^1.8.0"
   },
   "devDependencies": {
     "chai": "^4.1.2",

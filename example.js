@@ -1,19 +1,30 @@
+const BigNumber = require('bignumber.js')
 const { pay, receive } = require('./src/index')
+
+function normalizeAmount (assetAmount) {
+  if (assetAmount.assetScale) {
+    const value = new BigNumber(assetAmount.amount).dividedBy(new BigNumber(10).exponentiatedBy(assetAmount.assetScale))
+    return `${value.toString()} ${assetAmount.assetCode}`
+  }
+  return `${assetAmount.amount} units of unknown asset type and scale`
+}
 
 ;(async () => {
   try {
     // Send to Payment Pointer
-    const receiver = '$twitter.xrptipbot.com/WietseWind'
-    const {sent, received} = await pay(100, receiver)
-    console.log(`Sent ${sent.toString()} and ${receiver} got ${received.toString()}`)
+    const paymentPointer = '$twitter.xrptipbot.com/WietseWind'
+    const receipt1 = await pay({ amount: 100, paymentPointer })
+    console.log(`Sent ${normalizeAmount(receipt1.sent)} to ${paymentPointer} (${receipt1.destinationAccount}) ` +
+      `who received ${normalizeAmount(receipt1.received)}`)
 
     // Create invoice, pay it and wait for payment
-    const invoice = await receive(100)
-    const [ sent2, received2 ] = await Promise.all([
-      pay(100, {destinationAccount: invoice.address, sharedSecret: invoice.secret}),
-      invoice.receivePayment(30 * 1000)
+    const receiver = await receive(100, 'test-payment-123')
+    const [ senderReceipt, receiverReceipt ] = await Promise.all([
+      pay(receiver),
+      receiver.receivePayment(30 * 1000)
     ])
-    console.log(`Sent ${sent2.toString()} and receiver got ${received2.toString()}`)
+    console.log(`According to sender, sent ${normalizeAmount(senderReceipt.sent)} and receiver got ${normalizeAmount(senderReceipt.received)}`)
+    console.log(`According to receiver, got ${normalizeAmount(receiverReceipt.received)}`)
     process.exit(0)
   } catch (error) {
     console.error(error)

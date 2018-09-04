@@ -1,5 +1,6 @@
-import { createPlugin, PluginV2, STREAM, SPSP } from '..'
+import { createPlugin, JsonInvoice, PluginApi, STREAM, SPSP, receive, InvoiceReceiver } from '..'
 import { RequestHandler } from 'express'
+import { serializePayee } from '../lib/invoice'
 
 /**
  * Get a simple middleware function that will return an SPSP response to any request.
@@ -15,9 +16,9 @@ import { RequestHandler } from 'express'
  * Example: To use with express
  *
  * ```js
- * const ilp = require('ilp')
+ *  const ilp = require('ilp')
  *  const app = require('express')()
- *  ilp.createSpspMiddleware({receiver_info:{name: 'Bob Smith'}}).then(spsp => {
+ *  ilp.createMiddleware({receiver_info:{name: 'Bob Smith'}}).then(spsp => {
  *    app.get('/.well-known/pay', (req, resp) => {
  *      const {contentType, body} = spsp()
  *      resp.set('Content-Type', contentType)
@@ -26,45 +27,29 @@ import { RequestHandler } from 'express'
  *    app.listen(3000)
  *  })
  * ```
- * Example: To use with Koa
- *
- * ```
- * const ilp = require('ilp')
- * const Koa = require('koa')
- * const app = new Koa()
- * const middleware = ilp.createSpspMiddleware({receiver_info:{name: 'Bob Smith'}})
- *
- * app.use(async ctx => {
- *   const spsp = await middleware
- *   const {contentType, body} = spsp()
- *   ctx.set('Content-Type', contentType)
- *   ctx.body = body
- * })
- * app.listen(3000)
- * ```
  * @param {*} responseTemplate The object that will be returned in the SPSP response.
  * @param {*} plugin The plugin to use to receive payments
  */
 export async function createMiddleware (
-  responseTemplate?: SPSP.JsonSpspResponse,
-  plugin: PluginV2 = createPlugin()): Promise<RequestHandler> {
+  responseTemplate?: JsonInvoice,
+  plugin: PluginApi.PluginV2 = createPlugin()): Promise<RequestHandler> {
 
   const server = await STREAM.createServer({ plugin })
 
   return (req, rsp) => {
-    const { destinationAccount, sharedSecret } = server.generateAddressAndSecret()
+
+    const reference = req.query.reference || undefined
+
+    const payee = (req.query.amount && !isNaN(+req.query.amount))
+      ? new InvoiceReceiver(+req.query.amount, reference, server)
+      : server.generateAddressAndSecret(reference)
+
+    const jsonPayee = serializePayee(payee)
+
     rsp.set('Content-Type', SPSP.CONTENT_TYPE)
-
-    const balance = (req.query.amount) ? {
-      current: '0',
-      maximum: `${req.query.amount}`
-    } : undefined
-
     rsp.send({
       ...responseTemplate,
-      destination_account: destinationAccount,
-      shared_secret: sharedSecret.toString('base64'),
-      balance
+      ...jsonPayee
     })
   }
 }

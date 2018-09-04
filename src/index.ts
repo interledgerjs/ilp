@@ -4,8 +4,9 @@ import * as ILDCP from 'ilp-protocol-ildcp'
 import * as SPSP from './lib/spsp'
 import * as STREAM from 'ilp-protocol-stream'
 import * as express from './extensions/express'
-import { Invoice } from './lib/invoice'
-import { PluginV2 } from './lib/plugin'
+import { JsonInvoice, InvoiceReceiver, Invoice } from './lib/invoice'
+import * as PluginApi from './lib/plugin'
+import { Receipt } from './lib/receipt'
 const createLogger = require('ilp-logger')
 const log = createLogger('ilp')
 
@@ -48,7 +49,7 @@ export const DEFAULT_PLUGIN_MODULE = 'ilp-plugin-btp'
  * @param {*} pluginOptions The options passed to the plugin constructor
  * @param {*} pluginModuleName The module name of the plugin, defaults to `ilp.DEFAULT_PLUGIN_MODULE`
  */
-function createPlugin (pluginOptions?: any, pluginModuleName: string = DEFAULT_PLUGIN_MODULE): PluginV2 {
+function createPlugin (pluginOptions?: any, pluginModuleName: string = DEFAULT_PLUGIN_MODULE): PluginApi.PluginV2 {
   const envModuleName = process.env.ILP_PLUGIN || DEFAULT_PLUGIN_MODULE
   const envOptions = process.env.ILP_PLUGIN_OPTIONS || process.env.ILP_CREDENTIALS
 
@@ -81,46 +82,57 @@ function createPlugin (pluginOptions?: any, pluginModuleName: string = DEFAULT_P
   }
 
   const Plugin = require(moduleName)
-  return new Plugin(options) as PluginV2
+  return new Plugin(options) as PluginApi.PluginV2
 }
 
 /**
- * Create a new `Receipt` that is paid when a specific amount is received.
+ * Get the dynamic configuration provided for a plugin from the upstream server
+ *
+ * @param plugin The plugin used to connect to the upstream service
+ */
+async function fetchConfig (plugin: PluginApi.PluginV2): Promise<ILDCP.IldcpResponse> {
+  if (!plugin.isConnected) {
+    throw Error('Plugin must be connected to get config.')
+  }
+  return ILDCP.fetch(plugin.sendData.bind(plugin))
+}
+
+/**
+ * Create a new `Invoice` that is paid when a specific amount is received.
  *
  * This will create or use a STREAM Server to generate an ILP Address and secret for the sender to use.
- * These are returned as properties of the `Receipt`.
+ * These are returned as properties of the `Invoice`.
  *
- * Calling `receivePayment()` on the receipt returns a promise that will resolve with the actual amount received,
+ * Calling `receivePayment()` on the invoice returns a promise that will resolve with the actual amount received,
  * or reject if it times out.
  *
  * @param {*} amount The amount to receive
+ * @param {*} reference The payment reference
  * @param {*} pluginOrServer The plugin to use to receive payments or an existing STREAM server to use
  */
-async function receive (amount: BigNumber.Value, pluginOrServer: PluginV2 | STREAM.Server = createPlugin()) {
+async function receive (amount: BigNumber.Value, reference: string, pluginOrServer: PluginApi.PluginV2 | STREAM.Server = createPlugin()) {
 
   const server = (pluginOrServer instanceof STREAM.Server)
     ? pluginOrServer
     : await STREAM.createServer({ plugin : pluginOrServer })
 
-  return new Invoice(amount, server)
+  return new InvoiceReceiver(amount, reference, server)
 }
 
-/**
- * Make a payment to the given payee
- *
- * @param {*} amount The maximum amount to send (scale and currency implied by the plugin that is used)
- * @param {*} payee The payee. Either an SPSP receiver (string) or `{ destinationAccount, sharedSecret }`
- * @param {*} plugin The plugin to use to send payments
- */
-async function pay (
-  amount: BigNumber.Value,
-  payee: string | { destinationAccount: string, sharedSecret: Buffer },
-  plugin: PluginV2 = createPlugin()) {
+type PaymentPointerAndAmount = { amount: BigNumber.Value, paymentPointer: string }
 
-  if (typeof payee === 'string') {
-    return SPSP.pay(plugin, { receiver: payee, sourceAmount: amount })
+/**
+ */
+async function pay (payee: PaymentPointerAndAmount | Invoice, plugin: PluginApi.PluginV2 = createPlugin()): Promise<Receipt> {
+
+  const paymentPointerReceiver = payee as PaymentPointerAndAmount
+  if (paymentPointerReceiver.paymentPointer) {
+    return SPSP.pay(plugin, {
+      receiver: paymentPointerReceiver.paymentPointer,
+      sourceAmount: paymentPointerReceiver.amount
+    })
   } else {
-    const { destinationAccount, sharedSecret } = payee
+    const { destinationAccount, sharedSecret, amount } = payee as Invoice
     const connection = await STREAM.createConnection({
       destinationAccount,
       plugin,
@@ -130,19 +142,35 @@ async function pay (
     const stream = connection.createStream()
     await stream.sendTotal(amount)
     await connection.end()
-    return new BigNumber(connection.totalSent)
+    return {
+      sourceAccount: connection.sourceAccount,
+      destinationAccount: destinationAccount,
+      sent: {
+        amount: new BigNumber(connection.totalSent),
+        assetCode: connection.sourceAssetCode,
+        assetScale: connection.sourceAssetScale
+      },
+      received: {
+        amount: new BigNumber(connection.totalDelivered),
+        assetCode: connection.destinationAssetCode,
+        assetScale: connection.destinationAssetScale
+      }
+    }
   }
 }
 
 export {
-  ILDCP, // ILDCP Protocol
-  STREAM, // STREAM Protocol
-  SPSP, // SPSP Protocol
+  ILDCP, // ILDCP Protocol module
+  STREAM, // STREAM Protocol module
+  SPSP, // SPSP Protocol module
+  PluginApi, // Plugin API types
   express, // express extensions
-  PluginV2, // type definitions for plugins
-  Invoice, // a receiver invoice
+  InvoiceReceiver, // a receiver invoice
+  JsonInvoice, // JSON serialized invoice (used in SPSP response)
+  Receipt, // a receipt with the details of a completed payment
   createLogger, // utility logging function
   createPlugin, // utility plugin initializer
+  fetchConfig, // Use ILDCP to get the config for a plugin
   receive, // receive a payment (creates an invoice)
   pay // make a payment
 }

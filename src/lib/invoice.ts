@@ -1,48 +1,82 @@
 import BigNumber from 'bignumber.js'
 import * as crypto from 'crypto'
-import { STREAM } from '..'
+import { STREAM, Receipt } from '..'
 import { UnwrappedPromise } from './promise'
+import * as assert from 'assert'
 const createLogger = require('ilp-logger')
 const log = createLogger('invoice')
 
-export class Invoice {
+export interface JsonInvoice {
+  destination_account: string
+  shared_secret: string
+  balance?: {
+    maximum: string,
+    current: string
+  }
+  asset_info?: {
+    code: string,
+    scale: number
+  }
+  receiver_info?: {
+    name?: string,
+    image_url?: string
+  }
+}
 
-  private expectedAmount: BigNumber
-  private ilpAddress: string
-  private sharedSecret: Buffer
-  private connectionTag: string
-  private receivedData: Buffer
-  private paymentPromise: UnwrappedPromise<BigNumber>
-  private dataPromise: UnwrappedPromise<Buffer>
-  private timer?: NodeJS.Timer
-  private streamConnection?: STREAM.Connection
+export interface Payee {
+  destinationAccount: string,
+  sharedSecret: Buffer,
+}
 
-  constructor (amount: BigNumber.Value, streamServer: STREAM.Server) {
-    this.connectionTag = crypto.randomBytes(16).toString('hex')
-    const { destinationAccount, sharedSecret } = streamServer.generateAddressAndSecret(this.connectionTag)
-    this.expectedAmount = new BigNumber(amount)
-    this.ilpAddress = destinationAccount
-    this.sharedSecret = sharedSecret
-    this.receivedData = Buffer.alloc(0)
-    this.dataPromise = new UnwrappedPromise<Buffer>()
-    this.paymentPromise = new UnwrappedPromise<BigNumber>()
+export interface Invoice extends Payee {
+  amount: BigNumber,
+  assetScale?: number,
+  assetCode?: string
+}
+
+export class InvoiceReceiver implements Invoice {
+
+  private _expectedAmount: BigNumber
+  private _assetScale: number
+  private _assetCode: string
+  private _destinationAccount: string
+  private _sharedSecret: Buffer
+  private _connectionTag: string
+  private _receivedData: Buffer
+  private _paymentPromise: UnwrappedPromise<Receipt>
+  private _dataPromise: UnwrappedPromise<Buffer>
+  private _timer?: NodeJS.Timer
+  private _streamConnection?: STREAM.Connection
+
+  constructor (amount: BigNumber.Value, reference = crypto.randomBytes(16).toString('hex'), streamServer: STREAM.Server) {
+    assert(/^[A-Za-z0-9~_-]*$/.test(reference), 'Reference can only contain valid ILP Address characters.')
+    this._connectionTag = reference
+    const { destinationAccount, sharedSecret } = streamServer.generateAddressAndSecret(this._connectionTag)
+    this._expectedAmount = new BigNumber(amount)
+    this._assetCode = streamServer.assetCode
+    this._assetScale = streamServer.assetScale
+    this._destinationAccount = destinationAccount
+    this._sharedSecret = sharedSecret
+    this._receivedData = Buffer.alloc(0)
+    this._dataPromise = new UnwrappedPromise<Buffer>()
+    this._paymentPromise = new UnwrappedPromise<Receipt>()
 
     streamServer.on('connection', (connection: STREAM.Connection) => {
-      if (connection.connectionTag === this.connectionTag) {
+      if (connection.connectionTag === this._connectionTag) {
         log.debug(`connection opened`)
-        this.streamConnection = connection
+        this._streamConnection = connection
         connection.on('stream', (stream: STREAM.DataAndMoneyStream) => {
           log.debug(`stream created`)
-          stream.setReceiveMax(amount)
+          stream.setReceiveMax(this._expectedAmount)
           stream.on('money', (amountReceived) => {
             log.trace(`${amountReceived} received`)
-            if (new BigNumber(connection.totalReceived).isGreaterThanOrEqualTo(this.expectedAmount)) {
+            if (new BigNumber(connection.totalReceived).isGreaterThanOrEqualTo(this._expectedAmount)) {
               this._complete()
             }
           })
           stream.on('data', (dataReceived) => {
             log.trace(`${(dataReceived as Buffer).byteLength} bytes of data received`)
-            this.receivedData = Buffer.concat([this.receivedData, dataReceived as Buffer])
+            this._receivedData = Buffer.concat([this._receivedData, dataReceived as Buffer])
           })
           stream.on('end', () => {
             log.debug(`stream ended`)
@@ -53,58 +87,112 @@ export class Invoice {
     })
   }
 
-  public get address (): string {
-    return this.ilpAddress
+  public get destinationAccount (): string {
+    return this._destinationAccount
   }
 
-  public get secret (): Buffer {
-    return this.sharedSecret
+  public get sharedSecret (): Buffer {
+    return this._sharedSecret
   }
 
-  public get data (): Promise<Buffer> {
-    return this.dataPromise.promise
+  public get amount (): BigNumber {
+    return this._expectedAmount
   }
 
-  public receivePayment (timeout?: number): Promise<BigNumber> {
+  public get assetScale (): number {
+    return this._assetScale
+  }
+  public get assetCode (): string {
+    return this._assetCode
+  }
+
+  public toJSON (): JsonInvoice {
+    return serializePayee(this)
+  }
+
+  public receiveData (): Promise<Buffer> {
+    return this._dataPromise.promise
+  }
+
+  public receivePayment (timeout?: number): Promise<Receipt> {
     if (timeout) {
-      this.timer = setTimeout(() => {
+      this._timer = setTimeout(() => {
         this._timeout()
       }, timeout)
     }
-    return this.paymentPromise.promise
+    return this._paymentPromise.promise
   }
 
   private _complete () {
-    if (this.timer) {
-      clearTimeout(this.timer)
+    if (this._timer) {
+      clearTimeout(this._timer)
     }
-    if (this.streamConnection) {
-      const received = new BigNumber(this.streamConnection.totalReceived)
-      this.paymentPromise.resolve(received)
-      this.dataPromise.resolve(this.receivedData)
-      this.streamConnection.end().catch(e => {
-        log.error('Error closing connection after payment was completed.')
+    if (this._streamConnection) {
+      this._paymentPromise.resolve({
+        sourceAccount: this._streamConnection.destinationAccount,
+        destinationAccount: this._streamConnection.sourceAccount,
+        received: {
+          amount: this._streamConnection.totalReceived,
+          assetCode: this._streamConnection.sourceAssetCode,
+          assetScale: this._streamConnection.sourceAssetScale
+        },
+        requested: {
+          amount: this._expectedAmount,
+          assetCode: this._streamConnection.sourceAssetCode,
+          assetScale: this._streamConnection.sourceAssetScale
+        }
+      } as Receipt)
+      this._dataPromise.resolve(this._receivedData)
+      this._streamConnection.end().catch(e => {
+        log.error('Error closing connection after payment was completed.', e)
       })
     } else {
       const error = new Error('No incoming STREAM connection.')
-      this.paymentPromise.reject(error)
-      this.dataPromise.reject(error)
+      this._paymentPromise.reject(error)
+      this._dataPromise.reject(error)
     }
   }
 
   private _timeout () {
-    const error = (this.streamConnection)
+    const error = (this._streamConnection)
     ? new Error(`Timed out waiting for payment. ` +
-      `Received ${this.streamConnection.totalReceived} payment ` +
-      `and ${this.receivedData.byteLength} bytes of data so far.`)
+      `Received ${this._streamConnection.totalReceived} payment ` +
+      `and ${this._receivedData.byteLength} bytes of data so far.`)
     : new Error(`Timed out waiting for connection. `)
 
-    this.paymentPromise.reject(error)
-    this.dataPromise.reject(error)
-    if (this.streamConnection) {
-      this.streamConnection.end().catch(e => {
+    this._paymentPromise.reject(error)
+    this._dataPromise.reject(error)
+    if (this._streamConnection) {
+      this._streamConnection.end().catch(e => {
         log.error('Error closing connection after payment timed out.', e)
       })
     }
+  }
+
+}
+
+export function serializePayee (receiver: Invoice | Payee): JsonInvoice {
+
+  const invoice = receiver as Invoice
+  const balance = (invoice.amount)
+    ? {
+      current: '0',
+      maximum: invoice.amount.toString()
+    }
+    : undefined
+
+  // tslint:disable-next-line:variable-name
+  const asset_info = (invoice.assetCode && invoice.assetScale)
+    ? {
+      code: invoice.assetCode,
+      scale: invoice.assetScale
+    }
+    : undefined
+
+  return {
+    destination_account: invoice.destinationAccount,
+    shared_secret: invoice.sharedSecret.toString('base64'),
+    balance,
+    asset_info
   }
 }
