@@ -70,7 +70,7 @@ export interface PayOptions {
 
 export async function pay (plugin: PluginV2, options: PayOptions): Promise<Receipt> {
   const { receiver, sourceAmount, data } = options
-  const pluginWasConnected = plugin.isConnected
+  const pluginWasConnected = plugin.isConnected()
   const [ response ] = await Promise.all([
     query(receiver),
     plugin.connect()
