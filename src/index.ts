@@ -91,7 +91,7 @@ function createPlugin (pluginOptions?: any, pluginModuleName: string = DEFAULT_P
  * @param plugin The plugin used to connect to the upstream service
  */
 async function fetchConfig (plugin: PluginApi.PluginV2): Promise<ILDCP.IldcpResponse> {
-  if (!plugin.isConnected) {
+  if (!plugin.isConnected()) {
     throw Error('Plugin must be connected to get config.')
   }
   return ILDCP.fetch(plugin.sendData.bind(plugin))
