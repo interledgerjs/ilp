@@ -1,29 +1,51 @@
-import { createConnection } from 'ilp-protocol-stream'
 import { URL } from 'url'
 import fetch from 'node-fetch'
 import BigNumber from 'bignumber.js'
-import { PluginV2 } from './plugin'
-import { Receipt } from './receipt'
-import { JsonInvoice } from './invoice'
+import { Invoice } from './types/invoice'
+import { JsonPayee, Payee, deserializePayee, serializePayee } from './types/payee'
 
 export const CONTENT_TYPE = 'application/spsp4+json'
 
-export interface SpspResponse {
-  destinationAccount: string
-  sharedSecret: Buffer
+export interface JsonSpspResponse extends JsonPayee {
   balance?: {
-    maximum: string,
-    current: string
+    current: string,
+    maximum: string
   }
-  assetInfo?: {
-    code: string,
-    scale: number
-  }
-  receiverInfo?: {
-    name?: string,
-    imageUrl?: string
+}
+
+export interface SpspResponse extends Payee {
+  balance?: {
+    current: BigNumber,
+    maximum: BigNumber
   }
   contentType: string
+}
+
+export function serializeSpspResponse (response: SpspResponse): JsonSpspResponse {
+  const balance = (response.balance)
+  ? {
+    current: response.balance.current.toString(),
+    maximum: response.balance.maximum.toString()
+  }
+  : undefined
+
+  return {
+    ...serializePayee(response),
+    balance
+  }
+}
+export function deserializeSpspResponse (json: JsonSpspResponse, contentType: string): SpspResponse {
+  const balance = (json.balance)
+    ? {
+      current: new BigNumber(json.balance.current),
+      maximum: new BigNumber(json.balance.maximum)
+    }
+    : undefined
+  return {
+    ...deserializePayee(json),
+    balance,
+    contentType
+  }
 }
 
 export async function query (receiver: string): Promise<SpspResponse> {
@@ -50,81 +72,33 @@ export async function query (receiver: string): Promise<SpspResponse> {
       ' message="' + (await response.text()) + '"')
   }
 
-  const json = await response.json() as JsonInvoice
-
-  return {
-    destinationAccount: json.destination_account,
-    sharedSecret: Buffer.from(json.shared_secret, 'base64'),
-    balance: json.balance,
-    assetInfo: json.asset_info,
-    receiverInfo: json.receiver_info,
-    contentType: response.headers.get('Content-Type') as string
-  }
+  const json = await response.json() as JsonSpspResponse
+  return deserializeSpspResponse(json, response.headers.get('Content-Type') as string)
 }
-
-export interface PayOptions {
-  receiver: string,
-  sourceAmount: BigNumber.Value,
-  data?: Buffer
-}
-
-export async function pay (plugin: PluginV2, options: PayOptions): Promise<Receipt> {
-  const { receiver, sourceAmount, data } = options
-  const pluginWasConnected = plugin.isConnected
-  const [ response ] = await Promise.all([
-    query(receiver),
-    plugin.connect()
-  ])
-
-  const { destinationAccount, sharedSecret, contentType, balance } = response
-
-  if (contentType.indexOf(CONTENT_TYPE) !== -1) {
-
-    const streamConnection = await createConnection({
-      plugin,
-      destinationAccount,
-      sharedSecret
-    })
-
-    const stream = streamConnection.createStream()
-    if (data) {
-      stream.write(data)
-    }
-    await Promise.race([
-      stream.sendTotal(sourceAmount).then(() => stream.end()),
-      new Promise(resolve => stream.on('end', resolve))
-    ])
-
-    const requestedAmount = (balance)
-    ? new BigNumber(balance.maximum).minus(new BigNumber(balance.current))
-    : undefined
-
-    await streamConnection.end()
-
-    if (!pluginWasConnected) {
-      await plugin.disconnect()
-    }
-
+export function convertSpspResponse (response: SpspResponse): Invoice | Payee {
+  if (response.balance) {
+    const amount = response.balance.maximum.minus(response.balance.current)
     return {
-      sourceAccount: streamConnection.sourceAccount,
-      destinationAccount,
-      sent: {
-        amount: new BigNumber(streamConnection.totalSent),
-        assetCode: streamConnection.sourceAssetCode,
-        assetScale: streamConnection.sourceAssetScale
-      },
-      received: {
-        amount: new BigNumber(streamConnection.totalDelivered),
-        assetCode: streamConnection.destinationAssetCode,
-        assetScale: streamConnection.destinationAssetScale
-      },
-      requested: (requestedAmount) ? {
-        amount: requestedAmount,
-        assetCode: streamConnection.destinationAssetCode,
-        assetScale: streamConnection.destinationAssetScale
-      } : undefined
+      destinationAccount: response.destinationAccount,
+      sharedSecret: response.sharedSecret,
+      assetInfo: response.assetInfo,
+      receiverInfo: response.receiverInfo,
+      amount
     }
-  } else {
-    throw new Error(`Unable to send to ${receiver} as it does not support the STREAM protocol.`)
   }
+  return {
+    destinationAccount: response.destinationAccount,
+    sharedSecret: response.sharedSecret,
+    assetInfo: response.assetInfo,
+    receiverInfo: response.receiverInfo
+  }
+}
+export interface PayOptions {
+  receiver: string
+  maxSendAmount: BigNumber.Value
+  /**
+   * @deprecated Use `maxSendAmount` instead.
+   */
+  sourceAmount?: BigNumber.Value
+  data?: Buffer
 }

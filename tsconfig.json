@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
-    "target": "es2015",
+    "target": "es2017", // Compatible with NodeJS 8.12 LTS according to https://node.green/
+    // "target": "es6", // Compatible with modern browsers
     "module": "commonjs",
     "declaration": true,
     "noImplicitAny": true,
@@ -9,7 +10,14 @@
     "sourceMap": true,
     "inlineSources": true,
     "strictNullChecks": true,
-    "suppressImplicitAnyIndexErrors": true
-  }
+    "suppressImplicitAnyIndexErrors": true,
+    "outDir": "build",
+    "rootDir": "src"
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
-  

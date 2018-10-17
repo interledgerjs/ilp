@@ -1,11 +1,8 @@
 {
     "extends": "tslint-config-standard",
-    "rules": {
-        "no-unused-variable": false
-    },
     "linterOptions": {
         "exclude": [
-        "test/**/*"
+            "src/test/**/*"
         ]
     }
 }

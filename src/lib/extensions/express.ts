@@ -1,6 +1,11 @@
-import { createPlugin, JsonInvoice, PluginApi, STREAM, SPSP, receive, InvoiceReceiver } from '..'
+import { STREAM } from '..'
 import { RequestHandler } from 'express'
-import { serializePayee } from '../lib/invoice'
+import { createPlugin, IlpPlugin } from 'ilp-module-loader'
+import { JsonInvoice, serializeInvoice } from '../types/invoice'
+import { Receiver } from '../receiver'
+import * as SPSP from '../spsp'
+
+export type PaymentHandler = (receiver: Receiver) => void
 
 /**
  * Get a simple middleware function that will return an SPSP response to any request.
@@ -32,19 +37,22 @@ import { serializePayee } from '../lib/invoice'
  */
 export async function createMiddleware (
   responseTemplate?: JsonInvoice,
-  plugin: PluginApi.PluginV2 = createPlugin()): Promise<RequestHandler> {
+  paymentHandler?: PaymentHandler,
+  plugin: IlpPlugin = createPlugin()): Promise<RequestHandler> {
 
   const server = await STREAM.createServer({ plugin })
 
   return (req, rsp) => {
 
     const reference = req.query.reference || undefined
+    const amount = (req.query.amount && !isNaN(+req.query.amount)) ? +req.query.amount : undefined
+    const payee = new Receiver(server, amount, reference)
 
-    const payee = (req.query.amount && !isNaN(+req.query.amount))
-      ? new InvoiceReceiver(+req.query.amount, reference, server)
-      : server.generateAddressAndSecret(reference)
+    if (paymentHandler) {
+      paymentHandler(payee)
+    }
 
-    const jsonPayee = serializePayee(payee)
+    const jsonPayee = serializeInvoice(payee)
 
     rsp.set('Content-Type', SPSP.CONTENT_TYPE)
     rsp.send({
