@@ -1,11 +1,6 @@
-/node_modules/
-/.nyc_output/
-/coverage/
-**/*.js
-**/*.js.map
-**/*.d.ts
-!example.js
-!typedoc.js
-!scripts/*
-*.log
-/integration-test/
+.vscode
+node_modules
+coverage
+.nyc_output
+doc
+build
