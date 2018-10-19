@@ -1,10 +1,9 @@
 {
   "name": "ilp",
-  "version": "14.0.0",
+  "version": "14.1.0",
   "description": "ILP client library for sending and receiving payments",
   "main": "src/index.js",
   "scripts": {
-    "postinstall": "npm run build",
     "build": "tsc --project .",
     "lint": "tslint --project .",
     "lint:fix": "tslint --fix --project .",
@@ -42,7 +41,8 @@
     "ilp-packet": "^3.0.0",
     "ilp-plugin-btp": "^1.2.1",
     "ilp-protocol-ildcp": "^2.0.0",
-    "ilp-protocol-stream": "^1.8.0"
+    "ilp-protocol-stream": "^1.8.0",
+    "node-fetch": "^2.2.0"
   },
   "devDependencies": {
     "chai": "^4.1.2",
@@ -57,7 +57,7 @@
     "mocha": "^5.2.0",
     "tslint": "^5.11.0",
     "tslint-config-standard": "^7.1.0",
-    "typescript": "^3.0.3"
+    "typescript": "^3.1.1"
   },
   "config": {
     "five-bells-integration-test-loader": {
@@ -72,10 +72,8 @@
     "functions": 80,
     "branches": 80,
     "include": [
-      "src/**/*.js"
-    ],
-    "exclude": [
-      "test/**/*.js"
+      "src/**/*.js",
+      "src/**/*/d.ts"
     ],
     "reporter": [
       "lcov",
